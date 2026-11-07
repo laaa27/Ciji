@@ -1,0 +1,79 @@
+/* ─────────────────────────────────────────────
+   词迹 · 设计令牌（日间主题）
+   概念：一页活着的词典。单词是主角，状态是页边批注。
+   ───────────────────────────────────────────── */
+
+:root {
+  color-scheme: light;
+
+  /* 纸与墨 */
+  --paper: #f7f8f5;
+  --surface: #ffffff;
+  --ink: #16181a;
+  --ink-2: #565b57;
+  --ink-3: #8c918d;
+  --rule: #e4e7e0;
+  --rule-strong: #ccd1c8;
+
+  /* 三支笔：新学的靛 / 模糊的赭 / 忘记的朱 */
+  --state-new: #2a5580;
+  --state-vague: #8f5f1c;
+  --state-forget: #9c332a;
+
+  /* 交互 */
+  --accent: #16181a;
+  --on-accent: #f7f8f5;
+
+  /* 字体 */
+  --font-word: 'Spectral', Georgia, 'Songti SC', 'Noto Serif CJK SC', serif;
+  --font-ui: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei',
+    'Noto Sans SC', sans-serif;
+
+  /* 字号 */
+  --fs-display: 32px;
+  --fs-word: 21px;
+  --fs-lg: 17px;
+  --fs-body: 14px;
+  --fs-sm: 12.5px;
+  --fs-xs: 11px;
+
+  /* 间距 */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 28px;
+  --sp-8: 32px;
+  --sp-9: 36px;
+  --sp-10: 40px;
+
+  /* 布局 */
+  --gutter: 20px;
+  --tabbar-h: 54px;
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ─────────────────────────────────────────────
+   夜间主题（待补全）
+   预留结构：<html data-theme="dark"> 时生效
+   ───────────────────────────────────────────── */
+/*
+[data-theme='dark'] {
+  color-scheme: dark;
+  --paper: #121413;
+  --surface: #191c1a;
+  --ink: #eceee9;
+  --ink-2: #a3a8a2;
+  --ink-3: #6f746f;
+  --rule: #262a27;
+  --rule-strong: #363b37;
+  --state-new: #7ea6cc;
+  --state-vague: #c99a52;
+  --state-forget: #d07066;
+  --accent: #eceee9;
+  --on-accent: #121413;
+}
+*/

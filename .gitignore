@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.vite/
+*.local
+*.log
+.DS_Store
+Thumbs.db
+
+# Capacitor 生成物
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/src/main/assets/public/
+android/app/src/main/res/xml/config.xml

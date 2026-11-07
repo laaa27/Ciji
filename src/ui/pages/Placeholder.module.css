@@ -1,0 +1,12 @@
+.page {
+  padding: calc(var(--safe-top) + var(--sp-7)) var(--gutter) var(--sp-10);
+}
+
+.title {
+  font-family: var(--font-word);
+  font-size: var(--fs-display);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--sp-6);
+}

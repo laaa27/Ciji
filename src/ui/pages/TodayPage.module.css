@@ -1,0 +1,112 @@
+.page {
+  padding: calc(var(--safe-top) + var(--sp-7, 28px)) var(--gutter) var(--sp-10);
+}
+
+.header {
+  margin-bottom: var(--sp-8);
+}
+
+.dateRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.date {
+  font-family: var(--font-word);
+  font-size: var(--fs-display);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.weekday {
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+}
+
+.progress {
+  margin-top: var(--sp-5);
+}
+
+.progressLine {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.progressMain {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-2);
+  font-size: var(--fs-sm);
+}
+
+.progressNum {
+  color: var(--ink);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+}
+
+.progressSlash {
+  margin: 0 2px;
+  color: var(--ink-3);
+}
+
+.progressTotal {
+  color: var(--ink-3);
+}
+
+.progressTime {
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.track {
+  position: relative;
+  height: 2px;
+  margin-top: 10px;
+  background: var(--rule);
+  overflow: hidden;
+}
+
+.fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: var(--ink);
+  transition: width 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.group {
+  margin-bottom: var(--sp-9, 36px);
+}
+
+.groupHead {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding-bottom: var(--sp-1);
+}
+
+.groupTitle {
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+}
+
+.groupCount {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.empty {
+  padding: var(--sp-4) 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+}

@@ -1,0 +1,18 @@
+.wrap {
+  padding: var(--sp-10) 0;
+}
+
+.title {
+  font-family: var(--font-word);
+  font-size: var(--fs-lg);
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.hint {
+  margin-top: 6px;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  line-height: 1.6;
+  max-width: 30ch;
+}
