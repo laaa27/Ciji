@@ -5,7 +5,7 @@ import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
 import { getAllDays } from '@/data/store'
-import type { TodaySnapshot, WordState } from '@/domain/collect'
+import { lineState, type TodaySnapshot, type WordState } from '@/domain/collect'
 
 import EmptyState from '../components/EmptyState'
 import styles from './StatsPage.module.css'
@@ -25,8 +25,9 @@ function buildRows(days: TodaySnapshot[]): Row[] {
     .slice()
     .reverse()
     .map((d) => {
+      // 堆叠柱需要互斥，否则同一根柱子会重复计数；用竖线口径（按反馈）最直观
       const c: Record<WordState, number> = { new: 0, vague: 0, forget: 0 }
-      for (const w of d.words) c[w.state] += 1
+      for (const w of d.words) c[lineState(w)] += 1
       const [, m, day] = d.date.split('-')
       return {
         date: d.date,
@@ -144,11 +145,12 @@ export default function StatsPage() {
     let newCount = 0
     let vagueCount = 0
     let forgetCount = 0
+    // 摘要用真实口径，允许重叠：一个新学且忘记的词，两个数都要算进去
     for (const d of days) {
       for (const w of d.words) {
-        if (w.state === 'new') newCount += 1
-        else if (w.state === 'vague') vagueCount += 1
-        else forgetCount += 1
+        if (w.isNew) newCount += 1
+        if (w.firstResponse === 'VAGUE') vagueCount += 1
+        if (w.firstResponse === 'FORGET') forgetCount += 1
       }
     }
     return { newCount, vagueCount, forgetCount, days: days.length }
@@ -158,7 +160,7 @@ export default function StatsPage() {
     const map = new Map<string, number>()
     for (const d of days) {
       for (const w of d.words) {
-        if (w.state !== 'forget') continue
+        if (w.firstResponse !== 'FORGET') continue
         const key = w.spelling.toLowerCase()
         map.set(key, (map.get(key) ?? 0) + 1)
       }

@@ -36,7 +36,7 @@ function makeDay(offset) {
       words.push({
         vocId: `${offset}-${i}`,
         spelling,
-        state,
+        groups: [state],
         isNew: state === 'new',
         isFinished: true,
         order: i,
@@ -57,6 +57,8 @@ function makeDay(offset) {
     studyTimeMs: words.length * 18_000,
     collectedAt: new Date().toISOString(),
     words,
+    rawCount: words.length,
+    studiedCount: words.length,
   }
 }
 

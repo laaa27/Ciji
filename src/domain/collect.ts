@@ -8,7 +8,12 @@ export type WordState = 'new' | 'vague' | 'forget'
 export interface CollectedWord {
   vocId: string
   spelling: string
-  state: WordState
+  /**
+   * 归属的分组，可多个。
+   * 「今天新学、但答了模糊」的单词既属于新学，也属于模糊 —— 两个维度是正交的，
+   * 强行互斥会让新学数量凭空变少。
+   */
+  groups: WordState[]
   isNew: boolean
   firstResponse?: StudyResponse
   /** 当天最后一次反馈，仅当能查到记录时存在 */
@@ -27,6 +32,10 @@ export interface TodaySnapshot {
   collectedAt: string
   /** 接口返回不完整时的说明，界面据此提示而不是假装正常 */
   warning?: string
+  /** 诊断：接口原始返回条数 */
+  rawCount: number
+  /** 诊断：其中今天真正学过的条数 */
+  studiedCount: number
 }
 
 /** 中文短语，用于界面上的「初模糊 → 终认识」 */
@@ -51,17 +60,27 @@ function wasStudied(item: {
 }
 
 /**
- * 归入哪一组。三组互斥，优先级 忘记 > 模糊 > 新学，
- * 保证三组数量之和等于今天真正学过的词数。
+ * 这个词属于哪几组。多归属，不互斥。
+ * - 新学：is_new 为真（无论当天答得怎么样）
+ * - 模糊 / 忘记：按当天第一次反馈
+ * 只复习且答「认识」的词不属于任何组，界面上不需要展示。
  */
 function classify(item: {
   is_new: boolean
   first_response?: StudyResponse
-}): WordState | null {
-  if (item.first_response === 'FORGET') return 'forget'
-  if (item.first_response === 'VAGUE') return 'vague'
-  if (item.is_new) return 'new'
-  return null
+}): WordState[] {
+  const groups: WordState[] = []
+  if (item.is_new) groups.push('new')
+  if (item.first_response === 'VAGUE') groups.push('vague')
+  if (item.first_response === 'FORGET') groups.push('forget')
+  return groups
+}
+
+/** 竖线颜色按反馈走，不按分组走 —— 新学组里答错的词也能一眼看出来 */
+export function lineState(word: CollectedWord): WordState {
+  if (word.firstResponse === 'FORGET') return 'forget'
+  if (word.firstResponse === 'VAGUE') return 'vague'
+  return 'new'
 }
 
 /** 拉取今天的完整快照：进度 + 词表 + 每个词的末次反馈 */
@@ -91,16 +110,15 @@ export async function collectToday(): Promise<TodaySnapshot> {
 
   const words: CollectedWord[] = []
   for (const item of studied) {
-    const state = classify(item)
-    if (!state) continue
-    const last = lastMap.get(item.voc_id)
+    const groups = classify(item)
+    if (groups.length === 0) continue
     words.push({
       vocId: item.voc_id,
       spelling: item.voc_spelling,
-      state,
+      groups,
       isNew: Boolean(item.is_new),
       firstResponse: item.first_response,
-      lastResponse: last,
+      lastResponse: lastMap.get(item.voc_id),
       isFinished: Boolean(item.is_finished),
       order: item.order ?? 0,
     })
@@ -128,6 +146,8 @@ export async function collectToday(): Promise<TodaySnapshot> {
     words,
     collectedAt: new Date().toISOString(),
     warning,
+    rawCount: rawItems.length,
+    studiedCount: studied.length,
   }
 }
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { lookupWords } from '@/data/dict'
-import { responseNote } from '@/domain/collect'
+import { lineState, responseNote } from '@/domain/collect'
 import { clockTime, dateKey, monthDay, weekday } from '@/lib/date'
 import { useSession } from '@/store/session'
 import { useToday } from '@/store/today'
@@ -53,7 +53,7 @@ export default function TodayPage({ onGoSettings }: Props) {
     const words = snapshot?.words ?? []
     return GROUP_META.map((meta) => ({
       ...meta,
-      items: words.filter((w) => w.state === meta.key),
+      items: words.filter((w) => w.groups.includes(meta.key)),
     }))
   }, [snapshot])
 
@@ -105,6 +105,13 @@ export default function TodayPage({ onGoSettings }: Props) {
 
       {snapshot?.warning && <p className={styles.warning}>{snapshot.warning}</p>}
 
+      {token && snapshot && snapshot.rawCount > 0 && (
+        <p className={styles.diag}>
+          接口返回 {snapshot.rawCount} 条 · 今天学过 {snapshot.studiedCount} 条 · 其中新学{' '}
+          {groups[0].items.length} 个
+        </p>
+      )}
+
       {!sessionReady && null}
 
       {sessionReady && !token && (
@@ -153,10 +160,10 @@ export default function TodayPage({ onGoSettings }: Props) {
               <ul>
                 {group.items.map((word) => (
                   <WordRow
-                    key={word.vocId}
+                    key={`${group.key}-${word.vocId}`}
                     spelling={word.spelling}
                     gloss={glosses[word.spelling.toLowerCase()]}
-                    state={word.state}
+                    state={lineState(word)}
                     note={responseNote(word)}
                   />
                 ))}
@@ -164,6 +171,8 @@ export default function TodayPage({ onGoSettings }: Props) {
             )}
           </section>
         ))}
+
+      {token && snapshot && snapshot.words.length === 0 && null}
     </div>
   )
 }

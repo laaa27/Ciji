@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { getAllDays } from '@/data/store'
 import { lookupWords } from '@/data/dict'
-import { responseNote, type TodaySnapshot, type WordState } from '@/domain/collect'
+import { lineState, responseNote, type TodaySnapshot, type WordState } from '@/domain/collect'
 import { monthDay, weekday } from '@/lib/date'
 
 import WordRow from '../components/WordRow'
@@ -16,7 +16,8 @@ type Counts = Record<WordState, number>
 
 function countBy(words: TodaySnapshot['words']): Counts {
   const c: Counts = { new: 0, vague: 0, forget: 0 }
-  for (const w of words) c[w.state] += 1
+  // 多归属：一个新学且忘记的词两组都算
+  for (const w of words) for (const g of w.groups) c[g] += 1
   return c
 }
 
@@ -84,13 +85,13 @@ function DayItem({
                 </div>
                 <ul>
                   {day.words
-                    .filter((w) => w.state === k)
+                    .filter((w) => w.groups.includes(k))
                     .map((w) => (
                       <WordRow
-                        key={w.vocId}
+                        key={`${k}-${w.vocId}`}
                         spelling={w.spelling}
                         gloss={glosses[w.spelling.toLowerCase()]}
-                        state={w.state}
+                        state={lineState(w)}
                         note={responseNote(w)}
                       />
                     ))}

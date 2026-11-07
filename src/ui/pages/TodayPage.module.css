@@ -184,3 +184,12 @@
   color: var(--ink-2);
   line-height: 1.65;
 }
+
+.diag {
+  margin-top: calc(var(--sp-2) * -1);
+  margin-bottom: var(--sp-6);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.6;
+}

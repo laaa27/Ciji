@@ -26,11 +26,12 @@ export function buildCSV(
   for (const day of days) {
     for (const w of day.words) {
       const gloss = glosses.get(w.spelling.toLowerCase()) ?? ''
+      const kind = w.groups.map((g) => STATE_LABEL[g]).join('/')
       lines.push(
         [
           day.date,
           csvCell(w.spelling),
-          STATE_LABEL[w.state],
+          kind,
           csvCell(gloss),
         ].join(','),
       )
@@ -51,7 +52,7 @@ export function buildMarkdown(
     out.push(`## ${day.date}`, '')
 
     for (const state of ['new', 'vague', 'forget'] as WordState[]) {
-      const items = day.words.filter((w) => w.state === state)
+      const items = day.words.filter((w) => w.groups.includes(state))
       if (items.length === 0) continue
       out.push(`**${STATE_LABEL[state]}**（${items.length}）`, '')
       for (const w of items) {
