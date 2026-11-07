@@ -66,6 +66,34 @@ function makeDay(offset) {
 
 const days = Array.from({ length: 30 }, (_, i) => makeDay(i))
 
+const SAMPLE_ARTICLE = {
+  date: dateKey(0),
+  title: 'The Quiet Architecture of Habit',
+  sentences: [
+    {
+      en: 'We tend to imagine that character is forged in moments of crisis, when we must either concede defeat or summon an eloquence we do not possess.',
+      zh: '我们总以为性格是在危机时刻锻造的——那时我们要么认输，要么迸发出自己并不具备的口才。',
+    },
+    {
+      en: 'In reality it is built in the unremarkable hours, through small acts repeated until they become prevalent in our daily conduct.',
+      zh: '实际上，它是在那些平淡无奇的时刻里建成的，靠的是重复的小动作，直到它们在日常行为中变得普遍。',
+    },
+    {
+      en: 'Habit, scrutinized closely, is the architecture of a life; it decides what we abandon long before we notice we have abandoned it.',
+      zh: '仔细观察就会发现，习惯是一生的建筑；它在我们意识到之前，早就决定了我们要放弃什么。',
+    },
+    {
+      en: 'This is why the most consequential decisions are rarely dramatic.',
+      zh: '这就是为什么最有影响的决定往往并不戏剧化。',
+    },
+  ],
+  targetWords: ['concede', 'eloquence', 'prevalent', 'scrutiny', 'abandon'],
+  mode: 'weak',
+  level: 'kaoyan',
+  model: 'glm-4-flash',
+  createdAt: new Date().toISOString(),
+}
+
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: true,
@@ -76,17 +104,28 @@ const page = await browser.newPage()
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
 await page.goto(URL, { waitUntil: 'networkidle0' })
 
-await page.evaluate((payload) => {
-  for (const d of payload) {
-    localStorage.setItem('CapacitorStorage.day:' + d.date, JSON.stringify(d))
-  }
-}, days)
+await page.evaluate(
+  (payload) => {
+    for (const d of payload.days) {
+      localStorage.setItem('CapacitorStorage.day:' + d.date, JSON.stringify(d))
+    }
+    // 让阅读页进入「已配置」状态，并预置一篇样例文章
+    if (payload.which === 'reading') {
+      localStorage.setItem('CapacitorStorage.llm_key', 'seed-key-for-layout-only')
+      localStorage.setItem(
+        'CapacitorStorage.article:' + payload.article.date,
+        JSON.stringify(payload.article),
+      )
+    }
+  },
+  { days, article: SAMPLE_ARTICLE, which: process.argv[3] || 'history' },
+)
 
 await page.reload({ waitUntil: 'networkidle0' })
 
 const tabs = await page.$$('nav button')
 const which = process.argv[3] || 'history'
-const idx = { today: 0, history: 1, stats: 2, settings: 3 }[which] ?? 1
+const idx = { today: 0, history: 1, reading: 2, stats: 3, settings: 4 }[which] ?? 1
 if (tabs[idx]) await tabs[idx].click()
 await new Promise((r) => setTimeout(r, 700))
 
@@ -95,6 +134,26 @@ if (which === 'history') {
   if (firstHead) await firstHead.click()
   // 只等本地分片加载，在线兜底应该后补、不阻塞本地释义
   await new Promise((r) => setTimeout(r, 1200))
+}
+
+// 阅读页：传 zh 参数时顺便点开译文
+if (which === 'reading' && process.argv[4] === 'zh') {
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('button')].find(
+      (b) => b.textContent?.trim() === '译文',
+    )
+    if (btn) btn.click()
+  })
+  await new Promise((r) => setTimeout(r, 400))
+}
+
+// 阅读页：传 word 参数时点开第一个目标词的释义卡
+if (which === 'reading' && process.argv[4] === 'word') {
+  await page.evaluate(() => {
+    const el = document.querySelector('button[data-target="true"]')
+    if (el) el.click()
+  })
+  await new Promise((r) => setTimeout(r, 2500))
 }
 
 await page.screenshot({ path: process.argv[2] || 'history.png' })

@@ -1,0 +1,68 @@
+.mask {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  background: rgba(18, 20, 19, 0.22);
+  animation: fade 0.18s ease;
+}
+
+.sheet {
+  width: 100%;
+  padding: 10px var(--gutter) calc(var(--safe-bottom) + var(--sp-5));
+  background: var(--surface);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  animation: rise 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.handle {
+  width: 34px;
+  height: 3px;
+  margin: 0 auto 14px;
+  border-radius: 2px;
+  background: var(--rule-strong);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.word {
+  font-family: var(--font-word);
+  font-size: 24px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  word-break: break-word;
+}
+
+.close {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  padding: 4px 0;
+}
+
+.gloss {
+  margin-top: 8px;
+  font-size: var(--fs-body);
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+}

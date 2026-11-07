@@ -1,0 +1,274 @@
+.page {
+  padding: calc(var(--safe-top) + var(--sp-7)) var(--gutter) var(--sp-10);
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: var(--sp-6);
+}
+
+.title {
+  font-family: var(--font-word);
+  font-size: var(--fs-display);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.actions {
+  margin-left: auto;
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+
+.action {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  padding: 6px 0;
+}
+
+.action[data-on='true'] {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 5px;
+  text-decoration-thickness: 1px;
+}
+
+.action:disabled {
+  opacity: 0.5;
+}
+
+/* ── 配置区 ─────────────────────────────── */
+
+.setup {
+  padding-top: var(--sp-2);
+}
+
+.field {
+  margin-bottom: var(--sp-6);
+}
+
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  margin-bottom: 10px;
+}
+
+.segments {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.segment {
+  flex: 1;
+  padding: 9px 4px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  border-right: 1px solid var(--rule-strong);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.segment:last-child {
+  border-right: 0;
+}
+
+.segment[data-on='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.fieldHint {
+  margin-top: 8px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.primary {
+  display: inline-flex;
+  align-items: center;
+  height: 42px;
+  padding: 0 22px;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 2px;
+  font-size: var(--fs-sm);
+}
+
+.primary:disabled {
+  opacity: 0.5;
+}
+
+.hint {
+  margin-top: 10px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.error {
+  margin: var(--sp-4) 0;
+  padding: 10px 12px;
+  background: #fdf1ef;
+  border-left: 2px solid var(--state-forget);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.65;
+}
+
+.notice {
+  padding: var(--sp-4) 0;
+}
+
+.noticeTitle {
+  font-family: var(--font-word);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.noticeText {
+  margin: 8px 0 var(--sp-5);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.7;
+  max-width: 32ch;
+}
+
+/* ── 文章 ───────────────────────────────── */
+
+.article {
+  margin-top: var(--sp-2);
+}
+
+.articleTitle {
+  font-family: var(--font-word);
+  font-size: 25px;
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  color: var(--ink);
+}
+
+.meta {
+  margin-top: 8px;
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.body {
+  margin-top: var(--sp-5);
+}
+
+.sentence {
+  margin-bottom: 2px;
+}
+
+/* 模型返回的是逐句数组、没有段落信息，这里每 4 句做一次呼吸 */
+.sentence[data-break='true'] {
+  margin-bottom: 15px;
+}
+
+.en {
+  font-family: var(--font-word);
+  font-size: 17px;
+  line-height: 1.75;
+  color: var(--ink);
+  letter-spacing: 0.002em;
+}
+
+.word {
+  font: inherit;
+  color: inherit;
+  padding: 0;
+  border-bottom: 1px dashed transparent;
+}
+
+/* 目标词：一条极细的虚线，提示「这是你今天学的」 */
+.word[data-target='true'] {
+  border-bottom-color: var(--rule-strong);
+}
+
+.word:active {
+  background: #eef2ea;
+}
+
+.zh {
+  margin-top: 3px;
+  margin-bottom: 9px;
+  padding-left: 10px;
+  border-left: 2px solid var(--rule);
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--ink-3);
+}
+
+.warn {
+  margin-top: var(--sp-5);
+  padding: 10px 12px;
+  background: #fdf8ef;
+  border-left: 2px solid var(--state-vague);
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+.coverage {
+  margin-top: var(--sp-4);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 往期 ───────────────────────────────── */
+
+.past {
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--rule);
+}
+
+.pastItem {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+}
+
+.pastDate {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  min-width: 52px;
+}
+
+.pastTitle {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-word);
+  font-size: var(--fs-body);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pastCount {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}

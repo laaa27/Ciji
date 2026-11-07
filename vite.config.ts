@@ -21,6 +21,16 @@ export default defineConfig({
         changeOrigin: true,
         secure: true,
       },
+      '/llm/zhipu': {
+        target: 'https://open.bigmodel.cn',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/llm\/zhipu/, '/api/paas/v4'),
+      },
+      '/llm/deepseek': {
+        target: 'https://api.deepseek.com',
+        changeOrigin: true,
+        rewrite: (p) => p.replace(/^\/llm\/deepseek/, ''),
+      },
     },
   },
   build: {
