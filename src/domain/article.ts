@@ -31,6 +31,8 @@ export interface ArticleSentence {
 }
 
 export interface Article {
+  /** 存库后才有，形如 2026-11-07#2 */
+  id?: string
   date: string
   title: string
   /** 标题的中文翻译，早期版本的文章没有这个字段 */

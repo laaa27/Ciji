@@ -2,7 +2,14 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Preferences } from '@capacitor/preferences'
 
 import { getAllDays, getDay } from '@/data/store'
-import { getAllArticles, getArticle, saveArticle } from '@/data/article'
+import {
+  getArticleById,
+  getCoveredWordsToday,
+  getLatestArticleOfDay,
+  listArticles,
+  saveArticle,
+  type ArticleMeta,
+} from '@/data/article'
 import { lemmaCandidates } from '@/data/dict'
 import {
   generateArticle,
@@ -28,8 +35,6 @@ type Props = {
   onGoSettings: () => void
 }
 
-type Summary = { date: string; title: string; wordCount: number }
-
 type FontSize = 's' | 'm' | 'l' | 'xl'
 
 const MODES: ArticleMode[] = ['weak', 'new', 'all']
@@ -42,7 +47,11 @@ const FONT_SIZES: { key: FontSize; label: string }[] = [
   { key: 'xl', label: '特大' },
 ]
 
+/** 一篇文章覆盖多少个目标词，可调 */
+const WORD_LIMITS = [10, 15, 20, 25, 30]
+
 const FONT_KEY = 'reading_font_size'
+const LIMIT_KEY = 'reading_word_limit'
 
 /** 按单词切分句子，保留标点和空格 */
 function tokenize(sentence: string): { text: string; isWord: boolean }[] {
@@ -66,9 +75,10 @@ export default function ReadingPage({ onGoSettings }: Props) {
   const llmReady = useLlm((s) => s.ready)
 
   const [article, setArticle] = useState<Article | null>(null)
-  const [history, setHistory] = useState<Summary[]>([])
+  const [library, setLibrary] = useState<ArticleMeta[]>([])
   const [mode, setMode] = useState<ArticleMode>('weak')
   const [level, setLevel] = useState<ArticleLevel>('kaoyan')
+  const [wordLimit, setWordLimit] = useState(MAX_TARGET_WORDS)
   const [showZh, setShowZh] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -78,47 +88,42 @@ export default function ReadingPage({ onGoSettings }: Props) {
   const [fontSize, setFontSize] = useState<FontSize>('m')
   const [sizePanel, setSizePanel] = useState(false)
   const [pastOpen, setPastOpen] = useState(false)
-  /** 有文章时，生成选项收起，点「重写」再展开 */
   const [showSetup, setShowSetup] = useState(false)
   const [pool, setPool] = useState<TodaySnapshot[]>([])
 
   const today = dateKey()
 
-  /** 当前模式下这个范围里一共有多少可选词 */
   const available = useMemo(
     () => (pool.length > 0 ? pickWords(pool, mode, 999).length : null),
     [pool, mode],
   )
 
-  const refreshHistory = useCallback(async () => {
-    const list = await getAllArticles()
-    setHistory(
-      list.map((a) => ({
-        date: a.date,
-        title: a.title,
-        wordCount: a.sentences.reduce(
-          (n, s) => n + (s.en.match(/[A-Za-z][A-Za-z'-]*/g)?.length ?? 0),
-          0,
-        ),
-      })),
-    )
+  const refreshLibrary = useCallback(async () => {
+    setLibrary(await listArticles())
   }, [])
 
   useEffect(() => {
     void (async () => {
-      const todayArticle = await getArticle(today)
-      if (todayArticle) setArticle(todayArticle)
-      await refreshHistory()
+      const latest = await getLatestArticleOfDay(today)
+      if (latest) setArticle(latest)
+      await refreshLibrary()
 
-      const { value } = await Preferences.get({ key: FONT_KEY })
-      if (value === 's' || value === 'l' || value === 'xl') setFontSize(value)
+      const [font, limit] = await Promise.all([
+        Preferences.get({ key: FONT_KEY }),
+        Preferences.get({ key: LIMIT_KEY }),
+      ])
+      if (font.value === 's' || font.value === 'l' || font.value === 'xl') {
+        setFontSize(font.value)
+      }
+      const parsedLimit = Number(limit.value)
+      if (WORD_LIMITS.includes(parsedLimit)) setWordLimit(parsedLimit)
 
       const all = await getAllDays()
       const snap = await getDay(today)
       const merged = snap ? [snap, ...all.filter((d) => d.date !== today)] : all
       setPool(merged.slice(0, 7))
     })()
-  }, [today, refreshHistory])
+  }, [today, refreshLibrary])
 
   const targetSet = useMemo(
     () => new Set(article?.targetWords.map((w) => w.toLowerCase()) ?? []),
@@ -133,6 +138,11 @@ export default function ReadingPage({ onGoSettings }: Props) {
   async function changeFontSize(next: FontSize) {
     setFontSize(next)
     await Preferences.set({ key: FONT_KEY, value: next })
+  }
+
+  async function changeWordLimit(next: number) {
+    setWordLimit(next)
+    await Preferences.set({ key: LIMIT_KEY, value: String(next) })
   }
 
   async function handleGenerate() {
@@ -154,27 +164,26 @@ export default function ReadingPage({ onGoSettings }: Props) {
         setPool(source)
       }
 
-      // 最近三篇覆盖过的词先跳过，免得连续几天都是同一批
-      const recent = await getAllArticles()
-      const covered = new Set(
-        recent
-          .slice(0, 3)
-          .flatMap((a) => a.targetWords.map((w) => w.toLowerCase())),
-      )
+      // 只排除「今天」已经生成过的词：
+      // 到了第二天，之前忘过的词会重新回到候选里，可以再复习一遍。
+      const covered = await getCoveredWordsToday(today)
 
-      let words = pickWords(source, mode, MAX_TARGET_WORDS, covered)
-      if (words.length < 10) words = pickWords(source, mode, MAX_TARGET_WORDS)
+      let words = pickWords(source, mode, wordLimit, covered)
+      if (words.length < Math.min(8, wordLimit)) {
+        words = pickWords(source, mode, wordLimit)
+      }
       if (words.length === 0) {
         throw new Error('这个范围里没有可用的词。先去背几个单词，或者换个生成范围。')
       }
 
-      const next = await generateArticle({ words, mode, level, date: today })
-      await saveArticle(next)
-      setArticle(next)
+      const draft = await generateArticle({ words, mode, level, date: today })
+      const saved = await saveArticle(draft)
+
+      setArticle(saved)
       setShowZh(false)
       setShowSetup(false)
-      setMissing(missingWords(next))
-      await refreshHistory()
+      setMissing(missingWords(saved))
+      await refreshLibrary()
     } catch (e) {
       setError(e instanceof Error ? e.message : '生成失败，请重试')
     } finally {
@@ -182,8 +191,8 @@ export default function ReadingPage({ onGoSettings }: Props) {
     }
   }
 
-  async function handleOpenPast(date: string) {
-    const a = await getArticle(date)
+  async function handleOpen(id: string) {
+    const a = await getArticleById(id)
     if (!a) return
     setArticle(a)
     setShowZh(false)
@@ -222,7 +231,7 @@ export default function ReadingPage({ onGoSettings }: Props) {
               data-on={showSetup}
               onClick={() => setShowSetup((v) => !v)}
             >
-              {busy ? '生成中' : '重写'}
+              {busy ? '生成中' : '生成'}
             </button>
           </div>
         )}
@@ -244,7 +253,7 @@ export default function ReadingPage({ onGoSettings }: Props) {
         </div>
       )}
 
-      {history.length > 0 && (
+      {library.length > 0 && (
         <div className={styles.pastBar}>
           <button
             type="button"
@@ -252,7 +261,7 @@ export default function ReadingPage({ onGoSettings }: Props) {
             onClick={() => setPastOpen((v) => !v)}
             aria-expanded={pastOpen}
           >
-            <span>文章库 · {history.length} 篇</span>
+            <span>文章库 · {library.length} 篇</span>
             <span className={styles.caret} data-open={pastOpen}>
               ⌄
             </span>
@@ -260,13 +269,13 @@ export default function ReadingPage({ onGoSettings }: Props) {
 
           {pastOpen && (
             <ul className={styles.pastList}>
-              {history.map((h) => (
-                <li key={h.date}>
+              {library.map((h) => (
+                <li key={h.id}>
                   <button
                     type="button"
                     className={styles.pastItem}
-                    data-current={h.date === article?.date}
-                    onClick={() => void handleOpenPast(h.date)}
+                    data-current={h.id === article?.id}
+                    onClick={() => void handleOpen(h.id)}
                   >
                     <span className={styles.pastDate}>{monthDay(h.date)}</span>
                     <span className={styles.pastTitle}>{h.title}</span>
@@ -313,9 +322,29 @@ export default function ReadingPage({ onGoSettings }: Props) {
             <p className={styles.fieldHint}>
               {MODE_HINT[mode]}
               {available !== null &&
-                (available > MAX_TARGET_WORDS
-                  ? ` · 有 ${available} 个词可选，本篇取前 ${MAX_TARGET_WORDS} 个`
-                  : ` · 共 ${available} 个词，全部用上`)}
+                (available > wordLimit
+                  ? ` · 有 ${available} 个可选，本篇取前 ${wordLimit} 个`
+                  : ` · 共 ${available} 个，全部用上`)}
+            </p>
+          </div>
+
+          <div className={styles.field}>
+            <h2 className={styles.fieldLabel}>覆盖词数</h2>
+            <div className={styles.segments}>
+              {WORD_LIMITS.map((n) => (
+                <button
+                  key={n}
+                  type="button"
+                  className={styles.segment}
+                  data-on={wordLimit === n}
+                  onClick={() => void changeWordLimit(n)}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+            <p className={styles.fieldHint}>
+              一篇文章里塞太多会变成词表，30 个已是上限。
             </p>
           </div>
 
@@ -342,12 +371,10 @@ export default function ReadingPage({ onGoSettings }: Props) {
             onClick={() => void handleGenerate()}
             disabled={busy}
           >
-            {busy ? '正在生成…' : hasArticle ? '重新生成' : '生成一篇文章'}
+            {busy ? '正在生成…' : hasArticle ? '再生成一篇' : '生成一篇文章'}
           </button>
 
-          {busy && (
-            <p className={styles.hint}>先列提纲，再成文，通常 20~50 秒。</p>
-          )}
+          {busy && <p className={styles.hint}>先列提纲，再成文，通常 20~50 秒。</p>}
         </section>
       )}
 

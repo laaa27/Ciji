@@ -67,6 +67,7 @@ function makeDay(offset) {
 const days = Array.from({ length: 30 }, (_, i) => makeDay(i))
 
 const SAMPLE_ARTICLE = {
+  id: dateKey(0) + '#1',
   date: dateKey(0),
   title: 'The Quiet Architecture of Habit',
   titleZh: '习惯的静默建筑',
@@ -95,14 +96,34 @@ const SAMPLE_ARTICLE = {
   createdAt: new Date().toISOString(),
 }
 
-// 往期文章，用来验证「往期」入口
+// 往期文章，用来验证「文章库」入口
 const PAST_ARTICLE = {
   ...SAMPLE_ARTICLE,
+  id: dateKey(2) + '#1',
   date: dateKey(2),
   title: 'What We Owe to Silence',
   titleZh: '我们欠沉默什么',
   targetWords: ['reluctant', 'coherent'],
   createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+}
+
+// 同一天的第二篇，验证「不覆盖、都留档」
+const SECOND_TODAY = {
+  ...SAMPLE_ARTICLE,
+  id: dateKey(0) + '#2',
+  title: 'The Cost of Certainty',
+  titleZh: '确定的代价',
+  targetWords: ['notorious', 'tentative'],
+  createdAt: new Date(Date.now() - 3600000).toISOString(),
+}
+
+const ALL_ARTICLES = [SECOND_TODAY, SAMPLE_ARTICLE, PAST_ARTICLE]
+
+function articleWordCount(a) {
+  return a.sentences.reduce(
+    (n, s) => n + (s.en.match(/[A-Za-z][A-Za-z'-]*/g)?.length ?? 0),
+    0,
+  )
 }
 
 const browser = await puppeteer.launch({
@@ -123,17 +144,25 @@ await page.evaluate(
     // 让阅读页进入「已配置」状态，并预置一篇样例文章
     if (payload.which === 'reading') {
       localStorage.setItem('CapacitorStorage.llm_key', 'seed-key-for-layout-only')
-      localStorage.setItem(
-        'CapacitorStorage.article:' + payload.article.date,
-        JSON.stringify(payload.article),
-      )
-      localStorage.setItem(
-        'CapacitorStorage.article:' + payload.past.date,
-        JSON.stringify(payload.past),
-      )
+
+      for (const a of payload.articles) {
+        localStorage.setItem('CapacitorStorage.article:' + a.id, JSON.stringify(a))
+      }
+      localStorage.setItem('CapacitorStorage.article_index', JSON.stringify(payload.index))
     }
   },
-  { days, article: SAMPLE_ARTICLE, past: PAST_ARTICLE, which: process.argv[3] || 'history' },
+  {
+    days,
+    articles: ALL_ARTICLES,
+    index: ALL_ARTICLES.map((a) => ({
+      id: a.id,
+      date: a.date,
+      title: a.title,
+      wordCount: articleWordCount(a),
+      createdAt: a.createdAt,
+    })),
+    which: process.argv[3] || 'history',
+  },
 )
 
 await page.reload({ waitUntil: 'networkidle0' })
@@ -164,7 +193,7 @@ if (which === 'reading' && process.argv[4] === 'zh') {
 
 // 阅读页：size 展开字号，past 展开文章库，setup 展开生成选项
 if (which === 'reading' && ['size', 'past', 'setup'].includes(process.argv[4])) {
-  const labelMap = { size: '字号', past: '文章库', setup: '重写' }
+  const labelMap = { size: '字号', past: '文章库', setup: '生成' }
   const label = labelMap[process.argv[4]]
   await page.evaluate((text) => {
     const btn = [...document.querySelectorAll('button')].find((b) =>
