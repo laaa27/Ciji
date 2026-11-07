@@ -15,6 +15,12 @@ npm run build        # 构建 Web 产物到 dist/
 npx cap sync         # 把 dist/ 同步进 Android 工程
 ```
 
+浏览器里验证导入导出（需先跑 `npx vite --port 5199`）：
+
+```bash
+node scripts/test-import.mjs     # 选文件 → 预览 → 两种合并策略 → 写盘断言
+```
+
 首次使用：App 里「设置 → 接口凭证」，填入墨墨的开放 API token。
 获取方式：墨墨 App → 我的 → 更多设置 → 实验功能 → 开放 API。
 
@@ -63,7 +69,8 @@ src/
 │   └── dict.ts     词典分片懒加载 + 缓存
 ├── domain/       业务层：纯逻辑，好测
 │   ├── collect.ts  采集编排：拉取 → 合并 → 分类
-│   └── export.ts   CSV / Markdown 生成与分享
+│   ├── export.ts   CSV / Markdown / 备份 JSON 生成与分享
+│   └── backup.ts   导入：备份 JSON 与 CSV 的解析、校验、合并策略
 ├── store/        状态层（Zustand）
 │   ├── session.ts  token
 │   └── today.ts    今日数据 + 采集状态
@@ -83,6 +90,7 @@ src/
 | 分享打卡图 | 新建 `ui/pages/ShareCard.tsx` → 引 html2canvas → 设置页加入口。数据层不动 |
 | 换翻译源 | 只改 `data/dict.ts` |
 | 加一个统计维度 | 只改 `domain/collect.ts` 的分类逻辑 + `StatsPage` |
+| 支持第三种导入格式 | 只改 `domain/backup.ts`（加一个 parser 分支），UI 不用动 |
 
 ## 设计说明
 
@@ -110,7 +118,7 @@ src/
     {
       "vocId": "...",
       "spelling": "abandon",
-      "state": "new",            // new | vague | forget
+      "groups": ["new", "forget"],  // 可多归属，见下方分类口径
       "isNew": true,
       "firstResponse": "FAMILIAR",
       "lastResponse": "FAMILIAR",
@@ -123,12 +131,34 @@ src/
 
 **为什么不用 SQLite**：一天一条，一年 365 条，用 Preferences 足够。原生走 SharedPreferences，web 走 localStorage，两端行为一致，不需要 wasm 和平台分支。数据量真的大起来（比如五年）再换。
 
+## 导出与导入
+
+设置页「数据」区，三种导出、两种导入：
+
+| 文件 | 用途 | 导回来会丢什么 |
+|---|---|---|
+| `词迹备份-YYYY-MM-DD.json` | **无损备份**，换手机/重装用它 | 什么都不丢 |
+| `词迹-YYYY-MM-DD.csv` | 给 Excel / 别的工具看 | 学习时长、逐词首末反馈、进度总量 |
+| `词迹-YYYY-MM-DD.md` | 给人读 | 同上，且不支持导入 |
+
+导入流程：选文件 → 解析并预览（几天 / 几个词 / 哪几天本地已有）→ 选策略写入。
+
+- **仅补空缺**：只写本地没有的日期，已有记录一律不动
+- **覆盖同日期**：文件里的日期覆盖本地同一天的记录；文件里没有的日期**不会删**（导入永远不做删除）
+
+同一天在文件里出现多次时保留词数最多的一条；同一天同一单词出现多次则合并分组。
+CSV 支持带表头 / 不带表头（按导出列序）、BOM、CRLF、引号内逗号与换行。
+
 ## 分类口径（重要）
 
-三组互斥，优先级 **忘记 > 模糊 > 新学**，保证三组之和 = 今天真正学过的词数。
+一个词可**同时属于多个分组**：`is_new` 为真即进「新学」，当天首答 `VAGUE` / `FORGET` 再进「模糊」/「忘记」。
+两个维度是正交的——强行互斥会让「新学」数量凭空变少（新学但答错的词会被吞掉）。
 
 "学过"的判据是 `is_finished === true || first_response 有值`。
 不能只看 `is_finished`——学到一半退出 App 时，词已经有了反馈但还没标记完成，只看前者会漏统计。
+
+只复习且答「认识」的词不入库（不属于任何分组）。
+统计页的堆叠柱状图必须互斥才能不重复计数，所以那里改用「竖线口径」`lineState()`（按首答着色）。
 
 ## 已知限制
 

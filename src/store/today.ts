@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-import { saveDay } from '@/data/store'
+import { saveDay, getDay } from '@/data/store'
 import { collectToday, type TodaySnapshot } from '@/domain/collect'
 import { dateKey } from '@/lib/date'
 
@@ -13,6 +13,8 @@ type TodayState = {
 
   /** 拉一次今天的数据。force=false 时若已有今天的数据则不重复请求 */
   refresh: (force?: boolean) => Promise<void>
+  /** 只从本地库重读今天，不发请求。导入数据后用它刷新界面 */
+  loadFromStorage: () => Promise<void>
   /** 清空（换 token 时调用） */
   reset: () => void
 }
@@ -40,6 +42,11 @@ export const useToday = create<TodayState>((set, get) => ({
         error: e instanceof Error ? e.message : '采集失败，请稍后重试',
       })
     }
+  },
+
+  loadFromStorage: async () => {
+    const snap = await getDay(dateKey())
+    if (snap) set({ snapshot: snap, status: 'ok', error: null })
   },
 
   reset: () => set({ snapshot: null, status: 'idle', error: null }),

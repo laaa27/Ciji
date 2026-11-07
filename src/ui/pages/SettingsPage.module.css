@@ -179,6 +179,8 @@
 
 .actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
   margin-top: var(--sp-4);
 }
@@ -292,4 +294,82 @@
 .segment[data-on='true'] {
   background: var(--accent);
   color: var(--on-accent);
+}
+
+/* ---------- 导入 ---------- */
+
+.importBlock {
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-4);
+  border-top: 1px dashed var(--rule);
+}
+
+.subLabel {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  margin-bottom: var(--sp-3);
+}
+
+.fileInput {
+  display: none;
+}
+
+.preview {
+  margin-top: var(--sp-4);
+  padding: var(--sp-4);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  background: var(--surface);
+  animation: fade-rise 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.previewName {
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  word-break: break-all;
+}
+
+.previewMeta {
+  margin-top: 5px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.previewMeta[data-warn='true'] {
+  color: var(--state-vague);
+}
+
+.previewNote {
+  margin-top: 5px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  line-height: 1.6;
+}
+
+.preview .actions {
+  margin-top: var(--sp-4);
+}
+
+/* 覆盖本地已有记录，按「有破坏性」着色，但不做成实心红按钮 */
+.overwrite {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--state-forget);
+  border-radius: 2px;
+  font-size: var(--fs-sm);
+  color: var(--state-forget);
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+
+.overwrite:active {
+  opacity: 0.85;
+  transform: translateY(1px);
+}
+
+.overwrite:disabled {
+  opacity: 0.5;
 }

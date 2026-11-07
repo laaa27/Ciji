@@ -4,6 +4,7 @@ import { Share } from '@capacitor/share'
 
 import { lookupWords } from '@/data/dict'
 import { getAllDays } from '@/data/store'
+import { buildBackup } from '@/domain/backup'
 import type { TodaySnapshot, WordState } from '@/domain/collect'
 
 const STATE_LABEL: Record<WordState, string> = {
@@ -79,7 +80,11 @@ export async function collectGlosses(days: TodaySnapshot[]): Promise<Map<string,
  * 导出并唤起系统分享。
  * 原生：写入缓存目录后分享文件；浏览器：直接下载。
  */
-export async function exportFile(filename: string, content: string): Promise<void> {
+export async function exportFile(
+  filename: string,
+  content: string,
+  mime = 'text/plain;charset=utf-8',
+): Promise<void> {
   if (Capacitor.isNativePlatform()) {
     const { uri } = await Filesystem.writeFile({
       path: filename,
@@ -91,7 +96,7 @@ export async function exportFile(filename: string, content: string): Promise<voi
     return
   }
 
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' })
+  const blob = new Blob([content], { type: mime })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
@@ -107,11 +112,25 @@ export async function exportAll(format: 'csv' | 'md'): Promise<string> {
 
   if (format === 'csv') {
     const content = buildCSV(days, glosses)
-    await exportFile(`词迹-${stamp}.csv`, content)
+    await exportFile(`词迹-${stamp}.csv`, content, 'text/csv;charset=utf-8')
     return `${days.length} 天的记录已导出`
   }
 
   const content = buildMarkdown(days, glosses)
   await exportFile(`词迹-${stamp}.md`, content)
   return `${days.length} 天的记录已导出`
+}
+
+/**
+ * 全量备份（JSON）。与 CSV/Markdown 的区别：**无损**。
+ * 反馈、学习时长、采集时间都留着，导回来和导出前一致。
+ */
+export async function exportBackup(): Promise<string> {
+  const days = await getAllDays()
+  const backup = buildBackup(days)
+  const stamp = new Date().toISOString().slice(0, 10)
+  const content = JSON.stringify(backup, null, 2)
+
+  await exportFile(`词迹备份-${stamp}.json`, content, 'application/json;charset=utf-8')
+  return `${days.length} 天的备份已导出`
 }

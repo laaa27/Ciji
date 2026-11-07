@@ -72,6 +72,16 @@ export async function saveDay(snapshot: TodaySnapshot): Promise<void> {
   })
 }
 
+/**
+ * 批量写入（导入用）。语义与采集一致：同日期直接覆盖。
+ * 串行写入，避免一次打太多请求到原生 Preferences 桥。
+ */
+export async function writeDays(snapshots: TodaySnapshot[]): Promise<void> {
+  for (const snap of snapshots) {
+    await saveDay(snap)
+  }
+}
+
 export async function getDay(date: string): Promise<TodaySnapshot | null> {
   const { value } = await Preferences.get({ key: dayKey(date) })
   if (!value) return null
