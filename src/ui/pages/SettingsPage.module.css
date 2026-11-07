@@ -299,6 +299,7 @@
 /* ---------- 导入 ---------- */
 
 .importBlock {
+  position: relative;
   margin-top: var(--sp-6);
   padding-top: var(--sp-4);
   border-top: 1px dashed var(--rule);
@@ -312,8 +313,13 @@
   margin-bottom: var(--sp-3);
 }
 
+/* 不用 display:none —— 让元素保持可点击，兼容个别 WebView */
 .fileInput {
-  display: none;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .preview {

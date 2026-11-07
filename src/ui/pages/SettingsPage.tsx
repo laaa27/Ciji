@@ -515,7 +515,9 @@ export default function SettingsPage() {
             ref={fileRef}
             type="file"
             className={styles.fileInput}
-            accept=".json,.csv,application/json,text/csv,text/plain"
+            // 带上 octet-stream：部分 ROM 把 .json 认成未知类型，只按 application/json
+            // 过滤会让用户自己的备份文件在选择器里变灰
+            accept=".json,.csv,application/json,text/csv,text/plain,application/octet-stream"
             onChange={(e) => void handlePickFile(e)}
           />
 
