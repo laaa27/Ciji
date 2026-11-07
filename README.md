@@ -105,7 +105,19 @@ src/
 - 不用卡片、不用阴影、不用圆角（除按钮的 2px）
 - 全站只有三态色 + 墨色，克制
 
-设计令牌集中在 `src/ui/styles/tokens.css`。当前只做了日间主题，夜间主题的结构已预留（`[data-theme='dark']` 块，注释状态）。
+设计令牌集中在 `src/ui/styles/tokens.css`，两套主题各一份色值：
+
+- `:root` 白天：纸 `#f7f8f5`、墨 `#16181a`，三支笔 靛/赭/朱
+- `[data-theme='dark']` 深夜：纸 `#121413` 墨黑、墨 `#eceee9`，三支笔换成浅色调（不是反色）
+
+有几类颜色**必须**给两套值，不能靠透明度叠：`--tint`（按压反馈）、`--tint-warn` / `--tint-danger`（提示条）、
+`--scrim`（遮罩）、`--switch-knob`（开关滑块）。深色底上用 `rgb(0 0 0 / 6%)` 会脏，滑块颜色不对会直接看不见。
+
+主题在设置 → 外观切换，存在 `theme`（Preferences），并往 `localStorage` 写一份 `theme_boot` 同步镜像，
+启动瞬间就上色，避免深色用户先闪一帧浅色。安卓 edge-to-edge 下由 `@capacitor/status-bar` 同步状态栏图标明暗。
+
+> 统计图表（ECharts）的颜色是 init 时从 CSS 变量读的一次性快照，主题变化时依赖变化会重建图表；
+> 以后再加图表记得把 `theme` 放进 effect 依赖。
 
 ## 数据格式
 
