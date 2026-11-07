@@ -31,6 +31,22 @@ export default function TodayPage({ onGoSettings }: Props) {
   const today = dateKey()
 
   const [glosses, setGlosses] = useState<Record<string, string>>({})
+  /** 全局是否展开释义 */
+  const [showGloss, setShowGloss] = useState(true)
+  /** 单个词的临时覆盖：点一下收起/展开，优先级高于全局 */
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({})
+
+  const isGlossShown = (vocId: string) => overrides[vocId] ?? showGloss
+
+  function toggleGloss(vocId: string) {
+    setOverrides((prev) => ({ ...prev, [vocId]: !(prev[vocId] ?? showGloss) }))
+  }
+
+  function toggleAllGloss() {
+    // 切全局时清掉个体覆盖，回到统一状态
+    setOverrides({})
+    setShowGloss((v) => !v)
+  }
 
   useEffect(() => {
     if (!sessionReady || !token) return
@@ -75,6 +91,14 @@ export default function TodayPage({ onGoSettings }: Props) {
           {token && (
             <span className={styles.topRight}>
               {snapshot && <span className={styles.updated}>{clockTime(snapshot.collectedAt)}</span>}
+              <button
+                type="button"
+                className={styles.refresh}
+                data-on={showGloss}
+                onClick={toggleAllGloss}
+              >
+                释义
+              </button>
               <button
                 type="button"
                 className={styles.refresh}
@@ -166,6 +190,8 @@ export default function TodayPage({ onGoSettings }: Props) {
                     gloss={glosses[word.spelling.toLowerCase()]}
                     state={lineState(word)}
                     note={responseNote(word)}
+                    glossVisible={isGlossShown(word.vocId)}
+                    onToggle={() => toggleGloss(word.vocId)}
                   />
                 ))}
               </ul>

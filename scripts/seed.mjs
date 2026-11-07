@@ -134,6 +134,92 @@ const browser = await puppeteer.launch({
 
 const page = await browser.newPage()
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+
+// 今日页需要真实接口数据，这里用请求拦截造一份，方便在浏览器里验证交互
+if ((process.argv[3] || 'history') === 'today') {
+  const words = [
+    ['abandon', 'vt. 放弃, 抛弃, 遗弃, 使屈从, 沉溺；n. 放任, 无拘束'],
+    ['inherent', 'a. 固有的, 内在的, 与生俱来的'],
+    ['scrutiny', 'n. 细看, 仔细检查, 监视, 监督'],
+    ['prevalent', 'a. 普遍的, 流行的, 盛行的'],
+    ['concede', 'vt. 承认, 退让；vi. 让步'],
+    ['eloquent', 'a. 雄辩的, 有说服力的, 动人的'],
+    ['reluctant', 'a. 不情愿的, 勉强的, 厌恶的'],
+    ['ambiguous', 'a. 不明确的, 模棱两可的'],
+  ]
+  const today = new Date().toISOString().slice(0, 10)
+
+  const todayItems = words.map(([spelling], i) => ({
+    voc_id: 'v' + i,
+    voc_spelling: spelling,
+    order: i + 1,
+    first_response: i < 3 ? 'FAMILIAR' : i < 6 ? 'VAGUE' : 'FORGET',
+    is_new: i < 5,
+    is_finished: true,
+  }))
+
+  await page.setRequestInterception(true)
+  page.on('request', (req) => {
+    const url = req.url()
+    const json = (body) =>
+      req.respond({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ success: true, data: body }),
+      })
+
+    if (url.includes('get_study_progress')) {
+      return json({ progress: { finished: 32, total: 150, study_time: 1452000 } })
+    }
+    if (url.includes('get_today_items')) {
+      return json({ today_items: todayItems })
+    }
+    if (url.includes('query_study_records')) {
+      return json({ records: [], count: 0 })
+    }
+    return req.continue()
+  })
+
+  await page.goto(URL, { waitUntil: 'networkidle0' })
+  await page.evaluate((token) => {
+    localStorage.setItem('CapacitorStorage.maimemo_token', token)
+  }, 'seed-token')
+  await page.reload({ waitUntil: 'networkidle0' })
+  await new Promise((r) => setTimeout(r, 1500))
+
+  // fold 参数：点顶部「释义」收起全部
+  if (process.argv[4] === 'fold') {
+    await page.evaluate(() => {
+      const btn = [...document.querySelectorAll('button')].find(
+        (b) => b.textContent?.trim() === '释义',
+      )
+      if (btn) btn.click()
+    })
+    await new Promise((r) => setTimeout(r, 400))
+  }
+
+  // one 参数：收起后再点开第一个词
+  if (process.argv[4] === 'one') {
+    await page.evaluate(() => {
+      const fold = [...document.querySelectorAll('button')].find(
+        (b) => b.textContent?.trim() === '释义',
+      )
+      if (fold) fold.click()
+    })
+    await new Promise((r) => setTimeout(r, 300))
+    await page.evaluate(() => {
+      const row = document.querySelector('li[role="button"]')
+      if (row) row.click()
+    })
+    await new Promise((r) => setTimeout(r, 400))
+  }
+
+  await page.screenshot({ path: process.argv[2] || 'today.png' })
+  console.log('today preview ready, mode =', process.argv[4] || 'default')
+  await browser.close()
+  process.exit(0)
+}
+
 await page.goto(URL, { waitUntil: 'networkidle0' })
 
 await page.evaluate(

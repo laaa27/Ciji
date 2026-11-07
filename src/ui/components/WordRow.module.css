@@ -70,3 +70,26 @@
 .gloss[data-pending='true'] {
   color: var(--ink-3);
 }
+
+/* 收起状态：一条短虚线，暗示可以点开 */
+.folded {
+  display: block;
+  width: 44px;
+  height: 1px;
+  margin-top: 10px;
+  margin-bottom: 3px;
+  background: repeating-linear-gradient(
+    90deg,
+    var(--rule-strong) 0 4px,
+    transparent 4px 8px
+  );
+}
+
+.row[data-interactive='true'] {
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.row[data-interactive='true']:active {
+  background: #f2f4ef;
+}
