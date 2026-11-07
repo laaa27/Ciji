@@ -49,7 +49,7 @@ export interface Article {
 /** 第一步生成出来的提纲 */
 export interface Outline {
   topic: string
-  paragraphs: { idea: string; words: string[] }[]
+  paragraphs: { idea: string; link?: string; words: string[] }[]
 }
 
 /** 一篇文章最多塞多少个目标词，太多会变成词表 */
@@ -106,8 +106,8 @@ const LEVEL_HINT: Record<ArticleLevel, string> = {
 
 async function buildOutline(words: string[], level: ArticleLevel): Promise<Outline | null> {
   const system =
-    '你是一位资深的英语命题专家。你擅长围绕一组指定词汇，找到一个能真正承载它们的论点，' +
-    '而不是把单词硬塞进句子里。'
+    '你是一位资深的英语命题专家。你最重要的原则是：一篇好文章不是把指定词汇挨个造句再排列起来，' +
+    '而是先有一个真正想说的论点，词汇只是恰好出现在论证路径上。'
 
   const user = [
     '一位学生今天需要复习下面这些单词：',
@@ -115,12 +115,13 @@ async function buildOutline(words: string[], level: ArticleLevel): Promise<Outli
     '',
     '请先设计一篇英语短文的写作提纲。要求：',
     `1. 难度定位：${LEVEL_HINT[level]}`,
-    '2. 先想清楚这篇文章要论证或叙述什么，主题必须能自然容纳这些词',
-    '3. 分 3~4 段，每段要有明确的推进：提出问题 → 展开 → 转折或深化 → 收束',
-    '4. 把上面每个单词分配到最合适的那一段，一个词只分配一次',
+    '2. 先想一个具体、可展开的论点（不要选过于宽泛的「技术很重要」这类空话）',
+    '3. 分 3~4 段，段落之间必须有明确的逻辑推进——递进、转折或因果，不允许四段并列',
+    '4. 每段给出：核心论点句（topic sentence）+ 承接关系（这段如何承接上一段）+ 该段用哪些词',
+    '5. 把每个单词分配到最合适的一段，一个词只分配一次',
     '',
     '只输出 JSON，不要任何解释：',
-    '{"topic":"一句话说明文章主题与核心论点","paragraphs":[{"idea":"这一段要说什么","words":["该段用到的词"]}]}',
+    '{"topic":"一句话说明文章主题与核心论点","paragraphs":[{"idea":"这一段的核心论点句","link":"如何承接上一段（第一段写「开篇」）","words":["该段用到的词"]}]}',
   ].join('\n')
 
   try {
@@ -129,18 +130,19 @@ async function buildOutline(words: string[], level: ArticleLevel): Promise<Outli
         { role: 'system', content: system },
         { role: 'user', content: user },
       ],
-      { temperature: 0.9, maxTokens: 900 },
+      { temperature: 0.9, maxTokens: 1000 },
     )
 
     const obj = parseLoose(raw) as {
       topic?: unknown
-      paragraphs?: Array<{ idea?: unknown; words?: unknown }>
+      paragraphs?: Array<{ idea?: unknown; link?: unknown; words?: unknown }>
     }
 
     const topic = typeof obj?.topic === 'string' ? obj.topic.trim() : ''
     const paragraphs = (Array.isArray(obj?.paragraphs) ? obj.paragraphs : [])
       .map((p) => ({
         idea: typeof p?.idea === 'string' ? p.idea.trim() : '',
+        link: typeof p?.link === 'string' ? p.link.trim() : '',
         words: Array.isArray(p?.words)
           ? p.words.filter((w): w is string => typeof w === 'string')
           : [],
@@ -159,8 +161,8 @@ async function buildOutline(words: string[], level: ArticleLevel): Promise<Outli
 
 function buildMessages(words: string[], level: ArticleLevel, outline: Outline | null) {
   const system = [
-    '你是一位资深的英语命题专家，擅长把指定词汇自然织入一篇连贯的短文。',
-    '你从不把单词生硬地堆在一起，而是先想一个能承载这些概念的论点，再围绕它组织段落。',
+    '你是一位资深的英语命题专家。你最重要的原则：好文章不是把指定词汇挨个造句再排列起来，',
+    '而是先有一个真正想说的论点，词汇只是恰好出现在论证路径上。',
   ].join('')
 
   const parts = [`请用下面这些单词写一篇英语短文。`, '', `【必须包含的单词】`, words.join(', '), '']
@@ -169,7 +171,8 @@ function buildMessages(words: string[], level: ArticleLevel, outline: Outline | 
     parts.push(`【已确定的写作提纲】`, `主题与论点：${outline.topic}`)
     outline.paragraphs.forEach((p, i) => {
       const ws = p.words.length > 0 ? `（该段用：${p.words.join(', ')}）` : ''
-      parts.push(`第 ${i + 1} 段：${p.idea}${ws}`)
+      const link = p.link ? `〔承接：${p.link}〕` : ''
+      parts.push(`第 ${i + 1} 段：${p.idea}${link}${ws}`)
     })
     parts.push('')
   }
@@ -177,15 +180,21 @@ function buildMessages(words: string[], level: ArticleLevel, outline: Outline | 
   parts.push(
     `【要求】`,
     `1. 难度：${LEVEL_HINT[level]}`,
-    `2. 篇幅：320~380 词`,
-    outline ? `3. 严格按上面的提纲展开，段落顺序和论点不要改` : `3. 分 3~4 段，有完整的论证或叙事推进`,
+    `2. 篇幅：必须 320~380 词。少于 280 词视为不合格，写完先数一遍`,
+    outline
+      ? `3. 严格按提纲展开，段落顺序和论点不要改；提纲里的「承接」必须落实为真实的过渡句`
+      : `3. 分 3~4 段，段落之间用递进/转折/因果连接，不允许并列罗列`,
     `4. 上面每一个单词都必须在正文中出现至少一次，原形或变形均可`,
-    `5. 单词要顺着文意自然出现，不能为了塞词而牺牲句子通顺`,
-    '',
+    ``,
+    `【写作红线】`,
+    `- 禁止逐词造句再拼接：每个段落必须围绕该段的中心论点展开，段内的句子要互相支撑`,
+    `- 代词必须有明确的指代对象；However / Therefore 这类衔接词必须存在真实的逻辑关系，不是装饰`,
+    `- 自查标准：把目标单词全部拿掉，剩下的文字仍然是一篇逻辑通顺的文章——达不到就重写`,
+    ``,
     `【输出格式】`,
     `只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字：`,
     `{"title":"英文标题","titleZh":"标题的中文翻译","sentences":[{"en":"英文句子","zh":"这句话的中文翻译"}]}`,
-    '',
+    ``,
     `注意：sentences 数组要把正文按句子切开，一句一项，英文和中文一一对应。`,
   )
 

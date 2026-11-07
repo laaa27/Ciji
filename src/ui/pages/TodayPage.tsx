@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Preferences } from '@capacitor/preferences'
 
 import { lookupWords } from '@/data/dict'
 import { lineState, responseNote } from '@/domain/collect'
@@ -31,8 +32,8 @@ export default function TodayPage({ onGoSettings }: Props) {
   const today = dateKey()
 
   const [glosses, setGlosses] = useState<Record<string, string>>({})
-  /** 全局是否展开释义 */
-  const [showGloss, setShowGloss] = useState(true)
+  /** 全局是否展开释义。默认收起——先回想再核对，才符合记忆的顺序 */
+  const [showGloss, setShowGloss] = useState(false)
   /** 单个词的临时覆盖：点一下收起/展开，优先级高于全局 */
   const [overrides, setOverrides] = useState<Record<string, boolean>>({})
 
@@ -45,8 +46,17 @@ export default function TodayPage({ onGoSettings }: Props) {
   function toggleAllGloss() {
     // 切全局时清掉个体覆盖，回到统一状态
     setOverrides({})
-    setShowGloss((v) => !v)
+    setShowGloss((v) => {
+      void Preferences.set({ key: 'today_show_gloss', value: v ? 'false' : 'true' })
+      return !v
+    })
   }
+
+  useEffect(() => {
+    void Preferences.get({ key: 'today_show_gloss' }).then(({ value }) => {
+      if (value === 'true') setShowGloss(true)
+    })
+  }, [])
 
   useEffect(() => {
     if (!sessionReady || !token) return
