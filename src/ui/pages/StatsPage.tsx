@@ -175,7 +175,7 @@ export default function StatsPage() {
     <div className={styles.page}>
       <h1 className={styles.title}>统计</h1>
 
-      {loading && <p className={styles.hint}>读取中…</p>}
+      {loading && <p className={`${styles.hint} loading-pulse`}>读取中…</p>}
 
       {!loading && days.length === 0 && (
         <EmptyState title="数据还不够" hint="积累几天之后，这里会呈现你的遗忘曲线。" />

@@ -11,6 +11,14 @@ type Props = {
 export default function WordSheet({ word, onClose }: Props) {
   const [gloss, setGloss] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  /** 关闭时先播出场动画，播完再真正卸载 */
+  const [closing, setClosing] = useState(false)
+
+  function requestClose() {
+    if (closing) return
+    setClosing(true)
+    setTimeout(onClose, 180)
+  }
 
   useEffect(() => {
     let alive = true
@@ -27,7 +35,7 @@ export default function WordSheet({ word, onClose }: Props) {
   }, [word])
 
   return (
-    <div className={styles.mask} onClick={onClose} role="presentation">
+    <div className={styles.mask} data-closing={closing} onClick={requestClose} role="presentation">
       <div
         className={styles.sheet}
         onClick={(e) => e.stopPropagation()}
@@ -37,7 +45,7 @@ export default function WordSheet({ word, onClose }: Props) {
         <div className={styles.handle} />
         <div className={styles.head}>
           <span className={styles.word}>{word}</span>
-          <button type="button" className={styles.close} onClick={onClose} aria-label="关闭">
+          <button type="button" className={styles.close} onClick={requestClose} aria-label="关闭">
             关闭
           </button>
         </div>

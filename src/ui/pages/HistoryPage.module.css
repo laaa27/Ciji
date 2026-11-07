@@ -32,6 +32,11 @@
   width: 100%;
   padding: 14px 0;
   text-align: left;
+  transition: background 0.15s ease;
+}
+
+.head:active {
+  background: #f2f4ef;
 }
 
 .date {
@@ -85,6 +90,14 @@
 
 .detail {
   padding: 4px 0 20px;
+  animation: detail-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes detail-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }
 
 .none {

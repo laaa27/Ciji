@@ -65,6 +65,14 @@
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  animation: gloss-in 0.16s ease-out;
+}
+
+@keyframes gloss-in {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
 }
 
 .gloss[data-pending='true'] {
@@ -88,6 +96,7 @@
 .row[data-interactive='true'] {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s ease;
 }
 
 .row[data-interactive='true']:active {

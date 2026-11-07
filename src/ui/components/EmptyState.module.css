@@ -1,5 +1,6 @@
 .wrap {
   padding: var(--sp-10) 0;
+  animation: fade-in 0.25s ease;
 }
 
 .title {

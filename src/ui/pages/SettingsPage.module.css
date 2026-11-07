@@ -41,6 +41,7 @@
   border-radius: 2px;
   font-size: var(--fs-sm);
   letter-spacing: 0.02em;
+  transition: border-color 0.15s ease;
 }
 
 .input::placeholder {
@@ -57,6 +58,7 @@
   font-size: var(--fs-sm);
   color: var(--ink-2);
   padding: 8px 4px;
+  transition: color 0.15s ease;
 }
 
 .help {
@@ -76,6 +78,12 @@
   color: var(--on-accent);
   border-radius: 2px;
   font-size: var(--fs-sm);
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+
+.primary:active {
+  opacity: 0.85;
+  transform: translateY(1px);
 }
 
 .primary:disabled {
@@ -110,6 +118,7 @@
   margin-top: var(--sp-4);
   font-size: var(--fs-sm);
   line-height: 1.6;
+  animation: fade-in 0.2s ease;
 }
 
 .feedback[data-kind='ok'] {
@@ -183,6 +192,12 @@
   border-radius: 2px;
   font-size: var(--fs-sm);
   color: var(--ink);
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+
+.secondary:active {
+  opacity: 0.85;
+  transform: translateY(1px);
 }
 
 .secondary:disabled {

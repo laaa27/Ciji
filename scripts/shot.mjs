@@ -17,7 +17,7 @@ await page.goto(url, { waitUntil: 'networkidle0' })
 
 if (tab) {
   const buttons = await page.$$('nav button')
-  const idx = ['today', 'history', 'stats', 'settings'].indexOf(tab)
+  const idx = ['today', 'history', 'reading', 'stats', 'settings'].indexOf(tab)
   if (idx >= 0 && buttons[idx]) {
     await buttons[idx].click()
     await new Promise((r) => setTimeout(r, 400))

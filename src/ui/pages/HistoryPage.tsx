@@ -127,7 +127,7 @@ export default function HistoryPage() {
     <div className={styles.page}>
       <h1 className={styles.title}>历史</h1>
 
-      {loading && <p className={styles.hint}>读取中…</p>}
+      {loading && <p className={`${styles.hint} loading-pulse`}>读取中…</p>}
 
       {!loading && days.length === 0 && (
         <EmptyState title="还没有记录" hint="每天打开一次，这里会按日期攒下你的词。" />

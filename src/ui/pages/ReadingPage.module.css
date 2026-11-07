@@ -51,6 +51,7 @@
   font-size: var(--fs-xs);
   color: var(--ink-3);
   padding: 6px 0;
+  transition: color 0.15s ease;
 }
 
 .action[data-on='true'] {
@@ -72,6 +73,7 @@
   border: 1px solid var(--rule-strong);
   border-radius: 2px;
   overflow: hidden;
+  animation: fade-rise 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* ── 往期入口 ───────────────────────────── */
@@ -104,6 +106,7 @@
 
 .pastList {
   padding-bottom: var(--sp-2);
+  animation: fade-rise 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .pastItem {
@@ -155,6 +158,7 @@
 
 .setup {
   padding-top: var(--sp-2);
+  animation: fade-rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .field {
@@ -209,6 +213,12 @@
   color: var(--on-accent);
   border-radius: 2px;
   font-size: var(--fs-sm);
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+
+.primary:active {
+  opacity: 0.85;
+  transform: translateY(1px);
 }
 
 .primary:disabled {
@@ -229,6 +239,7 @@
   font-size: var(--fs-sm);
   color: var(--ink-2);
   line-height: 1.65;
+  animation: fade-rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .notice {

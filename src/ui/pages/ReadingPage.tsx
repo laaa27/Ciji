@@ -374,7 +374,7 @@ export default function ReadingPage({ onGoSettings }: Props) {
             {busy ? '正在生成…' : hasArticle ? '再生成一篇' : '生成一篇文章'}
           </button>
 
-          {busy && <p className={styles.hint}>先列提纲，再成文，通常 20~50 秒。</p>}
+          {busy && <p className={`${styles.hint} loading-pulse`}>先列提纲，再成文，通常 20~50 秒。</p>}
         </section>
       )}
 

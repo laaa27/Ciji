@@ -161,7 +161,9 @@ export default function TodayPage({ onGoSettings }: Props) {
         </div>
       )}
 
-      {token && loading && <p className={styles.hint}>正在读取今天的学习记录…</p>}
+      {token && loading && (
+        <p className={`${styles.hint} loading-pulse`}>正在读取今天的学习记录…</p>
+      )}
 
       {token && status === 'error' && (
         <div className={styles.notice}>

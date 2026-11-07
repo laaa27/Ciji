@@ -22,9 +22,14 @@
   font-weight: 500;
 }
 
+.item:active .label {
+  opacity: 0.5;
+}
+
 .label {
   position: relative;
   padding-bottom: 3px;
+  transition: opacity 0.12s ease;
 }
 
 .label::after {

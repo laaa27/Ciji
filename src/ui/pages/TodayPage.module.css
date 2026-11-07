@@ -43,6 +43,7 @@
   font-size: var(--fs-xs);
   color: var(--ink-2);
   padding: 6px 0 6px 6px;
+  transition: color 0.15s ease;
 }
 
 .refresh[data-on='true'] {
@@ -145,6 +146,7 @@
 
 .notice {
   padding: var(--sp-4) 0 var(--sp-6);
+  animation: fade-rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .noticeTitle {
@@ -173,6 +175,12 @@
   color: var(--on-accent);
   border-radius: 2px;
   font-size: var(--fs-sm);
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+
+.button:active {
+  opacity: 0.85;
+  transform: translateY(1px);
 }
 
 .hint {

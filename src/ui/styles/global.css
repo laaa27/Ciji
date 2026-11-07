@@ -62,6 +62,39 @@ ol {
   background: #d9e4d0;
 }
 
+/* ─────────────────────────────────────────────
+   共享动效：短促、克制、只动 opacity 与 transform。
+   关键帧定义在全局，供各 CSS module 引用。
+   ───────────────────────────────────────────── */
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* 加载中的文字：轻呼吸，暗示仍在工作 */
+.loading-pulse {
+  animation: breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

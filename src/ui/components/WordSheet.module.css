@@ -8,6 +8,10 @@
   animation: fade 0.18s ease;
 }
 
+.mask[data-closing='true'] {
+  animation: fade-out 0.18s ease forwards;
+}
+
 .sheet {
   width: 100%;
   padding: 10px var(--gutter) calc(var(--safe-bottom) + var(--sp-5));
@@ -15,6 +19,10 @@
   border-top-left-radius: 14px;
   border-top-right-radius: 14px;
   animation: rise 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mask[data-closing='true'] .sheet {
+  animation: sink 0.18s ease forwards;
 }
 
 .handle {
@@ -60,9 +68,22 @@
   }
 }
 
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
 @keyframes rise {
   from {
     transform: translateY(16px);
+    opacity: 0;
+  }
+}
+
+@keyframes sink {
+  to {
+    transform: translateY(14px);
     opacity: 0;
   }
 }

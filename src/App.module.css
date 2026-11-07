@@ -12,6 +12,18 @@
   overscroll-behavior-y: contain;
 }
 
+/* 页面切换：新页从下方 6px 处淡入，替代生硬的瞬间替换 */
+.body > * {
+  animation: view-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes view-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
 .toast {
   position: fixed;
   left: 50%;
