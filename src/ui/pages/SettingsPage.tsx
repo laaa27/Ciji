@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 
 import { getLastRawResponse } from '@/api/client'
-import { testConnection } from '@/api/llm'
 import { getStudyProgress } from '@/api/study'
 import { isOnlineLookupEnabled, saveOnlineLookup } from '@/data/dict'
 import { clearAll, listDays, writeDays } from '@/data/store'
@@ -14,9 +13,10 @@ import {
 } from '@/domain/backup'
 import type { TodaySnapshot } from '@/domain/collect'
 import { exportAll, exportBackup } from '@/domain/export'
-import { PROVIDERS, useLlm, type LlmProvider } from '@/store/llm'
 import { useSession } from '@/store/session'
 import { useToday } from '@/store/today'
+
+import ModelProfiles from '../components/ModelProfiles'
 
 import styles from './SettingsPage.module.css'
 
@@ -52,74 +52,13 @@ export default function SettingsPage() {
   const [dataFeedback, setDataFeedback] = useState<Feedback>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const llmProvider = useLlm((s) => s.provider)
-  const llmKey = useLlm((s) => s.apiKey)
-  const saveLlm = useLlm((s) => s.save)
-  const clearLlm = useLlm((s) => s.clear)
-
-  const [providerDraft, setProviderDraft] = useState<LlmProvider>(llmProvider)
-  const [llmInput, setLlmInput] = useState('')
-  const [llmReveal, setLlmReveal] = useState(false)
-  const [llmBusy, setLlmBusy] = useState(false)
-  const [llmFeedback, setLlmFeedback] = useState<Feedback>(null)
-
   useEffect(() => {
     setOnline(isOnlineLookupEnabled())
   }, [])
 
-  useEffect(() => {
-    setProviderDraft(llmProvider)
-  }, [llmProvider])
-
   async function handleToggleOnline(next: boolean) {
     setOnline(next)
     await saveOnlineLookup(next)
-  }
-
-  async function handleSaveLlm() {
-    const value = llmInput.trim()
-    if (!value) {
-      setLlmFeedback({ kind: 'err', text: '请先粘贴 API Key' })
-      return
-    }
-
-    setLlmBusy(true)
-    setLlmFeedback(null)
-
-    try {
-      await saveLlm({ provider: providerDraft, apiKey: value })
-      const reply = await testConnection()
-      setLlmFeedback({ kind: 'ok', text: `连接成功，模型回复「${reply}」` })
-      setLlmInput('')
-    } catch (e) {
-      setLlmFeedback({
-        kind: 'err',
-        text: e instanceof Error ? e.message : '连接失败',
-      })
-    } finally {
-      setLlmBusy(false)
-    }
-  }
-
-  async function handleTestLlm() {
-    setLlmBusy(true)
-    setLlmFeedback(null)
-    try {
-      const reply = await testConnection()
-      setLlmFeedback({ kind: 'ok', text: `连接正常，模型回复「${reply}」` })
-    } catch (e) {
-      setLlmFeedback({
-        kind: 'err',
-        text: e instanceof Error ? e.message : '连接失败',
-      })
-    } finally {
-      setLlmBusy(false)
-    }
-  }
-
-  async function handleClearLlm() {
-    await clearLlm()
-    setLlmFeedback(null)
   }
 
   async function handleConnect() {
@@ -372,85 +311,7 @@ export default function SettingsPage() {
       </section>
 
       <section className={styles.section}>
-        <h2 className={styles.label}>大模型</h2>
-        <p className={styles.about}>
-          阅读板块用它生成短文。当前使用 {PROVIDERS[llmProvider].name}，
-          {PROVIDERS[llmProvider].pricing}。
-        </p>
-
-        {llmKey ? (
-          <>
-            <p className={styles.connected}>
-              <span className={styles.dot} />
-              已配置
-            </p>
-            <div className={styles.actions}>
-              <button
-                type="button"
-                className={styles.secondary}
-                onClick={() => void handleTestLlm()}
-                disabled={llmBusy}
-              >
-                {llmBusy ? '测试中…' : '测试连接'}
-              </button>
-              <button type="button" className={styles.ghost} onClick={() => void handleClearLlm()}>
-                清除
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className={styles.segments}>
-              {(Object.keys(PROVIDERS) as LlmProvider[]).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  className={styles.segment}
-                  data-on={providerDraft === p}
-                  onClick={() => setProviderDraft(p)}
-                >
-                  {PROVIDERS[p].name}
-                </button>
-              ))}
-            </div>
-
-            <p className={styles.help}>{PROVIDERS[providerDraft].help}</p>
-
-            <div className={styles.inputRow}>
-              <input
-                className={styles.input}
-                type={llmReveal ? 'text' : 'password'}
-                value={llmInput}
-                onChange={(e) => setLlmInput(e.target.value)}
-                placeholder="粘贴 API Key"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <button
-                type="button"
-                className={styles.toggle}
-                onClick={() => setLlmReveal((v) => !v)}
-              >
-                {llmReveal ? '隐藏' : '显示'}
-              </button>
-            </div>
-
-            <button
-              type="button"
-              className={styles.primary}
-              onClick={() => void handleSaveLlm()}
-              disabled={llmBusy}
-            >
-              {llmBusy ? '验证中…' : '保存并测试'}
-            </button>
-          </>
-        )}
-
-        {llmFeedback && (
-          <p className={styles.feedback} data-kind={llmFeedback.kind}>
-            {llmFeedback.text}
-          </p>
-        )}
+        <ModelProfiles />
       </section>
 
       <section className={styles.section}>

@@ -71,7 +71,7 @@ function tokenize(sentence: string): { text: string; isWord: boolean }[] {
 }
 
 export default function ReadingPage({ onGoSettings }: Props) {
-  const apiKey = useLlm((s) => s.apiKey)
+  const hasModel = useLlm((s) => s.profiles.length > 0)
   const llmReady = useLlm((s) => s.ready)
 
   const [article, setArticle] = useState<Article | null>(null)
@@ -146,7 +146,7 @@ export default function ReadingPage({ onGoSettings }: Props) {
   }
 
   async function handleGenerate() {
-    if (!apiKey) {
+    if (!hasModel) {
       setError('还没有配置大模型。去设置里填一个 API Key，智谱的免费。')
       return
     }
@@ -290,7 +290,7 @@ export default function ReadingPage({ onGoSettings }: Props) {
 
       {!llmReady && null}
 
-      {llmReady && !apiKey && (
+      {llmReady && !hasModel && (
         <div className={styles.notice}>
           <p className={styles.noticeTitle}>还没有配置大模型</p>
           <p className={styles.noticeText}>
@@ -302,7 +302,7 @@ export default function ReadingPage({ onGoSettings }: Props) {
         </div>
       )}
 
-      {apiKey && (showSetup || !hasArticle) && (
+      {hasModel && (showSetup || !hasArticle) && (
         <section className={styles.setup}>
           <div className={styles.field}>
             <h2 className={styles.fieldLabel}>用哪些词</h2>

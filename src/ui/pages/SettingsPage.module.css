@@ -270,32 +270,6 @@
   transform: translateX(18px);
 }
 
-.segments {
-  display: flex;
-  margin-bottom: var(--sp-3);
-  border: 1px solid var(--rule-strong);
-  border-radius: 2px;
-  overflow: hidden;
-}
-
-.segment {
-  flex: 1;
-  padding: 9px 6px;
-  font-size: var(--fs-sm);
-  color: var(--ink-2);
-  border-right: 1px solid var(--rule-strong);
-  transition: background 0.15s ease, color 0.15s ease;
-}
-
-.segment:last-child {
-  border-right: 0;
-}
-
-.segment[data-on='true'] {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-
 /* ---------- 导入 ---------- */
 
 .importBlock {

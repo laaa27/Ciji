@@ -18,7 +18,8 @@ npx cap sync         # 把 dist/ 同步进 Android 工程
 浏览器里验证导入导出（需先跑 `npx vite --port 5199`）：
 
 ```bash
-node scripts/test-import.mjs     # 选文件 → 预览 → 两种合并策略 → 写盘断言
+node scripts/test-import.mjs     # 导入：选文件 → 预览 → 两种合并策略 → 写盘断言
+node scripts/test-models.mjs     # 模型：迁移 → 添加 → 切换 → 改协议 → 删除（需 dev server）
 ```
 
 首次使用：App 里「设置 → 接口凭证」，填入墨墨的开放 API token。
@@ -63,7 +64,9 @@ src/
 ├── api/          请求层：只负责发请求、返回类型化数据
 │   ├── types.ts    所有接口类型（唯一来源）
 │   ├── client.ts   鉴权、超时、错误文案、原生/浏览器分支
-│   └── study.ts    三个学习接口
+│   ├── study.ts    三个学习接口
+│   ├── protocols.ts 大模型两种协议的请求构造与响应解析（纯函数）
+│   └── llm.ts      大模型调用：取配置 → 选通道 → 翻译错误
 ├── data/         存储层：只负责读写本地
 │   ├── store.ts    按天存快照（day:YYYY-MM-DD）
 │   └── dict.ts     词典分片懒加载 + 缓存
@@ -73,10 +76,11 @@ src/
 │   └── backup.ts   导入：备份 JSON 与 CSV 的解析、校验、合并策略
 ├── store/        状态层（Zustand）
 │   ├── session.ts  token
+│   ├── llm.ts      多份模型配置（增删改 + 当前选中 + 旧数据迁移）
 │   └── today.ts    今日数据 + 采集状态
 └── ui/           显示层
     ├── pages/      今日 / 历史 / 统计 / 设置
-    ├── components/ WordRow / TabBar / EmptyState
+    ├── components/ WordRow / TabBar / EmptyState / ModelProfiles
     └── styles/     tokens.css（设计令牌）+ global.css
 ```
 
@@ -130,6 +134,27 @@ src/
 ```
 
 **为什么不用 SQLite**：一天一条，一年 365 条，用 Preferences 足够。原生走 SharedPreferences，web 走 localStorage，两端行为一致，不需要 wasm 和平台分支。数据量真的大起来（比如五年）再换。
+
+## 大模型配置
+
+设置 → 大模型。不是「选一个服务商」，而是**存多份配置随时切换**：
+
+- 每份配置 = 名称 + 接口格式 + Base URL + 模型名 + API Key
+- 同一厂商的不同模型（`deepseek-chat` / `deepseek-reasoner`）算两份，切换一次点击
+- 添加时可从预填项起步：智谱 / DeepSeek / OpenAI / Anthropic / 自定义（任何 OpenAI 兼容网关）
+
+两种接口格式：
+
+| 格式 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| OpenAI 兼容 | `{base}/chat/completions`，base 无版本段时自动补 `/v1` | `Authorization: Bearer` | 智谱、DeepSeek、one-api、LM Studio、Ollama 都是这套 |
+| Anthropic | `{base}/v1/messages` | `x-api-key` + `anthropic-version: 2023-06-01` | system 提示会提到顶层字段，`max_tokens` 必填 |
+
+配置存在 `llm_profiles`（一整份 JSON）与 `llm_active`（当前 id）。
+v0.5.0 之前的 `llm_key` / `llm_provider` / `llm_model` 会在首次启动时自动迁成一条配置，随后删除旧键。
+
+> 浏览器里开发时，第三方 API 的 CORS 由 `vite.config.ts` 的 `__llm` 中间件转发（只跑 dev server）；
+> 真机走 `CapacitorHttp`，不受 CORS 限制。
 
 ## 导出与导入
 

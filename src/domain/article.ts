@@ -1,5 +1,5 @@
 import { chatCompletion } from '@/api/llm'
-import { activeModel, useLlm } from '@/store/llm'
+import { useLlm } from '@/store/llm'
 import { lemmaCandidates } from '@/data/dict'
 import type { TodaySnapshot } from '@/domain/collect'
 
@@ -271,7 +271,8 @@ export interface GenerateOptions {
 export async function generateArticle(opts: GenerateOptions): Promise<Article> {
   if (opts.words.length === 0) throw new Error('没有可用的单词')
 
-  const { provider, model } = useLlm.getState()
+  // 记录用的是哪份配置、哪个模型：以后换了模型，旧文章的来源仍然查得到
+  const profile = useLlm.getState().active()
 
   // 第一步：提纲
   const outline = await buildOutline(opts.words, opts.level)
@@ -297,7 +298,7 @@ export async function generateArticle(opts: GenerateOptions): Promise<Article> {
         targetWords: opts.words,
         mode: opts.mode,
         level: opts.level,
-        model: activeModel({ provider, model }),
+        model: profile ? `${profile.name} / ${profile.model}` : 'unknown',
         createdAt: new Date().toISOString(),
       }
     } catch (e) {
