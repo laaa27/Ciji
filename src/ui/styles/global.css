@@ -104,3 +104,38 @@ ol {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ─────────────────────────────────────────────
+   主题切换过渡
+   有 View Transitions 时，浏览器把新旧两帧各拍一张快照做 alpha 混合；
+   旧 WebView 退回给 html.theme-fade 临时加颜色过渡。
+   ───────────────────────────────────────────── */
+
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 260ms;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 兜底：只过渡颜色类属性，不动 transform，避免和现有动效打架 */
+html.theme-fade,
+html.theme-fade *:not(canvas):not(svg):not(path) {
+  transition:
+    background-color 240ms ease,
+    color 240ms ease,
+    border-color 240ms ease,
+    fill 240ms ease,
+    stroke 240ms ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-old(root),
+  ::view-transition-new(root) {
+    animation: none;
+  }
+
+  html.theme-fade,
+  html.theme-fade * {
+    transition: none !important;
+  }
+}

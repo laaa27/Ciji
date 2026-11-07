@@ -41,6 +41,50 @@ function applyTheme(theme: ThemeName): void {
   applyNative(theme)
 }
 
+/* ------------------------------------------------------------------ */
+/* 切换过渡                                                            */
+/* ------------------------------------------------------------------ */
+
+type DocWithTransition = Document & {
+  startViewTransition?: (callback: () => void) => unknown
+}
+
+function prefersReducedMotion(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches
+}
+
+/**
+ * 整页交叉淡出。
+ *
+ * 优先用 View Transitions（Chromium 111+，安卓 WebView 早就支持）：浏览器把新旧两帧
+ * 各拍一张快照做 alpha 混合，所以是真正的「淡入淡出」，且只走合成层，不重排。
+ * 不支持时退回给全站临时加 CSS transition（见 global.css 的 .theme-fade）。
+ */
+function crossfade(mutate: () => void): void {
+  if (prefersReducedMotion()) {
+    mutate()
+    return
+  }
+
+  const doc = document as DocWithTransition
+  if (typeof doc.startViewTransition === 'function') {
+    doc.startViewTransition(mutate)
+    return
+  }
+
+  const root = document.documentElement
+  root.classList.add('theme-fade')
+  mutate()
+  window.setTimeout(() => root.classList.remove('theme-fade'), 280)
+}
+
+/** 系统栏没有过渡效果，等页面淡到一半再翻，看起来是一起变的 */
+let nativeTimer: number | undefined
+function scheduleNative(theme: ThemeName): void {
+  window.clearTimeout(nativeTimer)
+  nativeTimer = window.setTimeout(() => applyNative(theme), 130)
+}
+
 function readBootTheme(): ThemeName {
   try {
     return localStorage.getItem(K_BOOT) === 'dark' ? 'dark' : 'light'
@@ -73,8 +117,11 @@ export const useTheme = create<ThemeState>((set) => ({
 
   setTheme: async (theme) => {
     // 先上色再落盘：切换要即时，写存储慢一点无所谓
-    applyTheme(theme)
-    set({ theme })
+    crossfade(() => {
+      applyDom(theme)
+      set({ theme })
+      scheduleNative(theme)
+    })
     try {
       localStorage.setItem(K_BOOT, theme)
     } catch {

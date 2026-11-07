@@ -119,7 +119,20 @@
   display: flex;
   align-items: baseline;
   gap: 7px;
-  padding-bottom: var(--sp-1);
+  /* 吸顶：滚动时停在状态栏下方，遇到下一个分组标题会被顶走
+     （sticky 的吸附范围被限制在各自 .group 内，天然是这个行为） */
+  position: sticky;
+  top: var(--safe-top);
+  z-index: 3;
+  /* 上下各留一点内边距，词条从下面滑过去时不会贴着字 */
+  padding: var(--sp-2) 0 calc(var(--sp-2) + 1px);
+  background: var(--paper);
+  transition: box-shadow 0.18s ease;
+}
+
+/* 只有真的贴住了才画那条细线；没贴住时画会在标题下多一道横杠 */
+.groupHead[data-stuck='true'] {
+  box-shadow: 0 1px 0 var(--rule);
 }
 
 .groupTitle {

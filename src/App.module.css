@@ -12,6 +12,22 @@
   overscroll-behavior-y: contain;
 }
 
+/* 顶部安全区遮罩。
+   页面内容整体下移了 safe-top，但滚动时后面的内容会从状态栏底下穿过去；
+   吸顶的分组标题又恰好停在 safe-top 位置，那条缝里就会露出手指下方滑过的字。
+   这块一直粘在滚动容器顶端，把缝盖住。负 margin 抵消它自己的占位。 */
+.body::before {
+  content: '';
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: block;
+  height: var(--safe-top);
+  margin-bottom: calc(-1 * var(--safe-top));
+  background: var(--paper);
+  pointer-events: none;
+}
+
 /* 页面切换：新页从下方 6px 处淡入，替代生硬的瞬间替换 */
 .body > * {
   animation: view-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);

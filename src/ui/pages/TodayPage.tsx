@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Preferences } from '@capacitor/preferences'
 
 import { lookupWords } from '@/data/dict'
@@ -36,6 +36,10 @@ export default function TodayPage({ onGoSettings }: Props) {
   const [showGloss, setShowGloss] = useState(false)
   /** 单个词的临时覆盖：点一下收起/展开，优先级高于全局 */
   const [overrides, setOverrides] = useState<Record<string, boolean>>({})
+
+  /** 已经贴到顶部的小标题；用来只在悬浮时画那条细线 */
+  const [stuck, setStuck] = useState<Record<string, boolean>>({})
+  const pageRef = useRef<HTMLDivElement>(null)
 
   const isGlossShown = (vocId: string) => overrides[vocId] ?? showGloss
 
@@ -76,6 +80,68 @@ export default function TodayPage({ onGoSettings }: Props) {
     }
   }, [snapshot])
 
+  /**
+   * 分组标题吸顶。
+   *
+   * position: sticky 本身就会「被下一个标题顶走」（每个 head 的吸附范围被限在自身 section 里），
+   * 这里只额外判断「是否已经贴住」，好在贴住时才画分隔细线 —— 没贴住时画线会多出一道横杠。
+   */
+  useEffect(() => {
+    const page = pageRef.current
+    if (!page) return
+
+    // 滚动容器在 App 层，这里往上找第一个可滚动的祖先，不写死类名
+    let scroller: HTMLElement | null = page.parentElement
+    while (scroller) {
+      const overflowY = getComputedStyle(scroller).overflowY
+      if (overflowY === 'auto' || overflowY === 'scroll') break
+      scroller = scroller.parentElement
+    }
+    if (!scroller) return
+
+    const heads = () => Array.from(page.querySelectorAll<HTMLElement>('[data-group-head]'))
+    let raf = 0
+
+    const update = () => {
+      raf = 0
+      const base = scroller!.getBoundingClientRect().top
+      const next: Record<string, boolean> = {}
+
+      for (const head of heads()) {
+        const key = head.dataset.groupHead ?? ''
+        // 吸附阈值就是 CSS 里写的 top（可能带 max()/env()，用计算值最稳）
+        const offset = parseFloat(getComputedStyle(head).top) || 0
+        const top = head.getBoundingClientRect().top
+        // 必须判「正好贴在阈值上」而不是「在阈值之上」：
+        // 被下一个分组顶走的标题 top 会变成负数，那种不该算悬浮（否则细线会跟着跑）
+        next[key] = top <= base + offset + 0.5 && top >= base + offset - 2
+      }
+
+      // 没变化就不 setState，滚动时别做多余渲染
+      setStuck((prev) => {
+        const keys = Object.keys(next)
+        if (keys.length === Object.keys(prev).length && keys.every((k) => prev[k] === next[k])) {
+          return prev
+        }
+        return next
+      })
+    }
+
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(update)
+    }
+
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    window.addEventListener('resize', onScroll)
+    update()
+
+    return () => {
+      scroller?.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+      if (raf) cancelAnimationFrame(raf)
+    }
+  }, [])
+
   const groups = useMemo(() => {
     const words = snapshot?.words ?? []
     return GROUP_META.map((meta) => ({
@@ -92,7 +158,7 @@ export default function TodayPage({ onGoSettings }: Props) {
       : 0
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} ref={pageRef}>
       <header className={styles.header}>
         <div className={styles.dateRow}>
           <h1 className={styles.date}>{monthDay(today)}</h1>
@@ -186,7 +252,11 @@ export default function TodayPage({ onGoSettings }: Props) {
         snapshot.words.length > 0 &&
         groups.map((group) => (
           <section key={group.key} className={styles.group}>
-            <div className={styles.groupHead}>
+            <div
+              className={styles.groupHead}
+              data-group-head={group.key}
+              data-stuck={stuck[group.key] ? 'true' : 'false'}
+            >
               <h2 className={styles.groupTitle}>{group.title}</h2>
               <span className={styles.groupCount}>{group.items.length}</span>
             </div>
