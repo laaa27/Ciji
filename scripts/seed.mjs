@@ -162,9 +162,10 @@ if (which === 'reading' && process.argv[4] === 'zh') {
   await new Promise((r) => setTimeout(r, 400))
 }
 
-// 阅读页：传 size 参数时展开字号面板，传 past 时展开往期
-if (which === 'reading' && (process.argv[4] === 'size' || process.argv[4] === 'past')) {
-  const label = process.argv[4] === 'size' ? '字号' : '往期'
+// 阅读页：size 展开字号，past 展开文章库，setup 展开生成选项
+if (which === 'reading' && ['size', 'past', 'setup'].includes(process.argv[4])) {
+  const labelMap = { size: '字号', past: '文章库', setup: '重写' }
+  const label = labelMap[process.argv[4]]
   await page.evaluate((text) => {
     const btn = [...document.querySelectorAll('button')].find((b) =>
       b.textContent?.includes(text),
@@ -181,6 +182,17 @@ if (which === 'reading' && process.argv[4] === 'word') {
     if (el) el.click()
   })
   await new Promise((r) => setTimeout(r, 2500))
+}
+
+// 设置页滚到底，方便看版本号
+if (which === 'settings') {
+  await page.evaluate(() => {
+    const el = [...document.querySelectorAll('div')].find(
+      (d) => d.scrollHeight > d.clientHeight + 200,
+    )
+    if (el) el.scrollTo(0, el.scrollHeight)
+  })
+  await new Promise((r) => setTimeout(r, 300))
 }
 
 await page.screenshot({ path: process.argv[2] || 'history.png' })

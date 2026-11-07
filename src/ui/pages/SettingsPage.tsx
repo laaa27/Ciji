@@ -409,7 +409,7 @@ export default function SettingsPage() {
         <p className={styles.about}>
           词迹记录你每天在墨墨背单词里新学、模糊、忘记的词。数据只存在这台设备上。
         </p>
-        <p className={styles.meta}>版本 0.1.2 · 基于墨墨开放 API（公测）</p>
+        <p className={styles.meta}>版本 {__APP_VERSION__} · 基于墨墨开放 API（公测）</p>
       </section>
     </div>
   )

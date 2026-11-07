@@ -10,6 +10,7 @@ import {
   pickWords,
   wordCount,
   LEVEL_LABEL,
+  MAX_TARGET_WORDS,
   MODE_HINT,
   MODE_LABEL,
   type Article,
@@ -18,6 +19,7 @@ import {
 } from '@/domain/article'
 import { dateKey, monthDay } from '@/lib/date'
 import { useLlm } from '@/store/llm'
+import type { TodaySnapshot } from '@/domain/collect'
 
 import WordSheet from '../components/WordSheet'
 import styles from './ReadingPage.module.css'
@@ -76,8 +78,17 @@ export default function ReadingPage({ onGoSettings }: Props) {
   const [fontSize, setFontSize] = useState<FontSize>('m')
   const [sizePanel, setSizePanel] = useState(false)
   const [pastOpen, setPastOpen] = useState(false)
+  /** 有文章时，生成选项收起，点「重写」再展开 */
+  const [showSetup, setShowSetup] = useState(false)
+  const [pool, setPool] = useState<TodaySnapshot[]>([])
 
   const today = dateKey()
+
+  /** 当前模式下这个范围里一共有多少可选词 */
+  const available = useMemo(
+    () => (pool.length > 0 ? pickWords(pool, mode, 999).length : null),
+    [pool, mode],
+  )
 
   const refreshHistory = useCallback(async () => {
     const list = await getAllArticles()
@@ -98,8 +109,14 @@ export default function ReadingPage({ onGoSettings }: Props) {
       const todayArticle = await getArticle(today)
       if (todayArticle) setArticle(todayArticle)
       await refreshHistory()
+
       const { value } = await Preferences.get({ key: FONT_KEY })
       if (value === 's' || value === 'l' || value === 'xl') setFontSize(value)
+
+      const all = await getAllDays()
+      const snap = await getDay(today)
+      const merged = snap ? [snap, ...all.filter((d) => d.date !== today)] : all
+      setPool(merged.slice(0, 7))
     })()
   }, [today, refreshHistory])
 
@@ -129,11 +146,24 @@ export default function ReadingPage({ onGoSettings }: Props) {
     setMissing([])
 
     try {
-      const all = await getAllDays()
-      const todaySnap = await getDay(today)
-      const pool = todaySnap ? [todaySnap, ...all.filter((d) => d.date !== today)] : all
+      let source = pool
+      if (source.length === 0) {
+        const all = await getAllDays()
+        const snap = await getDay(today)
+        source = (snap ? [snap, ...all.filter((d) => d.date !== today)] : all).slice(0, 7)
+        setPool(source)
+      }
 
-      const words = pickWords(pool.slice(0, 7), mode)
+      // 最近三篇覆盖过的词先跳过，免得连续几天都是同一批
+      const recent = await getAllArticles()
+      const covered = new Set(
+        recent
+          .slice(0, 3)
+          .flatMap((a) => a.targetWords.map((w) => w.toLowerCase())),
+      )
+
+      let words = pickWords(source, mode, MAX_TARGET_WORDS, covered)
+      if (words.length < 10) words = pickWords(source, mode, MAX_TARGET_WORDS)
       if (words.length === 0) {
         throw new Error('这个范围里没有可用的词。先去背几个单词，或者换个生成范围。')
       }
@@ -142,6 +172,7 @@ export default function ReadingPage({ onGoSettings }: Props) {
       await saveArticle(next)
       setArticle(next)
       setShowZh(false)
+      setShowSetup(false)
       setMissing(missingWords(next))
       await refreshHistory()
     } catch (e) {
@@ -161,7 +192,6 @@ export default function ReadingPage({ onGoSettings }: Props) {
   }
 
   const hasArticle = Boolean(article)
-  const past = history.filter((h) => h.date !== article?.date)
 
   return (
     <div className={styles.page} data-size={fontSize}>
@@ -189,10 +219,10 @@ export default function ReadingPage({ onGoSettings }: Props) {
             <button
               type="button"
               className={styles.action}
-              onClick={() => void handleGenerate()}
-              disabled={busy}
+              data-on={showSetup}
+              onClick={() => setShowSetup((v) => !v)}
             >
-              {busy ? '重写中' : '重写'}
+              {busy ? '生成中' : '重写'}
             </button>
           </div>
         )}
@@ -214,7 +244,7 @@ export default function ReadingPage({ onGoSettings }: Props) {
         </div>
       )}
 
-      {past.length > 0 && (
+      {history.length > 0 && (
         <div className={styles.pastBar}>
           <button
             type="button"
@@ -222,7 +252,7 @@ export default function ReadingPage({ onGoSettings }: Props) {
             onClick={() => setPastOpen((v) => !v)}
             aria-expanded={pastOpen}
           >
-            <span>往期 · {past.length} 篇</span>
+            <span>文章库 · {history.length} 篇</span>
             <span className={styles.caret} data-open={pastOpen}>
               ⌄
             </span>
@@ -230,11 +260,12 @@ export default function ReadingPage({ onGoSettings }: Props) {
 
           {pastOpen && (
             <ul className={styles.pastList}>
-              {past.map((h) => (
+              {history.map((h) => (
                 <li key={h.date}>
                   <button
                     type="button"
                     className={styles.pastItem}
+                    data-current={h.date === article?.date}
                     onClick={() => void handleOpenPast(h.date)}
                   >
                     <span className={styles.pastDate}>{monthDay(h.date)}</span>
@@ -262,7 +293,7 @@ export default function ReadingPage({ onGoSettings }: Props) {
         </div>
       )}
 
-      {apiKey && !hasArticle && (
+      {apiKey && (showSetup || !hasArticle) && (
         <section className={styles.setup}>
           <div className={styles.field}>
             <h2 className={styles.fieldLabel}>用哪些词</h2>
@@ -279,7 +310,13 @@ export default function ReadingPage({ onGoSettings }: Props) {
                 </button>
               ))}
             </div>
-            <p className={styles.fieldHint}>{MODE_HINT[mode]}</p>
+            <p className={styles.fieldHint}>
+              {MODE_HINT[mode]}
+              {available !== null &&
+                (available > MAX_TARGET_WORDS
+                  ? ` · 有 ${available} 个词可选，本篇取前 ${MAX_TARGET_WORDS} 个`
+                  : ` · 共 ${available} 个词，全部用上`)}
+            </p>
           </div>
 
           <div className={styles.field}>
@@ -305,7 +342,7 @@ export default function ReadingPage({ onGoSettings }: Props) {
             onClick={() => void handleGenerate()}
             disabled={busy}
           >
-            {busy ? '正在生成…' : '生成一篇文章'}
+            {busy ? '正在生成…' : hasArticle ? '重新生成' : '生成一篇文章'}
           </button>
 
           {busy && (

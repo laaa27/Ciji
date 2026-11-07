@@ -56,11 +56,13 @@ export const MAX_TARGET_WORDS = 25
 /**
  * 按模式挑词。
  * 排序优先级：忘记 > 模糊 > 新学 —— 越容易忘的越值得在文章里再遇见一次。
+ * exclude 里的词会被跳过，用来避免连续几篇反复覆盖同一批词。
  */
 export function pickWords(
   days: TodaySnapshot[],
   mode: ArticleMode,
   limit = MAX_TARGET_WORDS,
+  exclude?: Set<string>,
 ): string[] {
   const best = new Map<string, number>()
 
@@ -73,11 +75,13 @@ export function pickWords(
         mode === 'all' ? inNew || inWeak : mode === 'new' ? inNew : inWeak
       if (!ok) continue
 
+      const key = w.spelling.trim()
+      if (!key) continue
+      if (exclude?.has(key.toLowerCase())) continue
+
       const score =
         w.firstResponse === 'FORGET' ? 0 : w.firstResponse === 'VAGUE' ? 1 : 2
 
-      const key = w.spelling.trim()
-      if (!key) continue
       const prev = best.get(key)
       if (prev === undefined || score < prev) best.set(key, score)
     }

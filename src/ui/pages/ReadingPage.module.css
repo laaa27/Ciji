@@ -115,6 +115,16 @@
   text-align: left;
 }
 
+/* 当前正在阅读的那篇 */
+.pastItem[data-current='true'] .pastTitle {
+  color: var(--ink-3);
+}
+
+.pastItem[data-current='true'] .pastDate::before {
+  content: '▸ ';
+  color: var(--state-new);
+}
+
 .pastDate {
   flex: none;
   font-size: var(--fs-xs);
