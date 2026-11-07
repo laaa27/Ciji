@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Preferences } from '@capacitor/preferences'
 
 import { getAllDays, getDay } from '@/data/store'
 import { getAllArticles, getArticle, saveArticle } from '@/data/article'
@@ -27,8 +28,19 @@ type Props = {
 
 type Summary = { date: string; title: string; wordCount: number }
 
+type FontSize = 's' | 'm' | 'l' | 'xl'
+
 const MODES: ArticleMode[] = ['weak', 'new', 'all']
 const LEVELS: ArticleLevel[] = ['cet4', 'cet6', 'kaoyan', 'ielts']
+
+const FONT_SIZES: { key: FontSize; label: string }[] = [
+  { key: 's', label: '小' },
+  { key: 'm', label: '标准' },
+  { key: 'l', label: '大' },
+  { key: 'xl', label: '特大' },
+]
+
+const FONT_KEY = 'reading_font_size'
 
 /** 按单词切分句子，保留标点和空格 */
 function tokenize(sentence: string): { text: string; isWord: boolean }[] {
@@ -61,6 +73,10 @@ export default function ReadingPage({ onGoSettings }: Props) {
   const [missing, setMissing] = useState<string[]>([])
   const [sheetWord, setSheetWord] = useState<string | null>(null)
 
+  const [fontSize, setFontSize] = useState<FontSize>('m')
+  const [sizePanel, setSizePanel] = useState(false)
+  const [pastOpen, setPastOpen] = useState(false)
+
   const today = dateKey()
 
   const refreshHistory = useCallback(async () => {
@@ -82,6 +98,8 @@ export default function ReadingPage({ onGoSettings }: Props) {
       const todayArticle = await getArticle(today)
       if (todayArticle) setArticle(todayArticle)
       await refreshHistory()
+      const { value } = await Preferences.get({ key: FONT_KEY })
+      if (value === 's' || value === 'l' || value === 'xl') setFontSize(value)
     })()
   }, [today, refreshHistory])
 
@@ -94,6 +112,11 @@ export default function ReadingPage({ onGoSettings }: Props) {
     (word: string) => lemmaCandidates(word).some((c) => targetSet.has(c)),
     [targetSet],
   )
+
+  async function changeFontSize(next: FontSize) {
+    setFontSize(next)
+    await Preferences.set({ key: FONT_KEY, value: next })
+  }
 
   async function handleGenerate() {
     if (!apiKey) {
@@ -134,13 +157,14 @@ export default function ReadingPage({ onGoSettings }: Props) {
     setArticle(a)
     setShowZh(false)
     setMissing([])
+    setPastOpen(false)
   }
 
   const hasArticle = Boolean(article)
   const past = history.filter((h) => h.date !== article?.date)
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-size={fontSize}>
       <header className={styles.header}>
         <h1 className={styles.title}>阅读</h1>
 
@@ -157,6 +181,14 @@ export default function ReadingPage({ onGoSettings }: Props) {
             <button
               type="button"
               className={styles.action}
+              data-on={sizePanel}
+              onClick={() => setSizePanel((v) => !v)}
+            >
+              字号
+            </button>
+            <button
+              type="button"
+              className={styles.action}
               onClick={() => void handleGenerate()}
               disabled={busy}
             >
@@ -165,6 +197,56 @@ export default function ReadingPage({ onGoSettings }: Props) {
           </div>
         )}
       </header>
+
+      {sizePanel && (
+        <div className={styles.sizePanel}>
+          {FONT_SIZES.map((f) => (
+            <button
+              key={f.key}
+              type="button"
+              className={styles.segment}
+              data-on={fontSize === f.key}
+              onClick={() => void changeFontSize(f.key)}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {past.length > 0 && (
+        <div className={styles.pastBar}>
+          <button
+            type="button"
+            className={styles.pastToggle}
+            onClick={() => setPastOpen((v) => !v)}
+            aria-expanded={pastOpen}
+          >
+            <span>往期 · {past.length} 篇</span>
+            <span className={styles.caret} data-open={pastOpen}>
+              ⌄
+            </span>
+          </button>
+
+          {pastOpen && (
+            <ul className={styles.pastList}>
+              {past.map((h) => (
+                <li key={h.date}>
+                  <button
+                    type="button"
+                    className={styles.pastItem}
+                    onClick={() => void handleOpenPast(h.date)}
+                  >
+                    <span className={styles.pastDate}>{monthDay(h.date)}</span>
+                    <span className={styles.pastTitle}>{h.title}</span>
+                    <span className={styles.pastCount}>{h.wordCount}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
 
       {!llmReady && null}
 
@@ -226,7 +308,9 @@ export default function ReadingPage({ onGoSettings }: Props) {
             {busy ? '正在生成…' : '生成一篇文章'}
           </button>
 
-          {busy && <p className={styles.hint}>模型正在组织段落，通常 10~30 秒。</p>}
+          {busy && (
+            <p className={styles.hint}>先列提纲，再成文，通常 20~50 秒。</p>
+          )}
         </section>
       )}
 
@@ -236,6 +320,9 @@ export default function ReadingPage({ onGoSettings }: Props) {
         <>
           <article className={styles.article}>
             <h2 className={styles.articleTitle}>{article.title}</h2>
+            {showZh && article.titleZh && (
+              <p className={styles.titleZh}>{article.titleZh}</p>
+            )}
 
             <div className={styles.meta}>
               {monthDay(article.date)} · {wordCount(article)} 词 · {LEVEL_LABEL[article.level]}
@@ -280,27 +367,6 @@ export default function ReadingPage({ onGoSettings }: Props) {
           <p className={styles.coverage}>
             本篇覆盖 {article.targetWords.length} 个词 · 由 {article.model} 生成
           </p>
-
-          {past.length > 0 && (
-            <section className={styles.past}>
-              <h2 className={styles.fieldLabel}>往期</h2>
-              <ul>
-                {past.map((h) => (
-                  <li key={h.date}>
-                    <button
-                      type="button"
-                      className={styles.pastItem}
-                      onClick={() => void handleOpenPast(h.date)}
-                    >
-                      <span className={styles.pastDate}>{monthDay(h.date)}</span>
-                      <span className={styles.pastTitle}>{h.title}</span>
-                      <span className={styles.pastCount}>{h.wordCount}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
         </>
       )}
 

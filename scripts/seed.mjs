@@ -69,6 +69,7 @@ const days = Array.from({ length: 30 }, (_, i) => makeDay(i))
 const SAMPLE_ARTICLE = {
   date: dateKey(0),
   title: 'The Quiet Architecture of Habit',
+  titleZh: '习惯的静默建筑',
   sentences: [
     {
       en: 'We tend to imagine that character is forged in moments of crisis, when we must either concede defeat or summon an eloquence we do not possess.',
@@ -94,6 +95,16 @@ const SAMPLE_ARTICLE = {
   createdAt: new Date().toISOString(),
 }
 
+// 往期文章，用来验证「往期」入口
+const PAST_ARTICLE = {
+  ...SAMPLE_ARTICLE,
+  date: dateKey(2),
+  title: 'What We Owe to Silence',
+  titleZh: '我们欠沉默什么',
+  targetWords: ['reluctant', 'coherent'],
+  createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
+}
+
 const browser = await puppeteer.launch({
   executablePath: CHROME,
   headless: true,
@@ -116,9 +127,13 @@ await page.evaluate(
         'CapacitorStorage.article:' + payload.article.date,
         JSON.stringify(payload.article),
       )
+      localStorage.setItem(
+        'CapacitorStorage.article:' + payload.past.date,
+        JSON.stringify(payload.past),
+      )
     }
   },
-  { days, article: SAMPLE_ARTICLE, which: process.argv[3] || 'history' },
+  { days, article: SAMPLE_ARTICLE, past: PAST_ARTICLE, which: process.argv[3] || 'history' },
 )
 
 await page.reload({ waitUntil: 'networkidle0' })
@@ -144,6 +159,18 @@ if (which === 'reading' && process.argv[4] === 'zh') {
     )
     if (btn) btn.click()
   })
+  await new Promise((r) => setTimeout(r, 400))
+}
+
+// 阅读页：传 size 参数时展开字号面板，传 past 时展开往期
+if (which === 'reading' && (process.argv[4] === 'size' || process.argv[4] === 'past')) {
+  const label = process.argv[4] === 'size' ? '字号' : '往期'
+  await page.evaluate((text) => {
+    const btn = [...document.querySelectorAll('button')].find((b) =>
+      b.textContent?.includes(text),
+    )
+    if (btn) btn.click()
+  }, label)
   await new Promise((r) => setTimeout(r, 400))
 }
 

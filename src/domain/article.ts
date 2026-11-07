@@ -33,6 +33,8 @@ export interface ArticleSentence {
 export interface Article {
   date: string
   title: string
+  /** 标题的中文翻译，早期版本的文章没有这个字段 */
+  titleZh?: string
   sentences: ArticleSentence[]
   /** 本篇要求覆盖的词 */
   targetWords: string[]
@@ -40,6 +42,12 @@ export interface Article {
   level: ArticleLevel
   model: string
   createdAt: string
+}
+
+/** 第一步生成出来的提纲 */
+export interface Outline {
+  topic: string
+  paragraphs: { idea: string; words: string[] }[]
 }
 
 /** 一篇文章最多塞多少个目标词，太多会变成词表 */
@@ -88,35 +96,96 @@ const LEVEL_HINT: Record<ArticleLevel, string> = {
   ielts: '雅思学术类阅读：学术语域，客观严谨，多用名词化表达',
 }
 
-function buildMessages(words: string[], level: ArticleLevel) {
+/* ── 第一步：先列提纲 ─────────────────────── */
+
+async function buildOutline(words: string[], level: ArticleLevel): Promise<Outline | null> {
+  const system =
+    '你是一位资深的英语命题专家。你擅长围绕一组指定词汇，找到一个能真正承载它们的论点，' +
+    '而不是把单词硬塞进句子里。'
+
+  const user = [
+    '一位学生今天需要复习下面这些单词：',
+    words.join(', '),
+    '',
+    '请先设计一篇英语短文的写作提纲。要求：',
+    `1. 难度定位：${LEVEL_HINT[level]}`,
+    '2. 先想清楚这篇文章要论证或叙述什么，主题必须能自然容纳这些词',
+    '3. 分 3~4 段，每段要有明确的推进：提出问题 → 展开 → 转折或深化 → 收束',
+    '4. 把上面每个单词分配到最合适的那一段，一个词只分配一次',
+    '',
+    '只输出 JSON，不要任何解释：',
+    '{"topic":"一句话说明文章主题与核心论点","paragraphs":[{"idea":"这一段要说什么","words":["该段用到的词"]}]}',
+  ].join('\n')
+
+  try {
+    const raw = await chatCompletion(
+      [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      { temperature: 0.9, maxTokens: 900 },
+    )
+
+    const obj = parseLoose(raw) as {
+      topic?: unknown
+      paragraphs?: Array<{ idea?: unknown; words?: unknown }>
+    }
+
+    const topic = typeof obj?.topic === 'string' ? obj.topic.trim() : ''
+    const paragraphs = (Array.isArray(obj?.paragraphs) ? obj.paragraphs : [])
+      .map((p) => ({
+        idea: typeof p?.idea === 'string' ? p.idea.trim() : '',
+        words: Array.isArray(p?.words)
+          ? p.words.filter((w): w is string => typeof w === 'string')
+          : [],
+      }))
+      .filter((p) => p.idea)
+
+    if (!topic || paragraphs.length === 0) return null
+    return { topic, paragraphs }
+  } catch {
+    // 提纲失败不影响主流程，退回单步生成
+    return null
+  }
+}
+
+/* ── 第二步：按提纲成文 ───────────────────── */
+
+function buildMessages(words: string[], level: ArticleLevel, outline: Outline | null) {
   const system = [
     '你是一位资深的英语命题专家，擅长把指定词汇自然织入一篇连贯的短文。',
     '你从不把单词生硬地堆在一起，而是先想一个能承载这些概念的论点，再围绕它组织段落。',
   ].join('')
 
-  const user = [
-    `请用下面这些单词写一篇英语短文。`,
-    ``,
-    `【必须包含的单词】`,
-    words.join(', '),
-    ``,
+  const parts = [`请用下面这些单词写一篇英语短文。`, '', `【必须包含的单词】`, words.join(', '), '']
+
+  if (outline) {
+    parts.push(`【已确定的写作提纲】`, `主题与论点：${outline.topic}`)
+    outline.paragraphs.forEach((p, i) => {
+      const ws = p.words.length > 0 ? `（该段用：${p.words.join(', ')}）` : ''
+      parts.push(`第 ${i + 1} 段：${p.idea}${ws}`)
+    })
+    parts.push('')
+  }
+
+  parts.push(
     `【要求】`,
     `1. 难度：${LEVEL_HINT[level]}`,
-    `2. 篇幅：320~380 词，分 3~4 段`,
-    `3. 主题自选（社会、科技、教育、心理等都可），但必须是一篇有完整论证或叙事的文章`,
+    `2. 篇幅：320~380 词`,
+    outline ? `3. 严格按上面的提纲展开，段落顺序和论点不要改` : `3. 分 3~4 段，有完整的论证或叙事推进`,
     `4. 上面每一个单词都必须在正文中出现至少一次，原形或变形均可`,
     `5. 单词要顺着文意自然出现，不能为了塞词而牺牲句子通顺`,
-    ``,
+    '',
     `【输出格式】`,
     `只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字：`,
-    `{"title":"英文标题","sentences":[{"en":"英文句子","zh":"这句话的中文翻译"}]}`,
-    ``,
+    `{"title":"英文标题","titleZh":"标题的中文翻译","sentences":[{"en":"英文句子","zh":"这句话的中文翻译"}]}`,
+    '',
     `注意：sentences 数组要把正文按句子切开，一句一项，英文和中文一一对应。`,
-  ].join('\n')
+  )
 
   return [
     { role: 'system' as const, content: system },
-    { role: 'user' as const, content: user },
+    { role: 'user' as const, content: parts.join('\n') },
   ]
 }
 
@@ -130,13 +199,19 @@ function parseLoose(raw: string): unknown {
   return JSON.parse(s)
 }
 
-function validate(parsed: unknown): { title: string; sentences: ArticleSentence[] } {
+function validate(parsed: unknown): {
+  title: string
+  titleZh?: string
+  sentences: ArticleSentence[]
+} {
   const obj = parsed as {
     title?: unknown
+    titleZh?: unknown
     sentences?: Array<{ en?: unknown; zh?: unknown }>
   }
 
   const title = typeof obj?.title === 'string' ? obj.title.trim() : ''
+  const titleZh = typeof obj?.titleZh === 'string' ? obj.titleZh.trim() : ''
   const list = Array.isArray(obj?.sentences) ? obj.sentences : []
 
   const sentences: ArticleSentence[] = []
@@ -150,7 +225,7 @@ function validate(parsed: unknown): { title: string; sentences: ArticleSentence[
     throw new Error('模型返回的内容不完整')
   }
 
-  return { title, sentences }
+  return { title, titleZh: titleZh || undefined, sentences }
 }
 
 /** 校验哪些目标词没出现在正文里 */
@@ -173,12 +248,20 @@ export interface GenerateOptions {
   date: string
 }
 
-/** 生成一篇文章。格式解析失败会重试一次。 */
+/**
+ * 生成一篇文章：先列提纲，再按提纲成文。
+ * 两步走比一步直出更不容易写成词表拼接 —— 模型先被迫想清楚要论证什么。
+ * 提纲失败会自动退回单步生成；成文格式解析失败会重试一次。
+ */
 export async function generateArticle(opts: GenerateOptions): Promise<Article> {
   if (opts.words.length === 0) throw new Error('没有可用的单词')
 
-  const messages = buildMessages(opts.words, opts.level)
   const { provider, model } = useLlm.getState()
+
+  // 第一步：提纲
+  const outline = await buildOutline(opts.words, opts.level)
+
+  const messages = buildMessages(opts.words, opts.level, outline)
 
   let lastError: unknown = null
 
@@ -186,14 +269,15 @@ export async function generateArticle(opts: GenerateOptions): Promise<Article> {
     try {
       const raw = await chatCompletion(messages, {
         temperature: 0.85,
-        maxTokens: 2400,
+        maxTokens: 2600,
       })
 
-      const { title, sentences } = validate(parseLoose(raw))
+      const { title, titleZh, sentences } = validate(parseLoose(raw))
 
       return {
         date: opts.date,
         title,
+        titleZh,
         sentences,
         targetWords: opts.words,
         mode: opts.mode,
@@ -203,7 +287,6 @@ export async function generateArticle(opts: GenerateOptions): Promise<Article> {
       }
     } catch (e) {
       lastError = e
-      // 第一次失败就再来一遍，模型有时第二次就老实了
     }
   }
 

@@ -1,12 +1,35 @@
 .page {
   padding: calc(var(--safe-top) + var(--sp-7)) var(--gutter) var(--sp-10);
+
+  /* 字号档位：只影响正文与译文，标题和界面元素保持不变 */
+  --rd-fs: 17px;
+  --rd-zh-fs: 12.5px;
+  --rd-lh: 1.75;
+}
+
+.page[data-size='s'] {
+  --rd-fs: 15px;
+  --rd-zh-fs: 11.5px;
+  --rd-lh: 1.7;
+}
+
+.page[data-size='l'] {
+  --rd-fs: 19px;
+  --rd-zh-fs: 14px;
+  --rd-lh: 1.72;
+}
+
+.page[data-size='xl'] {
+  --rd-fs: 21px;
+  --rd-zh-fs: 15.5px;
+  --rd-lh: 1.7;
 }
 
 .header {
   display: flex;
   align-items: baseline;
   gap: 12px;
-  margin-bottom: var(--sp-6);
+  margin-bottom: var(--sp-5);
 }
 
 .title {
@@ -21,7 +44,7 @@
   margin-left: auto;
   display: flex;
   align-items: baseline;
-  gap: 14px;
+  gap: 13px;
 }
 
 .action {
@@ -39,6 +62,83 @@
 
 .action:disabled {
   opacity: 0.5;
+}
+
+/* ── 字号选择 ───────────────────────────── */
+
+.sizePanel {
+  display: flex;
+  margin-bottom: var(--sp-5);
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+/* ── 往期入口 ───────────────────────────── */
+
+.pastBar {
+  margin-bottom: var(--sp-5);
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+}
+
+.pastToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 11px 0;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+.caret {
+  font-size: var(--fs-body);
+  color: var(--ink-3);
+  transition: transform 0.18s ease;
+}
+
+.caret[data-open='true'] {
+  transform: rotate(180deg);
+}
+
+.pastList {
+  padding-bottom: var(--sp-2);
+}
+
+.pastItem {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 0;
+  text-align: left;
+}
+
+.pastDate {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  min-width: 52px;
+}
+
+.pastTitle {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-word);
+  font-size: var(--fs-body);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pastCount {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── 配置区 ─────────────────────────────── */
@@ -61,7 +161,6 @@
 
 .segments {
   display: flex;
-  gap: 0;
   border: 1px solid var(--rule-strong);
   border-radius: 2px;
   overflow: hidden;
@@ -156,8 +255,17 @@
   color: var(--ink);
 }
 
+.titleZh {
+  margin-top: 6px;
+  padding-left: 10px;
+  border-left: 2px solid var(--rule);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
 .meta {
-  margin-top: 8px;
+  margin-top: 10px;
   padding-bottom: var(--sp-4);
   border-bottom: 1px solid var(--rule);
   font-size: var(--fs-xs);
@@ -180,8 +288,8 @@
 
 .en {
   font-family: var(--font-word);
-  font-size: 17px;
-  line-height: 1.75;
+  font-size: var(--rd-fs);
+  line-height: var(--rd-lh);
   color: var(--ink);
   letter-spacing: 0.002em;
 }
@@ -207,7 +315,7 @@
   margin-bottom: 9px;
   padding-left: 10px;
   border-left: 2px solid var(--rule);
-  font-size: var(--fs-sm);
+  font-size: var(--rd-zh-fs);
   line-height: 1.7;
   color: var(--ink-3);
 }
@@ -224,50 +332,6 @@
 
 .coverage {
   margin-top: var(--sp-4);
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-}
-
-/* ── 往期 ───────────────────────────────── */
-
-.past {
-  margin-top: var(--sp-8);
-  padding-top: var(--sp-5);
-  border-top: 1px solid var(--rule);
-}
-
-.pastItem {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-  width: 100%;
-  padding: 11px 0;
-  border-bottom: 1px solid var(--rule);
-  text-align: left;
-}
-
-.pastDate {
-  flex: none;
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
-  font-variant-numeric: tabular-nums;
-  min-width: 52px;
-}
-
-.pastTitle {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--font-word);
-  font-size: var(--fs-body);
-  color: var(--ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.pastCount {
-  flex: none;
   font-size: var(--fs-xs);
   color: var(--ink-3);
   font-variant-numeric: tabular-nums;
