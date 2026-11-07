@@ -37,6 +37,9 @@ export default function ModelProfiles() {
   const setActive = useLlm((s) => s.setActive)
 
   const [draft, setDraft] = useState<LlmProfile | null>(null)
+  // 单独记「从哪个预设起的步」。不能用字段值反推 —— 一旦改协议或地址，反推就会失配，
+  // 表现为刚选完预设、一换格式高亮就没了。
+  const [presetKey, setPresetKey] = useState<string | null>(null)
   const [reveal, setReveal] = useState(false)
   const [busy, setBusy] = useState<'test' | 'save' | null>(null)
   const [feedback, setFeedback] = useState<Feedback>(null)
@@ -44,14 +47,16 @@ export default function ModelProfiles() {
 
   const isNew = draft !== null && !profiles.some((p) => p.id === draft.id)
 
-  function openNew(presetKey = 'zhipu') {
-    setDraft(newProfile(presetByKey(presetKey)))
+  function openNew(key = 'zhipu') {
+    setPresetKey(key)
+    setDraft(newProfile(presetByKey(key)))
     setFeedback(null)
     setReveal(false)
     setPendingDelete(null)
   }
 
   function openEdit(profile: LlmProfile) {
+    setPresetKey(null)
     setDraft({ ...profile })
     setFeedback(null)
     setReveal(false)
@@ -64,6 +69,7 @@ export default function ModelProfiles() {
 
   function applyPreset(key: string) {
     const preset = presetByKey(key)
+    setPresetKey(key)
     setDraft((d) =>
       d
         ? {
@@ -204,11 +210,7 @@ export default function ModelProfiles() {
                   key={preset.key}
                   type="button"
                   className={styles.chip}
-                  data-on={
-                    draft.protocol === preset.protocol &&
-                    draft.baseUrl === preset.baseUrl &&
-                    draft.name === preset.name
-                  }
+                  data-on={presetKey === preset.key}
                   onClick={() => applyPreset(preset.key)}
                 >
                   {preset.name}

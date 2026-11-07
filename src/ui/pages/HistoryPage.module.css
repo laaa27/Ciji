@@ -36,7 +36,7 @@
 }
 
 .head:active {
-  background: #f2f4ef;
+  background: var(--tint);
 }
 
 .date {

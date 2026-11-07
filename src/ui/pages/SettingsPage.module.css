@@ -258,7 +258,7 @@
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  background: #fff;
+  background: var(--switch-knob);
   transition: transform 0.18s ease;
 }
 
@@ -352,4 +352,31 @@
 
 .overwrite:disabled {
   opacity: 0.5;
+}
+
+/* ---------- 外观：分段选择 ---------- */
+
+.segments {
+  display: flex;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.segment {
+  flex: 1;
+  padding: 9px 6px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  border-right: 1px solid var(--rule-strong);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.segment:last-child {
+  border-right: 0;
+}
+
+.segment[data-on='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
 }

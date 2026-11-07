@@ -23,6 +23,17 @@
   /* 交互 */
   --accent: #16181a;
   --on-accent: #f7f8f5;
+  --switch-knob: #ffffff;
+
+  /* 浅底：按压反馈、提示条、遮罩。
+     这几处不能靠 rgb(x x x / 6%) 叠出来 —— 深色底上透明度叠加会脏，
+     所以每个都单独给两套值。 */
+  --tint: #f2f4ef;
+  --tint-ok: #eef2ea;
+  --tint-warn: #fdf8ef;
+  --tint-danger: #fdf1ef;
+  --scrim: rgba(18, 20, 19, 0.22);
+  --selection: #d9e4d0;
 
   /* 字体 */
   --font-word: 'Spectral', Georgia, 'Songti SC', 'Noto Serif CJK SC', serif;
@@ -59,23 +70,35 @@
 }
 
 /* ─────────────────────────────────────────────
-   夜间主题（待补全）
-   预留结构：<html data-theme="dark"> 时生效
+   夜间主题
+   不是反色：纸是带绿调的墨黑，三支笔换成各自的浅色调，
+   保证在 #121413 上仍然有 4.5:1 以上对比。
+   由 <html data-theme="dark"> 触发，见 store/theme.ts。
    ───────────────────────────────────────────── */
-/*
 [data-theme='dark'] {
   color-scheme: dark;
+
   --paper: #121413;
   --surface: #191c1a;
   --ink: #eceee9;
   --ink-2: #a3a8a2;
-  --ink-3: #6f746f;
+  --ink-3: #7c817d;
   --rule: #262a27;
   --rule-strong: #363b37;
+
   --state-new: #7ea6cc;
   --state-vague: #c99a52;
   --state-forget: #d07066;
+
   --accent: #eceee9;
   --on-accent: #121413;
+  /* 未选中轨道是 #363b37，滑块必须比轨道亮，否则看着像个空槽 */
+  --switch-knob: #dfe2dc;
+
+  --tint: #1d201e;
+  --tint-ok: #1b221d;
+  --tint-warn: #241f17;
+  --tint-danger: #241917;
+  --scrim: rgba(0, 0, 0, 0.66);
+  --selection: #2f4034;
 }
-*/

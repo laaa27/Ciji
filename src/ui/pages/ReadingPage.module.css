@@ -234,7 +234,7 @@
 .error {
   margin: var(--sp-4) 0;
   padding: 10px 12px;
-  background: #fdf1ef;
+  background: var(--tint-danger);
   border-left: 2px solid var(--state-forget);
   font-size: var(--fs-sm);
   color: var(--ink-2);
@@ -328,7 +328,7 @@
 }
 
 .word:active {
-  background: #eef2ea;
+  background: var(--tint-ok);
 }
 
 .zh {
@@ -344,7 +344,7 @@
 .warn {
   margin-top: var(--sp-5);
   padding: 10px 12px;
-  background: #fdf8ef;
+  background: var(--tint-warn);
   border-left: 2px solid var(--state-vague);
   font-size: var(--fs-xs);
   line-height: 1.7;

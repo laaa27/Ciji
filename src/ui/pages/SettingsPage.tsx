@@ -14,6 +14,7 @@ import {
 import type { TodaySnapshot } from '@/domain/collect'
 import { exportAll, exportBackup } from '@/domain/export'
 import { useSession } from '@/store/session'
+import { useTheme, type ThemeName } from '@/store/theme'
 import { useToday } from '@/store/today'
 
 import ModelProfiles from '../components/ModelProfiles'
@@ -38,6 +39,9 @@ export default function SettingsPage() {
   const saveToken = useSession((s) => s.saveToken)
   const clearToken = useSession((s) => s.clearToken)
   const resetToday = useToday((s) => s.reset)
+
+  const theme = useTheme((s) => s.theme)
+  const setTheme = useTheme((s) => s.setTheme)
 
   const [input, setInput] = useState('')
   const [reveal, setReveal] = useState(false)
@@ -469,6 +473,28 @@ export default function SettingsPage() {
         <button type="button" className={styles.danger} onClick={() => void handleClearAll()}>
           清空全部记录
         </button>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.label}>外观</h2>
+
+        <div className={styles.segments}>
+          {(['light', 'dark'] as ThemeName[]).map((name) => (
+            <button
+              key={name}
+              type="button"
+              className={styles.segment}
+              data-on={theme === name}
+              onClick={() => void setTheme(name)}
+            >
+              {name === 'light' ? '白天' : '深夜'}
+            </button>
+          ))}
+        </div>
+
+        <p className={styles.help}>
+          深夜主题换的是整套纸墨色，不是把白天反色。
+        </p>
       </section>
 
       <section className={styles.section}>

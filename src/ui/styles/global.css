@@ -59,7 +59,7 @@ ol {
 }
 
 ::selection {
-  background: #d9e4d0;
+  background: var(--selection);
 }
 
 /* ─────────────────────────────────────────────

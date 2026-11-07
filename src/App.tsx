@@ -12,6 +12,7 @@ import SettingsPage from './ui/pages/SettingsPage'
 import { loadLookupSettings } from './data/dict'
 import { useLlm } from './store/llm'
 import { useSession } from './store/session'
+import { useTheme } from './store/theme'
 
 const EXIT_CONFIRM_MS = 2200
 
@@ -19,6 +20,7 @@ export default function App() {
   const [tab, setTab] = useState<TabKey>('today')
   const load = useSession((s) => s.load)
   const loadLlm = useLlm((s) => s.load)
+  const loadTheme = useTheme((s) => s.load)
 
   const [exitHint, setExitHint] = useState(false)
   const lastBackRef = useRef(0)
@@ -28,7 +30,8 @@ export default function App() {
     void load()
     void loadLlm()
     void loadLookupSettings()
-  }, [load, loadLlm])
+    void loadTheme()
+  }, [load, loadLlm, loadTheme])
 
   // Android 返回键：连按两次才退出，防止误触
   useEffect(() => {

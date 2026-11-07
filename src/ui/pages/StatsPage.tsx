@@ -5,6 +5,7 @@ import { GridComponent, TooltipComponent } from 'echarts/components'
 import { CanvasRenderer } from 'echarts/renderers'
 
 import { getAllDays } from '@/data/store'
+import { useTheme } from '@/store/theme'
 import { lineState, type TodaySnapshot, type WordState } from '@/domain/collect'
 
 import EmptyState from '../components/EmptyState'
@@ -46,6 +47,8 @@ function cssVar(name: string, fallback: string): string {
 
 function TrendChart({ rows }: { rows: Row[] }) {
   const ref = useRef<HTMLDivElement>(null)
+  // 颜色在 init 时从 CSS 变量读一次，换主题必须重建，否则图表还是旧配色
+  const theme = useTheme((s) => s.theme)
 
   useEffect(() => {
     if (!ref.current) return
@@ -61,7 +64,7 @@ function TrendChart({ rows }: { rows: Row[] }) {
       tooltip: {
         trigger: 'axis',
         axisPointer: { type: 'shadow' },
-        backgroundColor: '#ffffff',
+        backgroundColor: cssVar('--surface', '#ffffff'),
         borderColor: rule,
         borderWidth: 1,
         textStyle: { color: ink, fontSize: 12 },
@@ -118,7 +121,7 @@ function TrendChart({ rows }: { rows: Row[] }) {
       window.removeEventListener('resize', onResize)
       chart.dispose()
     }
-  }, [rows])
+  }, [rows, theme])
 
   return <div ref={ref} className={styles.chart} />
 }

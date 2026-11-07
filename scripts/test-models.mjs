@@ -72,8 +72,10 @@ const t = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const clickText = (text) =>
   page.evaluate((needle) => {
+    // 两边都去掉空白再比，否则「Anthropic Claude」这类带空格的按钮永远匹配不上
+    const want = needle.replace(/\s+/g, '')
     const btn = [...document.querySelectorAll('button')].find((b) =>
-      b.textContent?.replace(/\s+/g, '').includes(needle),
+      b.textContent?.replace(/\s+/g, '').includes(want),
     )
     if (btn) btn.click()
     return Boolean(btn)
@@ -245,7 +247,34 @@ s = await store()
 ok('第二次真删掉', s.profiles.length === 1, s.profiles.length)
 ok('当前选中退回剩下的', s.active === firstId, s.active)
 
-console.log('\n[6] 无 JS 报错')
+console.log('\n[6] 选预设后切换接口格式，高亮不能丢')
+await clickText('添加模型')
+await t(300)
+await clickText('Anthropic Claude')
+await t(200)
+const chipsOn = () =>
+  page.evaluate(() =>
+    [...document.querySelectorAll('button')]
+      .filter((b) => b.dataset.on === 'true')
+      .map((b) => b.textContent?.trim()),
+  )
+ok('选中 Anthropic 预设后高亮', (await chipsOn()).includes('Anthropic Claude'), await chipsOn())
+await page.evaluate(() => {
+  const b = [...document.querySelectorAll('button')].find((x) => x.textContent?.trim() === 'OpenAI 兼容')
+  b?.click()
+})
+await t(250)
+ok('切到 OpenAI 格式后仍然高亮', (await chipsOn()).includes('Anthropic Claude'), await chipsOn())
+await page.evaluate(() => {
+  const b = [...document.querySelectorAll('button')].find((x) => x.textContent?.trim() === 'Anthropic')
+  b?.click()
+})
+await t(250)
+ok('切回 Anthropic 格式也还在', (await chipsOn()).includes('Anthropic Claude'), await chipsOn())
+await clickText('取消')
+await t(200)
+
+console.log('\n[7] 无 JS 报错')
 ok('页面干净', errors.length === 0, errors.slice(0, 3))
 
 console.log(`\n通过 ${pass} / 失败 ${fail}`)

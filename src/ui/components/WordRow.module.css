@@ -100,5 +100,5 @@
 }
 
 .row[data-interactive='true']:active {
-  background: #f2f4ef;
+  background: var(--tint);
 }
