@@ -1,7 +1,7 @@
-import { Capacitor } from '@capacitor/core'
 import { Preferences } from '@capacitor/preferences'
-import { StatusBar, Style } from '@capacitor/status-bar'
 import { create } from 'zustand'
+
+import { applyNativeAppearance } from '@/api/appearance'
 
 /**
  * 主题：白天 / 深夜两套纸墨色，令牌在 ui/styles/tokens.css。
@@ -10,9 +10,9 @@ import { create } from 'zustand'
  * 1. **启动瞬间不能闪**。Preferences 是异步的（原生读 SharedPreferences），
  *    等它回来再上色会先闪一帧浅色。所以额外往 localStorage 写一份同步镜像，
  *    模块加载时立刻套上，再由 load() 与真实存储对齐。
- * 2. **安卓状态栏图标要跟着翻**。页面是 edge-to-edge，状态栏透明、盖在正文上，
- *    正文变深色后系统仍画深色图标，时间电量就看不见了。用 StatusBar 插件切
- *    Style.Dark（浅色图标）/ Style.Light（深色图标）。
+ * 2. **系统栏要一起变**。Android 15+ 是 edge-to-edge，系统栏透明、盖在正文上，
+ *    只剩图标明暗要处理；但 Android 15 以下系统栏不透明、取的是主题里的浅色，
+ *    只调图标就会变成白底浅图标的空白带。所以底色和图标都由 AppearancePlugin 一起设。
  */
 
 export type ThemeName = 'light' | 'dark'
@@ -31,12 +31,9 @@ function applyDom(theme: ThemeName): void {
 }
 
 function applyNative(theme: ThemeName): void {
-  if (!Capacitor.isNativePlatform()) return
-  // Style.Dark = 浅色文字（配深色背景），别按名字直觉用反
-  const style = theme === 'dark' ? Style.Dark : Style.Light
-  void StatusBar.setStyle({ style }).catch(() => {
-    // 插件不可用（比如旧包）不该影响界面本身
-  })
+  // 状态栏 + 导航栏的底色与图标由原生插件一起处理，
+  // 只改图标会留下「白底浅图标」的空白带（Android 15 以下必现）
+  void applyNativeAppearance(theme === 'dark')
 }
 
 function applyTheme(theme: ThemeName): void {

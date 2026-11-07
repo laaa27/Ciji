@@ -114,7 +114,15 @@ src/
 `--scrim`（遮罩）、`--switch-knob`（开关滑块）。深色底上用 `rgb(0 0 0 / 6%)` 会脏，滑块颜色不对会直接看不见。
 
 主题在设置 → 外观切换，存在 `theme`（Preferences），并往 `localStorage` 写一份 `theme_boot` 同步镜像，
-启动瞬间就上色，避免深色用户先闪一帧浅色。安卓 edge-to-edge 下由 `@capacitor/status-bar` 同步状态栏图标明暗。
+启动瞬间就上色，避免深色用户先闪一帧浅色。
+
+系统栏（状态栏 + 底部导航栏）由自研的 `AppearancePlugin`（`android/.../AppearancePlugin.java`）统一上色与切图标明暗：
+
+- 为什么不用 `@capacitor/status-bar`：它管不到底部导航栏，而且只改图标明暗不改底色 ——
+  Android 15+ 系统栏透明覆盖，看起来没问题；**Android 15 以下系统栏不透明、取主题里的浅色**，
+  于是深色主题会出现「白底 + 浅色图标」的空白带，上下各一条
+- `MainActivity.onCreate` 里会在首帧前读一次 `CapacitorStorage` 的 `theme`，先把系统栏上好色，
+  避免冷启动先露一眼白
 
 > 统计图表（ECharts）的颜色是 init 时从 CSS 变量读的一次性快照，主题变化时依赖变化会重建图表；
 > 以后再加图表记得把 `theme` 放进 effect 依赖。
