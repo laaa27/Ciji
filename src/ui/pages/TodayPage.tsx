@@ -103,6 +103,8 @@ export default function TodayPage({ onGoSettings }: Props) {
         )}
       </header>
 
+      {snapshot?.warning && <p className={styles.warning}>{snapshot.warning}</p>}
+
       {!sessionReady && null}
 
       {sessionReady && !token && (

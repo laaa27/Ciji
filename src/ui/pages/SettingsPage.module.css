@@ -116,8 +116,43 @@
   color: var(--state-new);
 }
 
+.feedback[data-kind='warn'] {
+  color: var(--state-vague);
+}
+
 .feedback[data-kind='err'] {
   color: var(--state-forget);
+}
+
+.rawBox {
+  margin-top: var(--sp-3);
+}
+
+.rawBox summary {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  padding: 4px 0;
+  cursor: pointer;
+  list-style: none;
+}
+
+.rawBox summary::-webkit-details-marker {
+  display: none;
+}
+
+.rawBox pre {
+  margin: 6px 0 0;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 160px;
+  overflow: auto;
 }
 
 .about {

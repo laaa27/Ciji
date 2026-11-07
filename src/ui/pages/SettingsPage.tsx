@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { getLastRawResponse } from '@/api/client'
 import { getStudyProgress } from '@/api/study'
 import { clearAll } from '@/data/store'
 import { exportAll } from '@/domain/export'
@@ -8,7 +9,7 @@ import { useToday } from '@/store/today'
 
 import styles from './SettingsPage.module.css'
 
-type Feedback = { kind: 'ok' | 'err'; text: string } | null
+type Feedback = { kind: 'ok' | 'warn' | 'err'; text: string } | null
 
 export default function SettingsPage() {
   const token = useSession((s) => s.token)
@@ -33,19 +34,60 @@ export default function SettingsPage() {
     setFeedback(null)
 
     try {
+      // 先用临时 token 探一次，确认凭证本身可用
+      const res = await getStudyProgress(value)
       await saveToken(value)
-      const res = await getStudyProgress()
-      const { finished, total } = res.progress
-      setFeedback({
-        kind: 'ok',
-        text: `连接成功。今日已完成 ${finished}/${total || '—'}`,
-      })
       setInput('')
       resetToday()
+
+      if (res?.progress && typeof res.progress.finished === 'number') {
+        setFeedback({
+          kind: 'ok',
+          text: `连接成功。今日已完成 ${res.progress.finished}/${res.progress.total || '—'}`,
+        })
+      } else {
+        const raw = getLastRawResponse()
+        setFeedback({
+          kind: 'warn',
+          text:
+            '凭证有效，但接口没有返回今日学习数据。请确认墨墨 App 里已开启「自动同步」，并且今天打开过 App。' +
+            (raw ? `（原始响应：${raw.slice(0, 120)}）` : ''),
+        })
+      }
     } catch (e) {
       setFeedback({
         kind: 'err',
         text: e instanceof Error ? e.message : '连接失败，请检查凭证',
+      })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function handleRetest() {
+    setBusy(true)
+    setFeedback(null)
+    try {
+      const res = await getStudyProgress()
+      if (res?.progress && typeof res.progress.finished === 'number') {
+        setFeedback({
+          kind: 'ok',
+          text: `连接正常。今日已完成 ${res.progress.finished}/${res.progress.total || '—'}`,
+        })
+      } else {
+        const raw = getLastRawResponse()
+        setFeedback({
+          kind: 'warn',
+          text:
+            '接口通了，但没有学习数据。今天还没打开过墨墨 App，或没开启「自动同步」。' +
+            (raw ? `（原始响应：${raw.slice(0, 120)}）` : ''),
+        })
+      }
+      resetToday()
+    } catch (e) {
+      setFeedback({
+        kind: 'err',
+        text: e instanceof Error ? e.message : '连接失败',
       })
     } finally {
       setBusy(false)
@@ -80,6 +122,8 @@ export default function SettingsPage() {
     setFeedback({ kind: 'ok', text: '本地记录已清空' })
   }
 
+  const raw = feedback?.kind === 'ok' ? null : getLastRawResponse()
+
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>设置</h1>
@@ -91,11 +135,21 @@ export default function SettingsPage() {
           <>
             <p className={styles.connected}>
               <span className={styles.dot} />
-              已连接
+              凭证已保存
             </p>
-            <button type="button" className={styles.ghost} onClick={() => void handleDisconnect()}>
-              断开并清除
-            </button>
+            <div className={styles.actions}>
+              <button
+                type="button"
+                className={styles.secondary}
+                onClick={() => void handleRetest()}
+                disabled={busy}
+              >
+                {busy ? '测试中…' : '测试连接'}
+              </button>
+              <button type="button" className={styles.ghost} onClick={() => void handleDisconnect()}>
+                断开并清除
+              </button>
+            </div>
           </>
         ) : (
           <>
@@ -138,6 +192,13 @@ export default function SettingsPage() {
             {feedback.text}
           </p>
         )}
+
+        {raw && feedback?.kind !== 'ok' && (
+          <details className={styles.rawBox}>
+            <summary>查看原始响应</summary>
+            <pre>{raw}</pre>
+          </details>
+        )}
       </section>
 
       <section className={styles.section}>
@@ -175,7 +236,7 @@ export default function SettingsPage() {
         <p className={styles.about}>
           词迹记录你每天在墨墨背单词里新学、模糊、忘记的词。数据只存在这台设备上。
         </p>
-        <p className={styles.meta}>版本 0.1 · 基于墨墨开放 API（公测）</p>
+        <p className={styles.meta}>版本 0.1.1 · 基于墨墨开放 API（公测）</p>
       </section>
     </div>
   )

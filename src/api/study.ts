@@ -9,9 +9,9 @@ import type {
 
 const P = '/api/v1/memo/study'
 
-/** 今日学习进度与时长 */
-export function getStudyProgress() {
-  return post<ProgressResponse>(`${P}/get_study_progress`, {})
+/** 今日学习进度与时长。可传入临时 token 用于「先测试再保存」 */
+export function getStudyProgress(token?: string) {
+  return post<ProgressResponse>(`${P}/get_study_progress`, {}, token)
 }
 
 /** 今日学习单词。limit 上限 1000，默认只给 50，必须显式传大 */

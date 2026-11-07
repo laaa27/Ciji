@@ -25,6 +25,8 @@ export interface TodaySnapshot {
   studyTimeMs: number
   words: CollectedWord[]
   collectedAt: string
+  /** 接口返回不完整时的说明，界面据此提示而不是假装正常 */
+  warning?: string
 }
 
 /** 中文短语，用于界面上的「初模糊 → 终认识」 */
@@ -106,13 +108,26 @@ export async function collectToday(): Promise<TodaySnapshot> {
 
   words.sort((a, b) => a.order - b.order)
 
+  // 接口是公测，且「当日未打开 App 初始化」时不保证有数据，必须显式降级
+  const progress = progressRes?.progress
+  const hasProgress = Boolean(progress) && typeof progress?.finished === 'number'
+
+  let warning: string | undefined
+  if (!hasProgress) {
+    warning =
+      rawItems.length > 0
+        ? '进度数据缺失，下面的词表仍然可用'
+        : '接口没有返回今日数据。确认墨墨 App 里已开启「自动同步」，并在今天打开过它。'
+  }
+
   return {
     date: dateKey(),
-    finished: progressRes?.progress.finished ?? studied.length,
-    total: progressRes?.progress.total ?? 0,
-    studyTimeMs: progressRes?.progress.study_time ?? 0,
+    finished: hasProgress ? progress!.finished : studied.length,
+    total: hasProgress ? progress!.total : 0,
+    studyTimeMs: hasProgress ? progress!.study_time : 0,
     words,
     collectedAt: new Date().toISOString(),
+    warning,
   }
 }
 

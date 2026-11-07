@@ -24,6 +24,13 @@ export class ApiError extends Error {
 
 let tokenProvider: () => string | null = () => null
 
+/** 最近一次请求的原始响应，用于设置页诊断 */
+let lastRawResponse: string | null = null
+
+export function getLastRawResponse(): string | null {
+  return lastRawResponse
+}
+
 /** 由 session store 注入，避免 api 层直接依赖 store */
 export function setTokenProvider(fn: () => string | null) {
   tokenProvider = fn
@@ -43,8 +50,12 @@ function timeoutSignal(ms: number): AbortSignal {
   return ctrl.signal
 }
 
-export async function post<T>(path: string, body: unknown): Promise<T> {
-  const token = tokenProvider()
+export async function post<T>(
+  path: string,
+  body: unknown,
+  overrideToken?: string,
+): Promise<T> {
+  const token = overrideToken ?? tokenProvider()
   if (!token) throw new ApiError('还没有填写接口凭证')
 
   const native = Capacitor.isNativePlatform()
@@ -61,13 +72,20 @@ export async function post<T>(path: string, body: unknown): Promise<T> {
       readTimeout: 25000,
     })
 
+    const raw =
+      typeof res.data === 'string' ? res.data : JSON.stringify(res.data ?? null)
+    lastRawResponse = raw
+
     if (res.status < 200 || res.status >= 300) {
-      const raw = typeof res.data === 'string' ? res.data : JSON.stringify(res.data ?? '')
       throw new ApiError(friendlyMessage(res.status, raw), res.status)
     }
 
     // 原生层可能已解析成对象，也可能是字符串
-    return (typeof res.data === 'string' ? JSON.parse(res.data) : res.data) as T
+    try {
+      return (typeof res.data === 'string' ? JSON.parse(raw) : res.data) as T
+    } catch {
+      throw new ApiError(`返回内容不是合法 JSON：${raw.slice(0, 120)}`)
+    }
   }
 
   const res = await fetch(WEB_BASE + path, {
@@ -81,10 +99,15 @@ export async function post<T>(path: string, body: unknown): Promise<T> {
   })
 
   const text = await res.text()
+  lastRawResponse = text
 
   if (!res.ok) {
     throw new ApiError(friendlyMessage(res.status, text), res.status)
   }
 
-  return JSON.parse(text) as T
+  try {
+    return JSON.parse(text) as T
+  } catch {
+    throw new ApiError(`返回内容不是合法 JSON：${text.slice(0, 120)}`)
+  }
 }

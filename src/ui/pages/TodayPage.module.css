@@ -174,3 +174,13 @@
   color: var(--ink-3);
   line-height: 1.6;
 }
+
+.warning {
+  margin-bottom: var(--sp-6);
+  padding: 10px 12px;
+  background: #fdf8ef;
+  border-left: 2px solid var(--state-vague);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.65;
+}
