@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { getLastRawResponse } from '@/api/client'
 import { getStudyProgress } from '@/api/study'
+import { isOnlineLookupEnabled, saveOnlineLookup } from '@/data/dict'
 import { clearAll } from '@/data/store'
 import { exportAll } from '@/domain/export'
 import { useSession } from '@/store/session'
@@ -22,6 +23,16 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState<Feedback>(null)
   const [exporting, setExporting] = useState<'csv' | 'md' | null>(null)
+  const [online, setOnline] = useState(isOnlineLookupEnabled())
+
+  useEffect(() => {
+    setOnline(isOnlineLookupEnabled())
+  }, [])
+
+  async function handleToggleOnline(next: boolean) {
+    setOnline(next)
+    await saveOnlineLookup(next)
+  }
 
   async function handleConnect() {
     const value = input.trim()
@@ -199,6 +210,23 @@ export default function SettingsPage() {
             <pre>{raw}</pre>
           </details>
         )}
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.label}>查词</h2>
+
+        <label className={styles.switchRow}>
+          <span className={styles.switchText}>
+            联网补查
+            <em>本地词典没有的词（多是短语），用免费在线翻译兜底。查过的会存下来，不会重复请求。</em>
+          </span>
+          <input
+            type="checkbox"
+            className={styles.switch}
+            checked={online}
+            onChange={(e) => void handleToggleOnline(e.target.checked)}
+          />
+        </label>
       </section>
 
       <section className={styles.section}>

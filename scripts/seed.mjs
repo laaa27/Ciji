@@ -4,6 +4,8 @@ const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'
 const URL = 'http://localhost:5173/'
 
 const POOL = [
+  // 放最前，保证第一天就出现在列表里，用来验证在线兜底链路
+  'give up', 'in terms of', 'take into account',
   'abandon', 'inherent', 'scrutiny', 'prevalent', 'concede', 'eloquent',
   'reluctant', 'ambiguous', 'coherent', 'implicit', 'notorious', 'vulnerable',
   'meticulous', 'pragmatic', 'tentative', 'obscure', 'resilient', 'candid',
@@ -91,7 +93,8 @@ await new Promise((r) => setTimeout(r, 700))
 if (which === 'history') {
   const firstHead = await page.$('ul li button')
   if (firstHead) await firstHead.click()
-  await new Promise((r) => setTimeout(r, 400))
+  // 只等本地分片加载，在线兜底应该后补、不阻塞本地释义
+  await new Promise((r) => setTimeout(r, 1200))
 }
 
 await page.screenshot({ path: process.argv[2] || 'history.png' })

@@ -40,10 +40,11 @@ export default function TodayPage({ onGoSettings }: Props) {
   useEffect(() => {
     if (!snapshot || snapshot.words.length === 0) return
     let alive = true
-    void lookupWords(snapshot.words.map((w) => w.spelling)).then((map) => {
+    const merge = (m: Map<string, string>) => {
       if (!alive) return
-      setGlosses(Object.fromEntries(map))
-    })
+      setGlosses((prev) => ({ ...prev, ...Object.fromEntries(m) }))
+    }
+    void lookupWords(snapshot.words.map((w) => w.spelling), { onLocal: merge }).then(merge)
     return () => {
       alive = false
     }

@@ -6,6 +6,7 @@ import TodayPage from './ui/pages/TodayPage'
 import HistoryPage from './ui/pages/HistoryPage'
 import StatsPage from './ui/pages/StatsPage'
 import SettingsPage from './ui/pages/SettingsPage'
+import { loadLookupSettings } from './data/dict'
 import { useSession } from './store/session'
 
 export default function App() {
@@ -14,6 +15,7 @@ export default function App() {
 
   useEffect(() => {
     void load()
+    void loadLookupSettings()
   }, [load])
 
   return (
