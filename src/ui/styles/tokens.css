@@ -52,8 +52,10 @@
   /* 布局 */
   --gutter: 20px;
   --tabbar-h: 54px;
-  --safe-top: env(safe-area-inset-top, 0px);
-  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Android WebView 的 env(safe-area-inset-*) 常返回 0，
+     用 max() 兜一个下限，避免内容顶到状态栏下面 */
+  --safe-top: max(env(safe-area-inset-top, 0px), 30px);
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
 }
 
 /* ─────────────────────────────────────────────

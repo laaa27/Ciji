@@ -3,10 +3,12 @@ import { Capacitor, CapacitorHttp } from '@capacitor/core'
 /**
  * 统一请求封装。
  *
- * 为什么要分两条路：
- * - 墨墨 API 没有返回 CORS 头，浏览器里直接 fetch 会被拦。
- * - 开发时（浏览器）：走 Vite 代理，路径前缀 /open。
- * - 真机（WebView）：用 Capacitor 的原生 HTTP，完全绕过 CORS。
+ * 两个必须知道的点：
+ * 1. 墨墨 API 没有返回 CORS 头 → 浏览器直连会被拦。
+ *    开发时走 Vite 代理（/open），真机用 Capacitor 原生 HTTP 绕过。
+ * 2. 响应外面包了一层信封：{ success, data, errors }
+ *    真正的数据在 data 里。这份格式来自官方 CLI 的解析逻辑
+ *    (maimemo/memo-api-cli src/client.ts)，比 api_bundle.yaml 的 schema 更接近实际。
  */
 
 const NATIVE_BASE = 'https://open.maimemo.com/open'
@@ -20,6 +22,12 @@ export class ApiError extends Error {
     this.name = 'ApiError'
     this.status = status
   }
+}
+
+type ApiEnvelope<T> = {
+  success?: boolean
+  data?: T
+  errors?: { code?: string; msg?: string; message?: string; info?: string }[]
 }
 
 let tokenProvider: () => string | null = () => null
@@ -36,12 +44,52 @@ export function setTokenProvider(fn: () => string | null) {
   tokenProvider = fn
 }
 
-function friendlyMessage(status: number, raw: string): string {
+const ERROR_HINT: Record<string, string> = {
+  common_unauthorized: '凭证无效或已失效，请重新填写',
+  common_forbidden: '这个账号没有该接口权限',
+  common_too_many_requests: '请求太频繁，等几秒再试',
+}
+
+function describeError(raw: string, status: number): string {
+  try {
+    const json = JSON.parse(raw) as ApiEnvelope<unknown>
+    const first = json.errors?.[0]
+    if (first) {
+      const hint = first.code ? ERROR_HINT[first.code] : undefined
+      if (hint) return hint
+      const msg = first.msg || first.message
+      if (msg) return first.code ? `${msg}（${first.code}）` : msg
+    }
+  } catch {
+    // 不是 JSON，走下面的通用文案
+  }
+
   if (status === 401 || status === 403) return '凭证无效或已失效，请到设置页重新填写'
   if (status === 429) return '请求太频繁，等几秒再试'
   if (status >= 500) return '墨墨服务暂时不可用，稍后再试'
-  const detail = raw.trim().slice(0, 120)
-  return detail ? `请求失败：${detail}` : `请求失败（${status}）`
+  return `请求失败（${status}）`
+}
+
+/** 剥掉响应信封，取出真正的数据；同时把业务错误变成异常 */
+function unwrap<T>(raw: string): T {
+  let json: unknown
+  try {
+    json = JSON.parse(raw)
+  } catch {
+    throw new ApiError(`返回内容不是合法 JSON：${raw.slice(0, 120)}`)
+  }
+
+  const env = json as ApiEnvelope<T>
+
+  if (Array.isArray(env.errors) && env.errors.length > 0) {
+    throw new ApiError(describeError(raw, 200))
+  }
+  if (env.success === false) {
+    throw new ApiError(describeError(raw, 200))
+  }
+
+  // 有 data 就用 data，没有就认为整包就是数据（兼容旧格式）
+  return (env.data ?? (json as T)) as T
 }
 
 function timeoutSignal(ms: number): AbortSignal {
@@ -77,15 +125,10 @@ export async function post<T>(
     lastRawResponse = raw
 
     if (res.status < 200 || res.status >= 300) {
-      throw new ApiError(friendlyMessage(res.status, raw), res.status)
+      throw new ApiError(describeError(raw, res.status), res.status)
     }
 
-    // 原生层可能已解析成对象，也可能是字符串
-    try {
-      return (typeof res.data === 'string' ? JSON.parse(raw) : res.data) as T
-    } catch {
-      throw new ApiError(`返回内容不是合法 JSON：${raw.slice(0, 120)}`)
-    }
+    return unwrap<T>(raw)
   }
 
   const res = await fetch(WEB_BASE + path, {
@@ -102,12 +145,8 @@ export async function post<T>(
   lastRawResponse = text
 
   if (!res.ok) {
-    throw new ApiError(friendlyMessage(res.status, text), res.status)
+    throw new ApiError(describeError(text, res.status), res.status)
   }
 
-  try {
-    return JSON.parse(text) as T
-  } catch {
-    throw new ApiError(`返回内容不是合法 JSON：${text.slice(0, 120)}`)
-  }
+  return unwrap<T>(text)
 }
