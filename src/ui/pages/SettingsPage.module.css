@@ -1,0 +1,162 @@
+.page {
+  padding: calc(var(--safe-top) + var(--sp-7)) var(--gutter) var(--sp-10);
+}
+
+.title {
+  font-family: var(--font-word);
+  font-size: var(--fs-display);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--sp-8);
+}
+
+.section {
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--rule);
+  margin-bottom: var(--sp-7);
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  margin-bottom: var(--sp-3);
+}
+
+.inputRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.input {
+  flex: 1;
+  min-width: 0;
+  height: 44px;
+  padding: 0 12px;
+  background: var(--surface);
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  font-size: var(--fs-sm);
+  letter-spacing: 0.02em;
+}
+
+.input::placeholder {
+  color: var(--ink-3);
+}
+
+.input:focus {
+  border-color: var(--ink);
+  outline: none;
+}
+
+.toggle {
+  flex: none;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  padding: 8px 4px;
+}
+
+.help {
+  margin-top: 10px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  line-height: 1.65;
+}
+
+.primary {
+  display: inline-flex;
+  align-items: center;
+  height: 40px;
+  margin-top: var(--sp-5);
+  padding: 0 20px;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 2px;
+  font-size: var(--fs-sm);
+}
+
+.primary:disabled {
+  opacity: 0.5;
+}
+
+.ghost {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  padding: 8px 0;
+  text-decoration: underline;
+  text-decoration-color: var(--rule-strong);
+  text-underline-offset: 4px;
+}
+
+.connected {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--fs-body);
+  color: var(--ink);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--state-new);
+}
+
+.feedback {
+  margin-top: var(--sp-4);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+
+.feedback[data-kind='ok'] {
+  color: var(--state-new);
+}
+
+.feedback[data-kind='err'] {
+  color: var(--state-forget);
+}
+
+.about {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.7;
+  max-width: 34ch;
+}
+
+.meta {
+  margin-top: 10px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin-top: var(--sp-4);
+}
+
+.secondary {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.secondary:disabled {
+  opacity: 0.5;
+}
+
+.danger {
+  margin-top: var(--sp-5);
+  font-size: var(--fs-sm);
+  color: var(--state-forget);
+  padding: 6px 0;
+}

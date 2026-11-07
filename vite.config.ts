@@ -14,6 +14,14 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
+    proxy: {
+      // 墨墨 API 无 CORS 头，开发时走代理；真机由 CapacitorHttp 直连
+      '/open': {
+        target: 'https://open.maimemo.com',
+        changeOrigin: true,
+        secure: true,
+      },
+    },
   },
   build: {
     outDir: 'dist',

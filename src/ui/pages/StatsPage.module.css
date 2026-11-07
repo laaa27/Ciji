@@ -1,0 +1,86 @@
+.page {
+  padding: calc(var(--safe-top) + var(--sp-7)) var(--gutter) var(--sp-10);
+}
+
+.title {
+  font-family: var(--font-word);
+  font-size: var(--fs-display);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--sp-6);
+}
+
+.summary {
+  font-size: var(--fs-body);
+  color: var(--ink-2);
+  line-height: 1.85;
+  margin-bottom: var(--sp-8);
+}
+
+.summary strong {
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary strong[data-state='new'] {
+  color: var(--state-new);
+}
+
+.summary strong[data-state='vague'] {
+  color: var(--state-vague);
+}
+
+.summary strong[data-state='forget'] {
+  color: var(--state-forget);
+}
+
+.section {
+  margin-bottom: var(--sp-9);
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  padding-bottom: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.chart {
+  width: 100%;
+  height: 200px;
+}
+
+.hint {
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  padding: var(--sp-4) 0;
+  line-height: 1.6;
+}
+
+.list {
+  border-top: 1px solid var(--rule);
+}
+
+.listItem {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+}
+
+.listWord {
+  font-family: var(--font-word);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  letter-spacing: -0.005em;
+}
+
+.listCount {
+  font-size: var(--fs-sm);
+  color: var(--state-forget);
+  font-variant-numeric: tabular-nums;
+}

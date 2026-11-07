@@ -1,5 +1,5 @@
 .page {
-  padding: calc(var(--safe-top) + var(--sp-7, 28px)) var(--gutter) var(--sp-10);
+  padding: calc(var(--safe-top) + var(--sp-7)) var(--gutter) var(--sp-10);
 }
 
 .header {
@@ -23,6 +23,29 @@
 
 .weekday {
   font-size: var(--fs-sm);
+  color: var(--ink-3);
+}
+
+.topRight {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.updated {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.refresh {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  padding: 6px 0 6px 6px;
+}
+
+.refresh:disabled {
   color: var(--ink-3);
 }
 
@@ -81,7 +104,7 @@
 }
 
 .group {
-  margin-bottom: var(--sp-9, 36px);
+  margin-bottom: var(--sp-9);
 }
 
 .groupHead {
@@ -106,7 +129,48 @@
 }
 
 .empty {
+  padding: var(--sp-3) 0 var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+}
+
+/* ── 引导 / 错误 ───────────────────────── */
+
+.notice {
+  padding: var(--sp-4) 0 var(--sp-6);
+}
+
+.noticeTitle {
+  font-family: var(--font-word);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+
+.noticeText {
+  margin-top: 8px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.65;
+  max-width: 30ch;
+}
+
+.button {
+  display: inline-flex;
+  align-items: center;
+  height: 36px;
+  margin-top: var(--sp-5);
+  padding: 0 18px;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 2px;
+  font-size: var(--fs-sm);
+}
+
+.hint {
   padding: var(--sp-4) 0;
   font-size: var(--fs-sm);
   color: var(--ink-3);
+  line-height: 1.6;
 }

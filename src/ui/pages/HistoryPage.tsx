@@ -1,11 +1,148 @@
+import { useEffect, useMemo, useState } from 'react'
+
+import { getAllDays } from '@/data/store'
+import { lookupWords } from '@/data/dict'
+import { responseNote, type TodaySnapshot, type WordState } from '@/domain/collect'
+import { monthDay, weekday } from '@/lib/date'
+
+import WordRow from '../components/WordRow'
 import EmptyState from '../components/EmptyState'
-import styles from './Placeholder.module.css'
+import styles from './HistoryPage.module.css'
+
+const ORDER: WordState[] = ['new', 'vague', 'forget']
+const TITLE: Record<WordState, string> = { new: '新学', vague: '模糊', forget: '忘记' }
+
+type Counts = Record<WordState, number>
+
+function countBy(words: TodaySnapshot['words']): Counts {
+  const c: Counts = { new: 0, vague: 0, forget: 0 }
+  for (const w of words) c[w.state] += 1
+  return c
+}
+
+function DayItem({
+  day,
+  open,
+  onToggle,
+}: {
+  day: TodaySnapshot
+  open: boolean
+  onToggle: () => void
+}) {
+  const counts = useMemo(() => countBy(day.words), [day.words])
+  const total = day.words.length
+
+  const [glosses, setGlosses] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (!open || day.words.length === 0) return
+    let alive = true
+    void lookupWords(day.words.map((w) => w.spelling)).then((map) => {
+      if (!alive) return
+      setGlosses(Object.fromEntries(map))
+    })
+    return () => {
+      alive = false
+    }
+  }, [open, day])
+
+  return (
+    <li className={styles.item}>
+      <button type="button" className={styles.head} onClick={onToggle} aria-expanded={open}>
+        <span className={styles.date}>{monthDay(day.date)}</span>
+        <span className={styles.weekday}>{weekday(day.date)}</span>
+
+        {total > 0 ? (
+          <span className={styles.ratio} aria-hidden="true">
+            {ORDER.map((k) =>
+              counts[k] > 0 ? (
+                <span
+                  key={k}
+                  data-state={k}
+                  style={{ flexGrow: counts[k] }}
+                />
+              ) : null,
+            )}
+          </span>
+        ) : (
+          <span className={styles.ratio} />
+        )}
+
+        <span className={styles.total}>{total > 0 ? total : '—'}</span>
+      </button>
+
+      {open && (
+        <div className={styles.detail}>
+          {total === 0 ? (
+            <p className={styles.none}>这天没有学习记录</p>
+          ) : (
+            ORDER.filter((k) => counts[k] > 0).map((k) => (
+              <div key={k} className={styles.block}>
+                <div className={styles.blockHead}>
+                  {TITLE[k]}
+                  <span>{counts[k]}</span>
+                </div>
+                <ul>
+                  {day.words
+                    .filter((w) => w.state === k)
+                    .map((w) => (
+                      <WordRow
+                        key={w.vocId}
+                        spelling={w.spelling}
+                        gloss={glosses[w.spelling.toLowerCase()]}
+                        state={w.state}
+                        note={responseNote(w)}
+                      />
+                    ))}
+                </ul>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+    </li>
+  )
+}
 
 export default function HistoryPage() {
+  const [days, setDays] = useState<TodaySnapshot[]>([])
+  const [loading, setLoading] = useState(true)
+  const [open, setOpen] = useState<string | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    void getAllDays().then((list) => {
+      if (!alive) return
+      setDays(list)
+      setLoading(false)
+    })
+    return () => {
+      alive = false
+    }
+  }, [])
+
   return (
     <div className={styles.page}>
       <h1 className={styles.title}>历史</h1>
-      <EmptyState title="还没有记录" hint="每天打开一次，这里会按日期攒下你的词。" />
+
+      {loading && <p className={styles.hint}>读取中…</p>}
+
+      {!loading && days.length === 0 && (
+        <EmptyState title="还没有记录" hint="每天打开一次，这里会按日期攒下你的词。" />
+      )}
+
+      {!loading && days.length > 0 && (
+        <ul className={styles.list}>
+          {days.map((day) => (
+            <DayItem
+              key={day.date}
+              day={day}
+              open={open === day.date}
+              onToggle={() => setOpen(open === day.date ? null : day.date)}
+            />
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

@@ -17,13 +17,9 @@ export default function WordRow({ spelling, gloss, state, note }: Props) {
         <span className={styles.word}>{spelling}</span>
         {note && <span className={styles.note}>{note}</span>}
       </div>
-      {gloss !== undefined ? (
-        <p className={styles.gloss}>{gloss || '—'}</p>
-      ) : (
-        <p className={styles.gloss} data-pending="true">
-          查询中
-        </p>
-      )}
+      {gloss ? (
+        <p className={styles.gloss}>{gloss}</p>
+      ) : null}
     </li>
   )
 }

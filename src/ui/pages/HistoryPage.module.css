@@ -1,0 +1,115 @@
+.page {
+  padding: calc(var(--safe-top) + var(--sp-7)) var(--gutter) var(--sp-10);
+}
+
+.title {
+  font-family: var(--font-word);
+  font-size: var(--fs-display);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: var(--sp-6);
+}
+
+.hint {
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  padding: var(--sp-4) 0;
+}
+
+.list {
+  margin-top: var(--sp-2);
+}
+
+.item {
+  border-bottom: 1px solid var(--rule);
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 0;
+  text-align: left;
+}
+
+.date {
+  font-family: var(--font-word);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.weekday {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  flex: none;
+}
+
+/* 比例条：一眼看出这天的构成 */
+.ratio {
+  display: flex;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  height: 3px;
+}
+
+.ratio span {
+  display: block;
+  border-radius: 0.5px;
+}
+
+.ratio span[data-state='new'] {
+  background: var(--state-new);
+}
+
+.ratio span[data-state='vague'] {
+  background: var(--state-vague);
+}
+
+.ratio span[data-state='forget'] {
+  background: var(--state-forget);
+}
+
+.total {
+  flex: none;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  min-width: 2ch;
+  text-align: right;
+}
+
+.detail {
+  padding: 4px 0 20px;
+}
+
+.none {
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  padding: var(--sp-3) 0;
+}
+
+.block {
+  margin-bottom: var(--sp-5);
+}
+
+.blockHead {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  padding-bottom: 2px;
+}
+
+.blockHead span {
+  font-weight: 400;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
