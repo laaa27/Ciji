@@ -30,7 +30,51 @@
 - **液态玻璃底栏（实验性）**：悬浮半透明胶囊底栏，不透明度可调，可关闭
 - **导出 / 导入**：JSON 无损备份（换机用）、CSV / Markdown 给人看
 
-## 快速开始
+## 大模型配置
+
+生成文章需要一个可调用的大模型。三步接入，以 **DeepSeek** 为例：
+
+1. 到 [DeepSeek 开放平台](https://platform.deepseek.com/) 注册并创建 API Key（需充值，价格便宜，生成质量好）
+2. App 内 **设置 → 大模型 → 添加配置**，预填项选「DeepSeek」，只需粘贴 API Key（名称、地址、模型名已自动填好）
+3. 保存并选中这份配置，回阅读页点「生成」即可
+
+> 也可以使用**智谱免费模型**（`glm-4-flash`，[智谱开放平台](https://open.bigmodel.cn/) 注册即有免费额度，
+> 预填项选「智谱」），不花钱就能跑通全流程——但生成质量可能不理想。
+
+不止 DeepSeek 和智谱：**OpenAI / Anthropic / 任何 OpenAI 兼容网关**都支持。不是「选一个服务商」，
+而是**存多份配置随时切换**：
+
+- 每份配置 = 名称 + 接口格式 + Base URL + 模型名 + API Key
+- 同一厂商的不同模型（`deepseek-chat` / `deepseek-reasoner`）算两份，切换一次点击
+
+两种接口格式（选预填项会自动带好，一般不用手动改）：
+
+| 格式 | 路径 | 鉴权 | 说明 |
+|---|---|---|---|
+| OpenAI 兼容 | `{base}/chat/completions`，base 无版本段时自动补 `/v1` | `Authorization: Bearer` | 智谱、DeepSeek、one-api、LM Studio、Ollama 都是这套 |
+| Anthropic | `{base}/v1/messages` | `x-api-key` + `anthropic-version: 2023-06-01` | system 提示会提到顶层字段，`max_tokens` 必填 |
+
+配置存在 `llm_profiles`（一整份 JSON）与 `llm_active`（当前 id）。
+v0.5.0 之前的 `llm_key` / `llm_provider` / `llm_model` 会在首次启动时自动迁成一条配置，随后删除旧键。
+
+> 浏览器里开发时，第三方 API 的 CORS 由 `vite.config.ts` 的 `__llm` 中间件转发（只跑 dev server）；
+> 真机走 `CapacitorHttp`，不受 CORS 限制。
+
+**失败处理。** 空响应（HTTP 200 但 `content` 为空）会自动重试一次：间隔 600ms；
+若是「预算被思维链吃光」（`finish_reason: length` 且正文为空），第二次把 `max_tokens` 翻倍（上限 8000）。
+429 / 5xx 同样重试一次，鉴权与地址类错误不重试。生成失败时阅读页会给出「查看模型原始响应」。
+
+## 墨墨 API 配置
+
+首次使用：App 里「设置 → 接口凭证」，填入墨墨的开放 API token。
+获取方式：墨墨 App → 我的 → 更多设置 → 实验功能 → 开放 API。
+
+> 还需在墨墨 App 里打开**自动同步**，否则学习数据接口会返回空。
+
+> 环境搭建、代码规范、测试与构建、出包部署的完整流程见
+> **[DEVELOPMENT.md](./DEVELOPMENT.md)**。
+
+## 快速开始（开发）
 
 ```bash
 npm install
@@ -45,14 +89,6 @@ npx cap sync         # 把 dist/ 同步进 Android 工程
 node scripts/test-import.mjs     # 导入：选文件 → 预览 → 两种合并策略 → 写盘断言
 node scripts/test-models.mjs     # 模型：迁移 → 添加 → 切换 → 改协议 → 删除（需 dev server）
 ```
-
-首次使用：App 里「设置 → 接口凭证」，填入墨墨的开放 API token。
-获取方式：墨墨 App → 我的 → 更多设置 → 实验功能 → 开放 API。
-
-> 还需在墨墨 App 里打开**自动同步**，否则学习数据接口会返回空。
-
-> 环境搭建、代码规范、测试与构建、出包部署的完整流程见
-> **[DEVELOPMENT.md](./DEVELOPMENT.md)**。
 
 ## 构建 APK
 
@@ -223,40 +259,6 @@ android/           Capacitor Android 工程（含 AppearancePlugin 等自研原�
 ```
 
 **为什么不用 SQLite**：一天一条，一年 365 条，用 Preferences 足够。原生走 SharedPreferences，web 走 localStorage，两端行为一致，不需要 wasm 和平台分支。数据量真的大起来（比如五年）再换。
-
-## 大模型配置
-
-生成文章需要一个可调用的大模型。三步接入，以 **DeepSeek** 为例：
-
-1. 到 [DeepSeek 开放平台](https://platform.deepseek.com/) 注册并创建 API Key（需充值，价格便宜，生成质量好）
-2. App 内 **设置 → 大模型 → 添加配置**，预填项选「DeepSeek」，只需粘贴 API Key（名称、地址、模型名已自动填好）
-3. 保存并选中这份配置，回阅读页点「生成」即可
-
-> 也可以使用**智谱免费模型**（`glm-4-flash`，[智谱开放平台](https://open.bigmodel.cn/) 注册即有免费额度，
-> 预填项选「智谱」），不花钱就能跑通全流程——但生成质量可能不理想。
-
-不止 DeepSeek 和智谱：**OpenAI / Anthropic / 任何 OpenAI 兼容网关**都支持。不是「选一个服务商」，
-而是**存多份配置随时切换**：
-
-- 每份配置 = 名称 + 接口格式 + Base URL + 模型名 + API Key
-- 同一厂商的不同模型（`deepseek-chat` / `deepseek-reasoner`）算两份，切换一次点击
-
-两种接口格式（选预填项会自动带好，一般不用手动改）：
-
-| 格式 | 路径 | 鉴权 | 说明 |
-|---|---|---|---|
-| OpenAI 兼容 | `{base}/chat/completions`，base 无版本段时自动补 `/v1` | `Authorization: Bearer` | 智谱、DeepSeek、one-api、LM Studio、Ollama 都是这套 |
-| Anthropic | `{base}/v1/messages` | `x-api-key` + `anthropic-version: 2023-06-01` | system 提示会提到顶层字段，`max_tokens` 必填 |
-
-配置存在 `llm_profiles`（一整份 JSON）与 `llm_active`（当前 id）。
-v0.5.0 之前的 `llm_key` / `llm_provider` / `llm_model` 会在首次启动时自动迁成一条配置，随后删除旧键。
-
-> 浏览器里开发时，第三方 API 的 CORS 由 `vite.config.ts` 的 `__llm` 中间件转发（只跑 dev server）；
-> 真机走 `CapacitorHttp`，不受 CORS 限制。
-
-**失败处理。** 空响应（HTTP 200 但 `content` 为空）会自动重试一次：间隔 600ms；
-若是「预算被思维链吃光」（`finish_reason: length` 且正文为空），第二次把 `max_tokens` 翻倍（上限 8000）。
-429 / 5xx 同样重试一次，鉴权与地址类错误不重试。生成失败时阅读页会给出「查看模型原始响应」。
 
 ## 导出与导入
 
