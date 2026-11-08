@@ -109,6 +109,18 @@
   opacity: 0.5;
 }
 
+/* 计时器不是按钮，去掉按钮态的可点暗示，数字用等宽排布免得每秒跳动。
+   计时中借 data-on 拿主色，但不要下划线——那是「可切换」的语言 */
+.action[data-timer='true'] {
+  cursor: default;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
+
+.action[data-timer='true'][data-on='true'] {
+  text-decoration: none;
+}
+
 /* ── 字号选择 ───────────────────────────── */
 
 .sizePanel {

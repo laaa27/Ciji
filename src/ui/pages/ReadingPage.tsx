@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Preferences } from '@capacitor/preferences'
 
+import { addReadingSeconds, getReadingSeconds } from '@/data/reading'
 import { listDays } from '@/data/store'
 import {
   deleteArticle,
@@ -53,6 +54,19 @@ const WORD_LIMITS = [10, 15, 20, 25, 30]
 const FONT_KEY = 'reading_font_size'
 const LIMIT_KEY = 'reading_word_limit'
 const LEVEL_KEY = 'reading_level'
+
+/** 内存里攒够这么多秒才落盘一次，避免每秒都打原生存储 */
+const READ_FLUSH_SEC = 15
+
+/** 把秒数排成 05:24 / 1:02:03 这样的表盘格式 */
+function fmtDuration(sec: number): string {
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  const s = sec % 60
+  const mm = String(m).padStart(2, '0')
+  const ss = String(s).padStart(2, '0')
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+}
 
 /** 按单词切分句子，保留标点和空格 */
 function tokenize(sentence: string): { text: string; isWord: boolean }[] {
@@ -107,6 +121,50 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   const headerStuck = useScrollStuck(headerRef)
 
   const today = dateKey()
+
+  // ── 阅读计时 ─────────────────────────────
+  // todaySeconds 是「今天累计」（已落盘的 + 本次会话正在攒的），
+  // sessionRef 只在内存里攒，够 15 秒或离开计时状态时一次性落盘
+  const [todaySeconds, setTodaySeconds] = useState(0)
+  const sessionRef = useRef(0)
+
+  useEffect(() => {
+    void getReadingSeconds(today).then(setTodaySeconds)
+  }, [today])
+
+  /** 只在真正读文章时计时：停在阅读栏目 + 打开着文章 + 不在子视图（文章库/生成） */
+  const counting = active && Boolean(article) && !libOpen && !genOpen
+
+  useEffect(() => {
+    if (!counting) return
+
+    const flush = () => {
+      const sec = sessionRef.current
+      if (sec <= 0) return
+      sessionRef.current = 0
+      void addReadingSeconds(today, sec)
+    }
+
+    const id = window.setInterval(() => {
+      // 切后台时 WebView 的定时器不可靠，挂后台的时长不能算进阅读时间
+      if (document.hidden) return
+      sessionRef.current += 1
+      setTodaySeconds((s) => s + 1)
+      if (sessionRef.current >= READ_FLUSH_SEC) flush()
+    }, 1000)
+
+    // 用户把应用切到后台的那一刻，先把攒着的秒数存掉
+    const onVisibility = () => {
+      if (document.hidden) flush()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+
+    return () => {
+      window.clearInterval(id)
+      document.removeEventListener('visibilitychange', onVisibility)
+      flush()
+    }
+  }, [counting, today])
 
   const refreshLibrary = useCallback(async () => {
     setLibrary(await listArticles())
@@ -335,6 +393,15 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
         <h1 className={styles.title}>阅读</h1>
 
         <div className={styles.actions}>
+          {/* 今日阅读时长：不走按钮逻辑，始终显示；计时中用主色提示「在计」 */}
+          <span
+            className={styles.action}
+            data-timer="true"
+            data-on={counting}
+            aria-label="今日阅读时长"
+          >
+            {fmtDuration(todaySeconds)}
+          </span>
           {hasArticle && (
             <>
               <button
