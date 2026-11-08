@@ -3,6 +3,7 @@ import { Preferences } from '@capacitor/preferences'
 
 import { getAllDays, getDay } from '@/data/store'
 import {
+  deleteArticle,
   getArticleById,
   getCoveredWordsToday,
   getLatestArticleOfDay,
@@ -30,7 +31,8 @@ import { useToast } from '@/store/toast'
 import { useLlm } from '@/store/llm'
 import type { TodaySnapshot } from '@/domain/collect'
 
-import { useScrollStuck } from '../hooks/useScrollStuck'
+import { findScrollParent, useScrollStuck } from '../hooks/useScrollStuck'
+import ArticleLibrary from '../components/ArticleLibrary'
 import WordSheet from '../components/WordSheet'
 import styles from './ReadingPage.module.css'
 
@@ -96,11 +98,15 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
 
   const [fontSize, setFontSize] = useState<FontSize>('m')
   const [sizePanel, setSizePanel] = useState(false)
-  const [pastOpen, setPastOpen] = useState(false)
+  /** 是否停在文章库子视图 */
+  const [libOpen, setLibOpen] = useState(false)
   const [showSetup, setShowSetup] = useState(false)
   const [pool, setPool] = useState<TodaySnapshot[]>([])
 
   const headerRef = useRef<HTMLElement>(null)
+  const pageRef = useRef<HTMLDivElement>(null)
+  /** 打开文章库之前的阅读位置，返回时原地恢复 */
+  const articleScroll = useRef(0)
   const headerStuck = useScrollStuck(headerRef)
 
   const today = dateKey()
@@ -212,13 +218,63 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     setArticle(a)
     setShowZh(false)
     setMissing([])
-    setPastOpen(false)
+    setLibOpen(false)
   }
+
+  function openLibrary() {
+    const scroller = findScrollParent(pageRef.current)
+    if (scroller) articleScroll.current = scroller.scrollTop
+    setLibOpen(true)
+  }
+
+  async function handleDeleteArticle(id: string) {
+    const wasOpen = article?.id === id
+    await deleteArticle(id)
+    await refreshLibrary()
+
+    if (!wasOpen) return
+
+    // 删掉的正是当前打开的那篇：换成剩下最新的一篇（不限当天），没有就清空
+    const remaining = await listArticles()
+    const next = remaining[0] ? await getArticleById(remaining[0].id) : null
+    setArticle(next)
+    setShowZh(false)
+    setMissing(next ? missingWords(next) : [])
+  }
+
+  // 进出子视图时重置/恢复滚动：库页从顶部看，返回时回到刚才读到的地方
+  useEffect(() => {
+    const scroller = findScrollParent(pageRef.current)
+    if (!scroller) return
+
+    if (libOpen) {
+      scroller.scrollTop = 0
+      return
+    }
+    const raf = requestAnimationFrame(() => {
+      scroller.scrollTop = articleScroll.current
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [libOpen])
 
   const hasArticle = Boolean(article)
 
+  if (libOpen) {
+    return (
+      <div className={styles.page} data-size={fontSize} ref={pageRef}>
+        <ArticleLibrary
+          items={library}
+          currentId={article?.id}
+          onBack={() => setLibOpen(false)}
+          onOpen={(id) => void handleOpen(id)}
+          onDelete={handleDeleteArticle}
+        />
+      </div>
+    )
+  }
+
   return (
-    <div className={styles.page} data-size={fontSize}>
+    <div className={styles.page} data-size={fontSize} ref={pageRef}>
       <header
         className={styles.header}
         ref={headerRef}
@@ -226,34 +282,41 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       >
         <h1 className={styles.title}>阅读</h1>
 
-        {hasArticle && (
-          <div className={styles.actions}>
-            <button
-              type="button"
-              className={styles.action}
-              data-on={showZh}
-              onClick={() => setShowZh((v) => !v)}
-            >
-              译文
+        <div className={styles.actions}>
+          {hasArticle && (
+            <>
+              <button
+                type="button"
+                className={styles.action}
+                data-on={showZh}
+                onClick={() => setShowZh((v) => !v)}
+              >
+                译文
+              </button>
+              <button
+                type="button"
+                className={styles.action}
+                data-on={sizePanel}
+                onClick={() => setSizePanel((v) => !v)}
+              >
+                字号
+              </button>
+              <button
+                type="button"
+                className={styles.action}
+                data-on={showSetup}
+                onClick={() => setShowSetup((v) => !v)}
+              >
+                {busy ? '生成中' : '生成'}
+              </button>
+            </>
+          )}
+          {library.length > 0 && (
+            <button type="button" className={styles.action} onClick={openLibrary}>
+              文章库
             </button>
-            <button
-              type="button"
-              className={styles.action}
-              data-on={sizePanel}
-              onClick={() => setSizePanel((v) => !v)}
-            >
-              字号
-            </button>
-            <button
-              type="button"
-              className={styles.action}
-              data-on={showSetup}
-              onClick={() => setShowSetup((v) => !v)}
-            >
-              {busy ? '生成中' : '生成'}
-            </button>
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       {sizePanel && (
@@ -269,41 +332,6 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
               {f.label}
             </button>
           ))}
-        </div>
-      )}
-
-      {library.length > 0 && (
-        <div className={styles.pastBar}>
-          <button
-            type="button"
-            className={styles.pastToggle}
-            onClick={() => setPastOpen((v) => !v)}
-            aria-expanded={pastOpen}
-          >
-            <span>文章库 · {library.length} 篇</span>
-            <span className={styles.caret} data-open={pastOpen}>
-              ⌄
-            </span>
-          </button>
-
-          {pastOpen && (
-            <ul className={styles.pastList}>
-              {library.map((h) => (
-                <li key={h.id}>
-                  <button
-                    type="button"
-                    className={styles.pastItem}
-                    data-current={h.id === article?.id}
-                    onClick={() => void handleOpen(h.id)}
-                  >
-                    <span className={styles.pastDate}>{monthDay(h.date)}</span>
-                    <span className={styles.pastTitle}>{h.title}</span>
-                    <span className={styles.pastCount}>{h.wordCount}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
       )}
 

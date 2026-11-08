@@ -267,7 +267,80 @@ const c2 = await page.evaluate(() => {
 })
 ok('切回来尺寸没被压成 0', c2 && c2.w > 100 && c2.h > 50, JSON.stringify(c2))
 
-console.log('\n[6] 无 JS 报错')
+console.log('\n[6] 文章库：入口、排序、打开、删除')
+await tabs[2].click()
+await t(500)
+
+const hasButton = (text) =>
+  page.evaluate((t) => [...document.querySelectorAll('button')].some((b) => b.textContent?.trim() === t), text)
+
+ok('标题行有文章库入口', await hasButton('文章库'))
+await clickText('文章库')
+await t(500)
+
+let libText = await bodyText()
+ok('进入文章库页面', libText.includes('2 篇'), libText.slice(0, 60))
+ok(
+  '最新的排在前面',
+  libText.indexOf('The Weight of Habit 2') < libText.indexOf('The Weight of Habit 1'),
+  libText.slice(0, 90),
+)
+
+// 打开第一行（最新那篇）。
+// 注意不能直接取 document.querySelector('li')：其它栏目是 display:none 但仍挂在 DOM 里，
+// 今日页的词条也是 li，会先被选中。按标题定位到文章库那一行。
+await page.evaluate(() => {
+  const li = [...document.querySelectorAll('li')].find((x) =>
+    x.textContent?.includes('The Weight of Habit 2'),
+  )
+  li?.querySelector('button')?.click()
+})
+await t(600)
+ok('打开文章后回到阅读页', (await bodyText()).includes('The Weight of Habit 2'))
+ok('文章库入口仍在', await hasButton('文章库'))
+
+// 把第一篇删掉：两次点击
+await clickText('文章库')
+await t(400)
+const removeRow = async (title) => {
+  const first = await page.evaluate((t) => {
+    const li = [...document.querySelectorAll('li')].find((x) => x.textContent?.includes(t))
+    const btn = [...(li?.querySelectorAll('button') ?? [])].find((b) =>
+      ['删除', '确认'].includes(b.textContent?.trim() ?? ''),
+    )
+    if (btn) btn.click()
+    return btn ? btn.textContent?.trim() : null
+  }, title)
+  return first
+}
+
+const label1 = await removeRow('The Weight of Habit 1')
+ok('第一次点删除只变成确认', label1 === '删除')
+await t(300)
+const label2 = await removeRow('The Weight of Habit 1')
+ok('第二次点的是确认', label2 === '确认')
+await t(600)
+
+libText = await bodyText()
+ok('删掉后只剩 1 篇', libText.includes('1 篇'), libText.slice(0, 40))
+ok('被删的那篇从列表消失', !libText.includes('The Weight of Habit 1'), libText.slice(0, 120))
+
+const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('CapacitorStorage.article_index') || '[]'))
+ok('索引同步删掉了', stored.length === 1 && stored[0].title === 'The Weight of Habit 2', stored.length)
+
+// 删掉正在打开的最后一篇
+await removeRow('The Weight of Habit 2')
+await t(300)
+await removeRow('The Weight of Habit 2')
+await t(700)
+libText = await bodyText()
+ok('列表空了', libText.includes('0 篇'), libText.slice(0, 40))
+
+await clickText('返回')
+await t(600)
+ok('回到阅读页且没有文章', (await bodyText()).includes('生成一篇文章'), (await bodyText()).slice(0, 80))
+
+console.log('\n[7] 无 JS 报错')
 ok('页面干净', errors.length === 0, errors.slice(0, 3))
 
 console.log(`\n通过 ${pass} / 失败 ${fail}`)
