@@ -29,4 +29,11 @@ public class MainActivity extends BridgeActivity {
             getBridge().getWebView().setOverScrollMode(View.OVER_SCROLL_NEVER);
         }
     }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // 沉浸式手势条：用户上滑临时呼出、或弹过对话框后，重新隐藏
+        if (hasFocus) AppearancePlugin.hideNavigationBars(this);
+    }
 }
