@@ -35,8 +35,11 @@
   --scrim: rgba(18, 20, 19, 0.22);
   --selection: #d9e4d0;
 
-  /* 液态玻璃（底栏开关，见 store/glass.ts） */
-  --glass-fill: rgba(255, 255, 255, 0.55);
+  /* 液态玻璃（底栏开关，见 store/glass.ts）。
+     alpha 由设置里的滑杆实时覆盖（挂在 html 的内联样式上） */
+  --glass-tint: 255 255 255;
+  --glass-alpha: 0.55;
+  --glass-fill: rgb(var(--glass-tint) / var(--glass-alpha));
   --glass-edge: rgba(255, 255, 255, 0.65);
   --glass-highlight: rgba(255, 255, 255, 0.55);
   --glass-bubble: rgba(255, 255, 255, 0.78);
@@ -110,7 +113,9 @@
   --selection: #2f4034;
 
   /* 液态玻璃（底栏开关，见 store/glass.ts） */
-  --glass-fill: rgba(28, 31, 30, 0.52);
+  --glass-tint: 28 31 30;
+  --glass-alpha: 0.52;
+  --glass-fill: rgb(var(--glass-tint) / var(--glass-alpha));
   --glass-edge: rgba(255, 255, 255, 0.14);
   --glass-highlight: rgba(255, 255, 255, 0.12);
   --glass-bubble: rgba(255, 255, 255, 0.1);
