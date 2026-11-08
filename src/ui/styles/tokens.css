@@ -39,6 +39,8 @@
   --glass-fill: rgba(255, 255, 255, 0.55);
   --glass-edge: rgba(255, 255, 255, 0.65);
   --glass-highlight: rgba(255, 255, 255, 0.55);
+  --glass-bubble: rgba(255, 255, 255, 0.78);
+  --glass-shadow: 0 6px 18px rgba(0, 0, 0, 0.1);
 
   /* 字体 */
   --font-word: 'Spectral', Georgia, 'Songti SC', 'Noto Serif CJK SC', serif;
@@ -111,4 +113,6 @@
   --glass-fill: rgba(28, 31, 30, 0.52);
   --glass-edge: rgba(255, 255, 255, 0.14);
   --glass-highlight: rgba(255, 255, 255, 0.12);
+  --glass-bubble: rgba(255, 255, 255, 0.1);
+  --glass-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
