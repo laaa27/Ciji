@@ -206,9 +206,15 @@ export default function TodayPage({ onGoSettings }: Props) {
 
       {snapshot?.warning && <p className={styles.warning}>{snapshot.warning}</p>}
 
-      {token && snapshot && snapshot.rawCount > 0 && (
+      {/*
+        诊断行只在有词的时候出现。
+        接口在「今天还没学」时也会返回一份今日待学/历史状态的词表，
+        那些条目的 is_finished / first_response 带着旧值，数出来的「今天学过 157 条」
+        会和下面的「今天还没有学习记录」直接打架 —— 所以空列表时不显示。
+      */}
+      {token && snapshot && snapshot.words.length > 0 && (
         <p className={styles.diag}>
-          接口返回 {snapshot.rawCount} 条 · 今天学过 {snapshot.studiedCount} 条 · 其中新学{' '}
+          接口返回 {snapshot.rawCount} 条 · 进入记录 {snapshot.words.length} 个 · 其中新学{' '}
           {groups[0].items.length} 个
         </p>
       )}
@@ -242,9 +248,12 @@ export default function TodayPage({ onGoSettings }: Props) {
       )}
 
       {token && snapshot && snapshot.words.length === 0 && (
-        <p className={styles.hint}>
-          今天还没有学习记录。去墨墨背几个词，回来刷新一下。
-        </p>
+        <div className={styles.emptyDay}>
+          <p className={styles.emptyDayTitle}>今天还没开始</p>
+          <p className={styles.emptyDayText}>
+            在墨墨里学几个词，回来点一下刷新。新学、模糊、忘记的词会分三组列在这里。
+          </p>
+        </div>
       )}
 
       {token &&

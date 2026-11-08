@@ -40,6 +40,11 @@ export interface ParsedReply {
   /** 正常结束 / 被长度截断 / 其他 */
   truncated: boolean
   finishReason?: string
+  /**
+   * 推理模型的思考过程（OpenAI 系的 reasoning_content / Anthropic 的 thinking 块）。
+   * 正文为空时用它来判断「是模型没说话，还是预算全花在思考上了」。
+   */
+  reasoning?: string
 }
 
 const VERSION_TAIL = /\/v\d+[a-z0-9.]*$/i
@@ -79,10 +84,14 @@ const openai: ProtocolCodec = {
 
   parse(payload) {
     const data = payload as {
-      choices?: { message?: { content?: unknown }; finish_reason?: string }[]
+      choices?: {
+        message?: { content?: unknown; reasoning_content?: string }
+        finish_reason?: string
+      }[]
     }
     const choice = data?.choices?.[0]
     const raw = choice?.message?.content
+    const reasoning = choice?.message?.reasoning_content
     // 有些网关会返回 [{type:'text',text}] 这种分段结构
     const text =
       typeof raw === 'string'
@@ -97,6 +106,7 @@ const openai: ProtocolCodec = {
       text,
       truncated: choice?.finish_reason === 'length',
       finishReason: choice?.finish_reason,
+      reasoning: typeof reasoning === 'string' && reasoning.trim() ? reasoning : undefined,
     }
   },
 }
@@ -144,18 +154,24 @@ const anthropic: ProtocolCodec = {
 
   parse(payload) {
     const data = payload as {
-      content?: { type?: string; text?: string }[]
+      content?: { type?: string; text?: string; thinking?: string }[]
       stop_reason?: string
     }
-    const text = (data?.content ?? [])
+    const blocks = data?.content ?? []
+    const text = blocks
       .filter((b) => b.type === 'text')
       .map((b) => b.text ?? '')
+      .join('')
+    const reasoning = blocks
+      .filter((b) => b.type === 'thinking')
+      .map((b) => b.thinking ?? '')
       .join('')
 
     return {
       text,
       truncated: data?.stop_reason === 'max_tokens',
       finishReason: data?.stop_reason,
+      reasoning: reasoning.trim() ? reasoning : undefined,
     }
   },
 }

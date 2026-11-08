@@ -189,6 +189,10 @@ v0.5.0 之前的 `llm_key` / `llm_provider` / `llm_model` 会在首次启动时�
 > 浏览器里开发时，第三方 API 的 CORS 由 `vite.config.ts` 的 `__llm` 中间件转发（只跑 dev server）；
 > 真机走 `CapacitorHttp`，不受 CORS 限制。
 
+**失败处理。** 空响应（HTTP 200 但 `content` 为空）会自动重试一次：间隔 600ms；
+若是「预算被思维链吃光」（`finish_reason: length` 且正文为空），第二次把 `max_tokens` 翻倍（上限 8000）。
+429 / 5xx 同样重试一次，鉴权与地址类错误不重试。生成失败时阅读页会给出「查看模型原始响应」。
+
 ## 导出与导入
 
 设置页「数据」区，三种导出、两种导入：

@@ -155,6 +155,28 @@
   color: var(--ink-3);
 }
 
+/* ── 今天还没开始 ─────────────────────── */
+
+.emptyDay {
+  padding: var(--sp-6) 0 var(--sp-8);
+  animation: fade-rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.emptyDayTitle {
+  font-family: var(--font-word);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.emptyDayText {
+  margin-top: 8px;
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--ink-3);
+  max-width: 32ch;
+}
+
 /* ── 引导 / 错误 ───────────────────────── */
 
 .notice {

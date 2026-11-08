@@ -41,6 +41,9 @@ page.on('console', (m) => {
   if (m.type() === 'error' && !/Failed to load resource/.test(m.text())) errors.push(m.text())
 })
 
+// 接下来 N 次请求返回空 content，用来验证空响应重试
+let emptyNext = 0
+
 // 记下每次被拦截的请求，用来断言协议差异
 const calls = []
 await page.setRequestInterception(true)
@@ -57,6 +60,21 @@ page.on('request', (req) => {
 
   const target = calls[calls.length - 1].url
   const isAnthropic = target.includes('/messages')
+
+  if (emptyNext > 0) {
+    emptyNext -= 1
+    req.respond({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify(
+        isAnthropic
+          ? { content: [], stop_reason: 'end_turn' }
+          : { choices: [{ message: { content: '' }, finish_reason: 'stop' }] },
+      ),
+    })
+    return
+  }
+
   req.respond({
     status: 200,
     contentType: 'application/json',
@@ -274,7 +292,46 @@ ok('切回 Anthropic 格式也还在', (await chipsOn()).includes('Anthropic Cla
 await clickText('取消')
 await t(200)
 
-console.log('\n[7] 无 JS 报错')
+console.log('\n[7] 空内容自动重试')
+await clickText('添加模型')
+await t(300)
+await clickText('自定义')
+await t(200)
+await fill('input[placeholder="随便起，用来在列表里区分"]', '空响应测试')
+await fill('input[inputmode="url"]', 'https://gw.example.com/v1')
+await fill('input[placeholder^="例如"]', 'gpt-x')
+await fill('input[placeholder="粘贴 API Key"]', 'sk-empty')
+await t(150)
+
+// 第一次返回空，第二次正常 → 应当自动重试并成功
+emptyNext = 1
+calls.length = 0
+await clickText('测试并保存')
+await t(1400)
+ok('自动重试了一次', calls.length === 2, calls.length)
+ok('重试后成功了', (await bodyText()).includes('连接成功'), (await bodyText()).match(/连接[^。]{0,20}/)?.[0])
+
+// 连续两次空 → 明确报「已自动重试一次」，而不是笼统的「空内容」
+await clickText('添加模型')
+await t(300)
+await clickText('自定义')
+await t(200)
+await fill('input[placeholder="随便起，用来在列表里区分"]', '空响应失败')
+await fill('input[inputmode="url"]', 'https://gw.example.com/v1')
+await fill('input[placeholder^="例如"]', 'gpt-x')
+await fill('input[placeholder="粘贴 API Key"]', 'sk-empty2')
+await t(150)
+
+emptyNext = 2
+calls.length = 0
+await clickText('测试并保存')
+await t(1600)
+ok('两次都空时共请求 2 次', calls.length === 2, calls.length)
+ok('报错说明已自动重试', (await bodyText()).includes('已自动重试一次'), (await bodyText()).match(/模型返回[^。]{0,40}/)?.[0])
+await clickText('取消')
+await t(200)
+
+console.log('\n[8] 无 JS 报错')
 ok('页面干净', errors.length === 0, errors.slice(0, 3))
 
 console.log(`\n通过 ${pass} / 失败 ${fail}`)

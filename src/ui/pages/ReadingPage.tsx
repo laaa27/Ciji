@@ -25,6 +25,7 @@ import {
   type ArticleMode,
 } from '@/domain/article'
 import { dateKey, monthDay } from '@/lib/date'
+import { getLastLlmResponse } from '@/api/llm'
 import { useLlm } from '@/store/llm'
 import type { TodaySnapshot } from '@/domain/collect'
 
@@ -378,7 +379,18 @@ export default function ReadingPage({ onGoSettings }: Props) {
         </section>
       )}
 
-      {error && <p className={styles.error}>{error}</p>}
+      {error && (
+        <div className={styles.error}>
+          <p>{error}</p>
+          {/* 生成失败时把模型到底返回了什么露出来，否则只能靠猜 */}
+          {getLastLlmResponse() && (
+            <details className={styles.rawBox}>
+              <summary>查看模型原始响应</summary>
+              <pre>{getLastLlmResponse()?.slice(0, 1200)}</pre>
+            </details>
+          )}
+        </div>
+      )}
 
       {hasArticle && article && (
         <>

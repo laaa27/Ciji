@@ -242,6 +242,36 @@
   animation: fade-rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+.rawBox {
+  margin-top: 8px;
+}
+
+.rawBox summary {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  cursor: pointer;
+  list-style: none;
+}
+
+.rawBox summary::-webkit-details-marker {
+  display: none;
+}
+
+.rawBox pre {
+  margin: 6px 0 0;
+  padding: 8px;
+  max-height: 180px;
+  overflow: auto;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 2px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
 .notice {
   padding: var(--sp-4) 0;
 }
