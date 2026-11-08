@@ -39,12 +39,11 @@ public class AppearancePlugin extends Plugin {
         final int color = Color.parseColor(dark ? PAPER_DARK : PAPER_LIGHT);
         Window window = activity.getWindow();
 
-        // 显式铺到系统栏后面。Android 15+ 会自动这么做，但部分 ROM
-        // （一加 ColorOS 16 实测）在手势区仍画自己的白底，
-        // 不主动声明就露一条白；声明后手势区显示的就是窗口内容（纸色）。
-        WindowCompat.setDecorFitsSystemWindows(window, false);
-        window.setStatusBarColor(Color.TRANSPARENT);
-        window.setNavigationBarColor(Color.TRANSPARENT);
+        // 系统栏底色。Android 15+ 上透明覆盖、会被忽略，无副作用；
+        // 旧版本上给状态栏兜个底色（导航条已隐藏，颜色无所谓）。
+        // 手势区（小白条）由 hideNavigationBars 直接隐藏，见下。
+        window.setStatusBarColor(color);
+        window.setNavigationBarColor(color);
 
         // 图标明暗：浅色背景要深色图标，深色背景要浅色图标
         WindowInsetsControllerCompat controller =
