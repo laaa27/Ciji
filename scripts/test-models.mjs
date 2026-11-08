@@ -44,6 +44,9 @@ page.on('console', (m) => {
 // 接下来 N 次请求返回空 content，用来验证空响应重试
 let emptyNext = 0
 
+// 依次消费的「脚本文档」：用来模拟 400 参数不兼容等特定响应
+let script = []
+
 // 记下每次被拦截的请求，用来断言协议差异
 const calls = []
 await page.setRequestInterception(true)
@@ -60,6 +63,16 @@ page.on('request', (req) => {
 
   const target = calls[calls.length - 1].url
   const isAnthropic = target.includes('/messages')
+
+  if (script.length > 0) {
+    const step = script.shift()
+    req.respond({
+      status: step.status ?? 200,
+      contentType: 'application/json',
+      body: JSON.stringify(step.body),
+    })
+    return
+  }
 
   if (emptyNext > 0) {
     emptyNext -= 1
@@ -130,6 +143,18 @@ async function goto(sel) {
   const el = await page.$(sel)
   if (el) await el.evaluate((n) => n.scrollIntoView({ block: 'center' }))
   await t(200)
+}
+
+async function addProfile(name, key) {
+  await clickText('添加模型')
+  await t(300)
+  await clickText('自定义')
+  await t(200)
+  await fill('input[placeholder="随便起，用来在列表里区分"]', name)
+  await fill('input[inputmode="url"]', 'https://gw.example.com/v1')
+  await fill('input[placeholder^="例如"]', 'o3-mini')
+  await fill('input[placeholder="粘贴 API Key"]', key)
+  await t(150)
 }
 
 await page.goto(APP_URL, { waitUntil: 'networkidle0' })
@@ -331,7 +356,74 @@ ok('报错说明已自动重试', (await bodyText()).includes('已自动重试�
 await clickText('取消')
 await t(200)
 
-console.log('\n[8] 无 JS 报错')
+console.log('\n[8] 推理模型：max_tokens 改名后自动重发')
+await addProfile('推理模型', 'sk-reason-1')
+script = [
+  {
+    status: 400,
+    body: {
+      error: {
+        message:
+          "Unsupported parameter: 'max_tokens' is not supported with this model. Use 'max_completion_tokens' instead.",
+        type: 'invalid_request_error',
+      },
+    },
+  },
+]
+calls.length = 0
+await clickText('测试并保存')
+await t(1600)
+ok('撞 400 后又发了一次', calls.length === 2, calls.length)
+ok(
+  '改用了 max_completion_tokens',
+  calls[1]?.body?.max_completion_tokens !== undefined && calls[1]?.body?.max_tokens === undefined,
+  calls[1]?.body,
+)
+ok('重发后成功', (await bodyText()).includes('连接成功'), (await bodyText()).match(/Unsupported[^。]{0,40}/)?.[0])
+
+// 同一份配置再测一次：应该直接带上协商好的参数，不再撞 400
+await page.evaluate(() => {
+  const row = [...document.querySelectorAll('li')].find((li) => li.textContent?.includes('推理模型'))
+  const btn = [...row.querySelectorAll('button')].find((b) => b.textContent?.trim() === '编辑')
+  if (btn) btn.click()
+})
+await t(400)
+calls.length = 0
+await clickText('测试并保存')
+await t(1200)
+ok('同一配置第二次只发一次请求', calls.length === 1, calls.length)
+ok('已记住参数名', calls[0]?.body?.max_completion_tokens !== undefined, calls[0]?.body)
+
+console.log('\n[9] 推理模型：temperature 不被接受时去掉')
+await addProfile('推理模型二', 'sk-reason-2')
+script = [
+  {
+    status: 400,
+    body: {
+      error: {
+        message: "Unsupported value: 'temperature' does not support 0.85 with this model. Only the default (1) is supported.",
+        type: 'invalid_request_error',
+      },
+    },
+  },
+]
+calls.length = 0
+await clickText('测试并保存')
+await t(1600)
+ok('第二次请求不再带 temperature', calls[1] && !('temperature' in calls[1].body), calls[1]?.body)
+ok('去掉后成功', (await bodyText()).includes('连接成功'))
+
+console.log('\n[10] 推理模型：预算被思维链吃光时自动加大')
+await addProfile('推理模型三', 'sk-reason-3')
+script = [{ status: 200, body: { choices: [{ message: { content: '' }, finish_reason: 'length' }] } }]
+calls.length = 0
+await clickText('测试并保存')
+await t(1800)
+ok('第一次 max_tokens 是原值', calls[0]?.body?.max_tokens === 32, calls[0]?.body?.max_tokens)
+ok('重试时撑到 8000', calls[1]?.body?.max_tokens >= 8000, calls[1]?.body?.max_tokens)
+ok('撑大后成功', (await bodyText()).includes('连接成功'))
+
+console.log('\n[11] 无 JS 报错')
 ok('页面干净', errors.length === 0, errors.slice(0, 3))
 
 console.log(`\n通过 ${pass} / 失败 ${fail}`)

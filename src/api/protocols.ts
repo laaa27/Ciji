@@ -23,14 +23,34 @@ export interface RequestOptions {
   maxTokens?: number
 }
 
+/**
+ * 参数兼容补丁。
+ *
+ * 推理模型（OpenAI o 系 / gpt-5 一类）把接口收紧了：
+ * - `max_tokens` 改名为 `max_completion_tokens`，旧字段直接 400
+ * - `temperature` 只接受默认值，传了也 400
+ *
+ * 这些差异不该让用户去记，所以做成运行时可探测的补丁：
+ * 撞到 400 就按报错内容改一次参数名/去掉参数，然后重试同一个请求。
+ */
+export interface BodyCompat {
+  tokenField?: 'max_tokens' | 'max_completion_tokens'
+  omitTemperature?: boolean
+}
+
 /** 一个协议要提供的最小能力 */
 export interface ProtocolCodec {
   /** 完整请求地址 */
   endpoint: (baseUrl: string) => string
   /** 请求头（含鉴权） */
   headers: (apiKey: string) => Record<string, string>
-  /** 请求体 */
-  body: (model: string, messages: ChatMessage[], opts: RequestOptions) => unknown
+  /** 请求体；compat 用于适配推理模型的参数差异（目前只有 OpenAI 系需要） */
+  body: (
+    model: string,
+    messages: ChatMessage[],
+    opts: RequestOptions,
+    compat?: BodyCompat,
+  ) => unknown
   /** 从响应里取正文 */
   parse: (payload: unknown) => ParsedReply
 }
@@ -72,14 +92,15 @@ const openai: ProtocolCodec = {
     }
   },
 
-  body(model, messages, opts) {
-    return {
+  body(model, messages, opts, compat = {}) {
+    const body: Record<string, unknown> = {
       model,
       messages,
-      temperature: opts.temperature ?? 0.8,
-      max_tokens: opts.maxTokens ?? 2000,
+      [compat.tokenField ?? 'max_tokens']: opts.maxTokens ?? 2000,
       stream: false,
     }
+    if (!compat.omitTemperature) body.temperature = opts.temperature ?? 0.8
+    return body
   },
 
   parse(payload) {
