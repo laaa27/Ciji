@@ -226,13 +226,16 @@ android/           Capacitor Android 工程（含 AppearancePlugin 等自研原�
 
 ## 大模型配置
 
-生成文章需要一个可调用的大模型。三步接入，以**智谱**为例（有免费额度，注册即得）：
+生成文章需要一个可调用的大模型。三步接入，以 **DeepSeek** 为例：
 
-1. 到 [智谱开放平台](https://open.bigmodel.cn/) 注册并创建 API Key
-2. App 内 **设置 → 大模型 → 添加配置**，预填项选「智谱」，只需粘贴 API Key（名称、地址、模型名已自动填好）
+1. 到 [DeepSeek 开放平台](https://platform.deepseek.com/) 注册并创建 API Key（需充值，价格便宜，生成质量好）
+2. App 内 **设置 → 大模型 → 添加配置**，预填项选「DeepSeek」，只需粘贴 API Key（名称、地址、模型名已自动填好）
 3. 保存并选中这份配置，回阅读页点「生成」即可
 
-不止智谱：**DeepSeek / OpenAI / Anthropic / 任何 OpenAI 兼容网关**都支持。不是「选一个服务商」，
+> 也可以使用**智谱免费模型**（`glm-4-flash`，[智谱开放平台](https://open.bigmodel.cn/) 注册即有免费额度，
+> 预填项选「智谱」），不花钱就能跑通全流程——但生成质量可能不理想。
+
+不止 DeepSeek 和智谱：**OpenAI / Anthropic / 任何 OpenAI 兼容网关**都支持。不是「选一个服务商」，
 而是**存多份配置随时切换**：
 
 - 每份配置 = 名称 + 接口格式 + Base URL + 模型名 + API Key
