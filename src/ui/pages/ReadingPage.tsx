@@ -11,6 +11,7 @@ import {
   type ArticleMeta,
 } from '@/data/article'
 import { lemmaCandidates } from '@/data/dict'
+import { prefetchMemo } from '@/domain/memo'
 import {
   generateArticle,
   missingWords,
@@ -23,6 +24,7 @@ import {
 import { dateKey, monthDay } from '@/lib/date'
 import { getLastLlmResponse } from '@/api/llm'
 import { pushBackHandler } from '@/store/backstack'
+import { useSession } from '@/store/session'
 import { useToast } from '@/store/toast'
 import { useLlm } from '@/store/llm'
 
@@ -76,6 +78,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   const activeRef = useRef(active)
   activeRef.current = active
 
+  const token = useSession((s) => s.token)
   const hasModel = useLlm((s) => s.profiles.length > 0)
   const llmReady = useLlm((s) => s.ready)
 
@@ -135,6 +138,15 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       setDays(await listDays())
     })()
   }, [today, refreshLibrary])
+
+  useEffect(() => {
+    if (!token || !article) return
+    const words = new Set<string>()
+    for (const s of article.sentences) {
+      for (const m of s.en.match(/[A-Za-z][A-Za-z'-]*/g) ?? []) words.add(m)
+    }
+    void prefetchMemo([...words])
+  }, [article, token])
 
   const targetSet = useMemo(
     () => new Set(article?.targetWords.map((w) => w.toLowerCase()) ?? []),

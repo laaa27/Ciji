@@ -1,5 +1,6 @@
 import { post } from './client'
 import type {
+  AddWordsResponse,
   ProgressResponse,
   QueryRecordsRequest,
   QueryRecordsResponse,
@@ -29,5 +30,19 @@ export function queryStudyRecords(req: QueryRecordsRequest = {}) {
   return post<QueryRecordsResponse>(`${P}/query_study_records`, {
     limit: 1000,
     ...req,
+  })
+}
+
+/**
+ * 把单词加入学习计划。
+ *
+ * 返回的 added_count 是「请求数 / 剩余额度 / 去重后的新词数」三者里最小的那个，
+ * 官方文档明确说额度不足和已加入都会让它变小 —— 所以不能靠它区分原因，
+ * 调用前先查学习记录（见 domain/memo.ts）。
+ */
+export function addWords(ids: string[], advance = false) {
+  return post<AddWordsResponse>(`${P}/add_words`, {
+    words: ids.map((id) => ({ id })),
+    advance,
   })
 }

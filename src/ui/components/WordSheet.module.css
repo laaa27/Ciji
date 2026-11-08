@@ -87,3 +87,79 @@
     opacity: 0;
   }
 }
+
+/* ── 墨墨学习状态 ─────────────────────── */
+
+.memo {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--rule);
+}
+
+.memoHead {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+}
+
+.memoDim {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.memoTag {
+  margin-left: 4px;
+  padding: 1px 5px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.memoLine {
+  margin-top: 5px;
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.memoMuted {
+  margin-top: 8px;
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+
+.memoButton {
+  margin-top: var(--sp-3);
+  padding: 9px 14px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  font-size: var(--fs-sm);
+  color: var(--ink);
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+/* 第一次点是「加入」，第二次才是「确认加入」——用颜色把不可逆的动作标出来 */
+.memoButton[data-confirm='true'] {
+  border-color: var(--state-forget);
+  color: var(--state-forget);
+}
+
+.memoButton:disabled {
+  opacity: 0.5;
+}
+
+.memoNotice {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  color: var(--state-forget);
+}
+
+.memoNotice[data-ok='true'] {
+  color: var(--state-new);
+}

@@ -47,6 +47,12 @@ export interface StudyRecord {
   tags?: 'STICKING' | 'WELL_FAMILIAR' | ''
 }
 
+/** 词库里的一个词：只有 id 与拼写，没有释义 */
+export interface Vocabulary {
+  id: string
+  spelling: string
+}
+
 /* ── 请求体 ───────────────────────────────── */
 
 export interface TodayItemsRequest {
@@ -79,4 +85,13 @@ export interface TodayItemsResponse {
 export interface QueryRecordsResponse {
   records: StudyRecord[]
   count: number
+}
+
+export interface QueryVocabularyResponse {
+  voc: Vocabulary[]
+}
+
+export interface AddWordsResponse {
+  /** 成功添加的数量；额度不足或已在计划里会少于此数 */
+  added_count: number
 }

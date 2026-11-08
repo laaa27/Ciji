@@ -80,6 +80,21 @@ page.on('console', (m) => {
 let llmCalls = 0
 let articleNo = 0
 
+// 墨墨侧的可变状态：哪些词在计划里、哪些词库里有
+const inPlan = new Set(['coherent'])
+const notInVocab = new Set(['scrutiny'])
+const added = []
+const makeRecord = (spelling) => ({
+  voc_id: `id-${spelling}`,
+  voc_spelling: spelling,
+  add_date: '2026-11-01T02:00:00.000Z',
+  last_study_date: '2026-11-07T02:00:00.000Z',
+  next_study_date: '2026-11-10T00:00:00.000Z',
+  last_response: 'VAGUE',
+  study_count: 4,
+  tags: 'STICKING',
+})
+
 await page.setRequestInterception(true)
 page.on('request', (req) => {
   const url = req.url()
@@ -89,6 +104,38 @@ page.on('request', (req) => {
       req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: body }) })
     if (url.includes('get_study_progress')) return json({ progress: { finished: 20, total: 180, study_time: 900000 } })
     if (url.includes('get_today_items')) return json({ today_items: todayItems })
+
+    if (url.includes('query_study_records')) {
+      const body = JSON.parse(req.postData() ?? '{}')
+      const asked = body.spellings ?? []
+      const records = asked.filter((w) => inPlan.has(String(w).toLowerCase())).map(makeRecord)
+      return json({ records, count: records.length })
+    }
+
+    if (url.includes('/vocabulary/query')) {
+      const body = JSON.parse(req.postData() ?? '{}')
+      const asked = body.spellings ?? []
+      const voc = asked
+        .filter((w) => !notInVocab.has(String(w).toLowerCase()))
+        .map((w) => ({ id: `id-${w}`, spelling: w }))
+      return json({ voc })
+    }
+
+    if (url.includes('/study/add_words')) {
+      const body = JSON.parse(req.postData() ?? '{}')
+      const ids = (body.words ?? []).map((x) => String(x.id))
+      let count = 0
+      for (const id of ids) {
+        const spelling = id.replace(/^id-/, '').toLowerCase()
+        if (!inPlan.has(spelling)) {
+          inPlan.add(spelling)
+          added.push(spelling)
+          count += 1
+        }
+      }
+      return json({ added_count: count })
+    }
+
     return json({ records: [], count: 0 })
   }
 
@@ -435,7 +482,77 @@ ok('第二次真删', (await removeRow('The Weight of Habit 1')) === '确认')
 await t(700)
 ok('只剩 1 篇', (await bodyText()).includes('1 篇'))
 
-console.log('\n[12] 无 JS 报错')
+console.log('\n[12] 点词看墨墨状态、加入学习计划')
+// 上一段停在文章库里，先退回阅读页
+await clickIncludes('返回')
+await t(700)
+const clickWord = (spelling) =>
+  page.evaluate((w) => {
+    const btns = [...document.querySelectorAll('button')].filter(
+      (b) => b.textContent?.trim() === w && b.dataset.target !== undefined,
+    )
+    btns[0]?.click()
+    return btns.length > 0
+  }, spelling)
+
+const sheetText = () =>
+  page.evaluate(() => document.querySelector('[role="dialog"]')?.innerText.replace(/\s+/g, ' ') ?? '')
+
+const closeSheet = async () => {
+  await page.evaluate(() => {
+    const btn = [...document.querySelectorAll('[role="dialog"] button')].find(
+      (b) => b.textContent?.trim() === '关闭',
+    )
+    btn?.click()
+  })
+  await t(350)
+}
+
+// 已在计划里的词
+ok('点到文章里的词', await clickWord('coherent'))
+await t(900)
+let sheet = await sheetText()
+ok('显示已在学习计划', sheet.includes('已在学习计划'), sheet.slice(0, 80))
+ok('显示背过次数与上次反馈', sheet.includes('背过 4 次') && sheet.includes('模糊'), sheet)
+ok('显示下次复习与标签', sheet.includes('下次复习') && sheet.includes('顽固词'), sheet)
+await closeSheet()
+
+// 词库里有、没加入 → 两步确认后加入
+ok('点到一个未加入的词', await clickWord('abandon'))
+await t(900)
+sheet = await sheetText()
+ok('显示还没加入', sheet.includes('还没加入墨墨'), sheet.slice(0, 80))
+
+const clickAdd = () =>
+  page.evaluate(() => {
+    const btn = [...document.querySelectorAll('[role="dialog"] button')].find((b) =>
+      ['加入学习计划', '确认加入？'].includes(b.textContent?.trim() ?? ''),
+    )
+    const label = btn?.textContent?.trim() ?? null
+    btn?.click()
+    return label
+  })
+
+ok('第一次点是「加入学习计划」', (await clickAdd()) === '加入学习计划')
+await t(300)
+ok('变成确认态', (await sheetText()).includes('确认加入'), await sheetText())
+
+ok('第二次点发出加入', (await clickAdd()) === '确认加入？')
+await t(900)
+ok('服务端收到了加词请求', added.includes('abandon'), JSON.stringify(added))
+sheet = await sheetText()
+ok('加入后立刻显示已在计划', sheet.includes('已在学习计划'), sheet.slice(0, 100))
+ok('给出成功提示', sheet.includes('已加入学习计划'), sheet.slice(0, 120))
+await closeSheet()
+
+// 词库里没有的词
+ok('点到一个词库没有的词', await clickWord('scrutiny'))
+await t(900)
+sheet = await sheetText()
+ok('说明加不进去', sheet.includes('墨墨词库里没有这个词'), sheet.slice(0, 100))
+await closeSheet()
+
+console.log('\n[13] 无 JS 报错')
 ok('页面干净', errors.length === 0, errors.slice(0, 3))
 
 console.log(`\n通过 ${pass} / 失败 ${fail}`)
