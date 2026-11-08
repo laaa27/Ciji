@@ -48,8 +48,8 @@ node scripts/test-models.mjs     # 模型：迁移 → 添加 → 切换 → 改
 前置：JDK 17、Android SDK（compileSdk 36）、Gradle（用 wrapper 自动下）。
 
 ```bash
-export JAVA_HOME="E:\AndroidDev\jdk-17"
-export ANDROID_HOME="E:\AndroidDev\android-sdk"
+export JAVA_HOME="<JDK17 路径>"
+export ANDROID_HOME="<Android SDK 路径>"
 
 npm run build
 npx cap sync
@@ -71,7 +71,7 @@ cd android && ./gradlew assembleRelease
 | 样式 | 原生 CSS Modules | 无 UI 库，改样式就是改 CSS |
 | 图表 | ECharts 6 | 按需引入，只打包柱状图 |
 | 存储 | Capacitor Preferences | 按天存 JSON 快照，见下方说明 |
-| 词典 | ECDICT 裁剪版 | 分片 JSON，按首字母懒加载 |
+| 词典 | ECDICT 裁剪版 | 分片 JSON，按首字母懒加载。数据来自 [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT)（MIT） |
 | 测试 | puppeteer-core | 无头 Chrome 跑断言脚本 |
 
 ## 目录结构
@@ -298,3 +298,13 @@ CSV 支持带表头 / 不带表头（按导出列序）、BOM、CRLF、引号内
 - **只记录打开 App 的那天**：接口没有日期参数，某天没打开，那天的反馈就取不回来了。
 - **历史"模糊/忘记"是近似值**：`query_study_records` 只留 `last_response`，之后复习过就会被覆盖。历史的"新学"是精确的（`first_study_date` 固定）。
 - **无 CORS 头**：浏览器直连会被拦，所以开发时走 Vite 代理，真机走 CapacitorHttp。
+
+## 许可
+
+本项目代码与文档以 [CC BY-NC-SA 4.0](./LICENSE)（署名—非商业性使用—相同方式共享）提供：
+
+- ✅ 个人学习、公益与非商业用途自由使用、修改、分发
+- ❌ 不得用于商业目的
+- ✳️ 修改后的衍生版本必须以相同协议（CC BY-NC-SA 4.0）开源共享
+
+词典数据来自 [ECDICT](https://github.com/skywind3000/ECDICT)（MIT License）。

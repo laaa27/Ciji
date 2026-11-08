@@ -6,6 +6,9 @@ dist/
 .DS_Store
 Thumbs.db
 
+# 调试截图（仓库根目录的 png 全是开发产物，资源图在 android/res 与 public/ 里）
+/*.png
+
 # Capacitor 生成物
 android/.gradle/
 android/build/
@@ -17,3 +20,4 @@ android/app/src/main/res/xml/config.xml
 # 签名机密
 android/keystore.properties
 android/app/*.keystore
+*.jks

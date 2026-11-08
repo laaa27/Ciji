@@ -1,6 +1,6 @@
 # 开发流程文档（DEVELOPMENT）
 
-> 面向后续会话或新成员：照这份文档可以从零把环境搭起来、按同样的流程改代码、跑测试、出包装机。
+> 面向后续会话或新成员：照这份文档可以从零把环境搭起来、按同样的流程改代码、跑测试、出包装机。  
 > 项目介绍与使用说明见 [README.md](./README.md)。
 
 ---
@@ -9,20 +9,20 @@
 
 ### 1.1 必备工具
 
-| 工具 | 版本要求 | 说明 |
-|---|---|---|
-| Node.js | 22+ | 构建 / dev server / 测试脚本 |
-| JDK | 17 | Android Gradle 编译 |
-| Android SDK | compileSdk 36 | `ANDROID_HOME` 指向 SDK 目录 |
-| Gradle | 用 wrapper | `android/gradlew` 会自动下载对应版本（8.14.x） |
-| adb | Platform-tools 里 | 真机安装与调试 |
-| Chrome | 本机安装 | 测试脚本（puppeteer-core）指定调用本机 Chrome |
+| 工具          | 版本要求             | 说明                                  |
+| ----------- | ---------------- | ----------------------------------- |
+| Node.js     | 22+              | 构建 / dev server / 测试脚本              |
+| JDK         | 17               | Android Gradle 编译                   |
+| Android SDK | compileSdk 36    | `ANDROID_HOME` 指向 SDK 目录            |
+| Gradle      | 用 wrapper        | `android/gradlew` 会自动下载对应版本（8.14.x） |
+| adb         | Platform-tools 里 | 真机安装与调试                             |
+| Chrome      | 本机安装             | 测试脚本（puppeteer-core）指定调用本机 Chrome   |
 
-环境变量（Windows 示例，按实际路径改）：
+环境变量（Windows 示例，路径按本机实际安装位置改）：
 
 ```bash
-export JAVA_HOME="E:\AndroidDev\jdk-17"
-export ANDROID_HOME="E:\AndroidDev\android-sdk"
+export JAVA_HOME="<JDK17 路径>"
+export ANDROID_HOME="<Android SDK 路径>"
 ```
 
 ### 1.2 首次安装
@@ -43,7 +43,7 @@ keyAlias=xxx
 keyPassword=xxx
 ```
 
-**换机器构建时，把 keystore 文件和这个属性文件一起带过去。**
+**换机器构建时，把 keystore 文件和这个属性文件一起带过去。**  
 签名不一致会导致 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`——**绝对不要卸载重装来解决**（会清掉用户全部数据）。
 
 ---
@@ -74,23 +74,23 @@ ui → store → domain → data → api
 ### 2.3 样式
 
 - 每个组件配套 `.module.css`，全局设计令牌集中在 `src/ui/styles/tokens.css`
-- **颜色必须走令牌**，新颜色要同时给 `:root`（浅色）和 `[data-theme='dark']`（深色）两套值；
+- **颜色必须走令牌**，新颜色要同时给 `:root`（浅色）和 `[data-theme='dark']`（深色）两套值；  
   深色底上用透明黑叠加会发脏的颜色（`--tint`、`--scrim`、`--switch-knob` 等）必须给独立色值
 - 涉及系统栏 / 安全区的间距用 `--safe-top` / `--safe-bottom`（有 `max(env, 下限)` 兜底）
 
 ### 2.4 存储键约定
 
-所有本地数据存在 Capacitor Preferences（原生 SharedPreferences / web localStorage），
+所有本地数据存在 Capacitor Preferences（原生 SharedPreferences / web localStorage），  
 键名约定：
 
-| 前缀 / 键 | 内容 | 管理代码 |
-|---|---|---|
-| `day:YYYY-MM-DD` | 每日学习快照 | `data/store.ts` |
+| 前缀 / 键                           | 内容             | 管理代码              |
+| -------------------------------- | -------------- | ----------------- |
+| `day:YYYY-MM-DD`                 | 每日学习快照         | `data/store.ts`   |
 | `article:<id>` / `article_index` | 生成文章全文 / 元信息索引 | `data/article.ts` |
-| `reading:YYYY-MM-DD` | 每日阅读秒数 | `data/reading.ts` |
-| `theme` / `theme_boot` | 主题 + 启动镜像 | `store/theme.ts` |
-| `liquid_glass` / `glass_alpha` | 玻璃底栏开关 / 透明度 | `store/glass.ts` |
-| `llm_profiles` / `llm_active` | 大模型配置 | `store/llm.ts` |
+| `reading:YYYY-MM-DD`             | 每日阅读秒数         | `data/reading.ts` |
+| `theme` / `theme_boot`           | 主题 + 启动镜像      | `store/theme.ts`  |
+| `liquid_glass` / `glass_alpha`   | 玻璃底栏开关 / 透明度   | `store/glass.ts`  |
+| `llm_profiles` / `llm_active`    | 大模型配置          | `store/llm.ts`    |
 
 ### 2.5 注释与语言
 
@@ -122,7 +122,7 @@ npm run dev          # Vite dev server，默认 http://localhost:5173
 
 1. 先想清楚数据放在哪（新存储键？扩展现有快照？），按 2.4 的约定起键名
 2. 纯逻辑进 `domain/`，读写进 `data/`，状态进 `store/`，最后才写 `ui/`
-3. 需要原生能力时在 `android/.../` 下写 app 内插件（参考 `AppearancePlugin`），
+3. 需要原生能力时在 `android/.../` 下写 app 内插件（参考 `AppearancePlugin`），  
    `MainActivity.onCreate` 里 `super.onCreate()` **之前** `registerPlugin()`
 4. 有 UI 状态跨页面的，走 Zustand store；只有组件内的用 `useState`
 
@@ -142,16 +142,16 @@ git checkout master && git merge feat/xxx   # 验证通过后合并
 
 **前置：dev server 跑在 5199**（`npx vite --port 5199 --strictPort`）。
 
-| 脚本 | 覆盖内容 |
-|---|---|
-| `scripts/test-reading.mjs` | 阅读页 + 生成页 + 文章库 + 词卡的完整回归（66 项断言） |
-| `scripts/test-import.mjs` | 导入：选文件 → 预览 → 两种合并策略 → 写盘断言 |
-| `scripts/test-models.mjs` | 大模型配置：迁移 → 添加 → 切换 → 改协议 → 删除 |
-| `scripts/verify-readtimer.mjs` | 阅读计时器 + 统计页阅读时长图表（10 项） |
-| `scripts/verify-gencounts.mjs` | 生成页词数口径随「包含已用词」开关同步（13 项） |
-| `scripts/verify-glass.mjs` | 液态玻璃底栏开关与样式（7 项） |
-| `scripts/seed.mjs` | 造数据：往 localStorage 预置 30 天快照 / 文章，配合截图 |
-| `scripts/shot.mjs` | 万能截图：`node scripts/shot.mjs [url] [out.png] [tab]` |
+| 脚本                             | 覆盖内容                                               |
+| ------------------------------ | -------------------------------------------------- |
+| `scripts/test-reading.mjs`     | 阅读页 + 生成页 + 文章库 + 词卡的完整回归（66 项断言）                  |
+| `scripts/test-import.mjs`      | 导入：选文件 → 预览 → 两种合并策略 → 写盘断言                        |
+| `scripts/test-models.mjs`      | 大模型配置：迁移 → 添加 → 切换 → 改协议 → 删除                      |
+| `scripts/verify-readtimer.mjs` | 阅读计时器 + 统计页阅读时长图表（10 项）                            |
+| `scripts/verify-gencounts.mjs` | 生成页词数口径随「包含已用词」开关同步（13 项）                          |
+| `scripts/verify-glass.mjs`     | 液态玻璃底栏开关与样式（7 项）                                   |
+| `scripts/seed.mjs`             | 造数据：往 localStorage 预置 30 天快照 / 文章，配合截图             |
+| `scripts/shot.mjs`             | 万能截图：`node scripts/shot.mjs [url] [out.png] [tab]` |
 
 跑法：`node scripts/test-xxx.mjs`，输出逐项 ✓/✗ 和总结，**退出码非 0 即有失败**。
 
@@ -163,7 +163,7 @@ git checkout master && git merge feat/xxx   # 验证通过后合并
 
 ### 4.2 已知坑
 
-- **dev server 状态过期**：长驻的 vite 进程跨 git 分支切换后，HMR 模块缓存可能炸出
+- **dev server 状态过期**：长驻的 vite 进程跨 git 分支切换后，HMR 模块缓存可能炸出  
   `xxx is not defined`——重启 dev server 即可
 - **端口被占**：`--strictPort` 下 5199 被占会直接失败，先 `netstat -ano | grep 5199` 找 PID 杀掉
 - 注入点击在部分 ROM 上会被静默丢弃（见 5.3），浏览器脚本结论与真机表现冲突时以真机为准
@@ -186,13 +186,20 @@ adb install -r app/build/outputs/apk/release/app-release.apk
 
 ### 5.2 必须知道的坑
 
-1. **`npx cap sync` 在本工作区会被删文件钩子卡死**（报 `safe-delete` / `trash` 错误）。
+1. **`npx cap sync` 在本工作区会被删文件钩子卡死**（报 `safe-delete` / `trash` 错误）。  
    解法：清空 NODE_OPTIONS 再跑——`NODE_OPTIONS= npx cap sync android`
-2. **多设备并存时 adb 命令必须带 `-s`** 指定目标（USB 序列号或 `ip:port`），否则报
+2. **Gradle 找不到 JDK**：仓库的 `android/gradle.properties` 不含本机 JDK 路径（因机器而异）。  
+   把下面两行写进**用户全局配置** `~/.gradle/gradle.properties`（Windows 即 `C:/Users/<你>/.gradle/`）：  
+   ```properties
+   org.gradle.java.home=<JDK21 路径>
+   org.gradle.java.installations.paths=<JDK21 路径>,<JDK17 路径>
+   ```  
+   （Capacitor 8 的插件模块声明了 Java 21 toolchain，需要 21；17 也要让 Gradle 能探测到）
+3. **多设备并存时 adb 命令必须带 `-s`** 指定目标（USB 序列号或 `ip:port`），否则报  
    `more than one device`
-3. **签名不匹配**报 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`：说明设备上装的是另一把钥匙签的包，
+4. **签名不匹配**报 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`：说明设备上装的是另一把钥匙签的包，  
    用 `assembleRelease` 出包再装；**不许卸载重装**（清数据）
-4. debug 包和 release 包签名不同，不能互相覆盖安装
+5. debug 包和 release 包签名不同，不能互相覆盖安装
 
 ### 5.3 真机调试
 
@@ -204,9 +211,9 @@ adb -s <目标> shell am start -n com.laaa27.maimemo/.MainActivity
 adb -s <目标> exec-out screencap -p > shot.png    # 截图
 ```
 
-- 无线调试：手机 开发者选项 → 无线调试，`adb connect <ip>:<port>`（IP 以手机上显示的为准，
+- 无线调试：手机 开发者选项 → 无线调试，`adb connect <ip>:<port>`（IP 以手机上显示的为准，  
   口述常漏段；配对用 `adb pair <ip>:<pairPort>` + 配对码）
-- **注入权限因 ROM 而异**：小米（HyperOS）直接拒绝 `input tap/keyevent`；
+- **注入权限因 ROM 而异**：小米（HyperOS）直接拒绝 `input tap/keyevent`；  
   一加（ColorOS 16）允许但会随机丢事件。注入实验的结论不可全信，最终以真机手动验证为准
 - 系统返回路径：`input keyevent 4` 在允许注入的设备上比 tap 可靠
 
@@ -223,14 +230,14 @@ adb -s <目标> exec-out screencap -p > shot.png    # 截图
 
 ## 6. 设备与 ROM 差异记录
 
-| 设备 | 系统 | 已知差异 |
-|---|---|---|
-| 小米 23049RAD8C | Android 15 / HyperOS | adb 注入输入事件被安全层直接拒绝 |
+| 设备             | 系统                      | 已知差异                       |
+| -------------- | ----------------------- | -------------------------- |
+| 小米 23049RAD8C  | Android 15 / HyperOS    | adb 注入输入事件被安全层直接拒绝         |
 | 一加 13 (PKR110) | Android 16 / ColorOS 16 | 允许注入但会随机丢 tap；隐藏手势条会影响侧滑识别 |
 
-- 沉浸式隐藏手势条（`hideNavigationBars`）在一加上的手势表现与系统设置
+- 沉浸式隐藏手势条（`hideNavigationBars`）在一加上的手势表现与系统设置  
   「返回手势二次确认」开关相关
-- WebView 的过卷拉伸（Android 12+ 系统级 stretch）已在 `MainActivity` 里用
+- WebView 的过卷拉伸（Android 12+ 系统级 stretch）已在 `MainActivity` 里用  
   `OVER_SCROLL_NEVER` 全局禁用，CSS 层 `overscroll-behavior` 均为 none，别再打开
-- Android 15+ 系统栏透明覆盖，系统栏上色由 `AppearancePlugin` 统一处理；
+- Android 15+ 系统栏透明覆盖，系统栏上色由 `AppearancePlugin` 统一处理；  
   改系统栏行为改这里，不要引第三方状态栏插件
