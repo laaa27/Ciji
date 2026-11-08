@@ -112,6 +112,15 @@ export default function WordSheet({ word, onClose }: Props) {
   const joinedDays = record ? daysSince(record.add_date) : null
   const tag = record?.tags ? TAG_LABEL[record.tags] : ''
 
+  // 点的是变体（shipments）、查到的是原形（shipment）时说清楚，否则用户会以为查错了词
+  const inPlanBase = record && record.voc_spelling.toLowerCase() !== word.toLowerCase()
+    ? record.voc_spelling
+    : ''
+  const availableBase =
+    memo?.kind === 'available' && memo.spelling.toLowerCase() !== word.toLowerCase()
+      ? memo.spelling
+      : ''
+
   return (
     <div className={styles.mask} data-closing={closing} onClick={requestClose} role="presentation">
       <div
@@ -139,6 +148,9 @@ export default function WordSheet({ word, onClose }: Props) {
               <>
                 <p className={styles.memoHead}>
                   已在学习计划
+                  {inPlanBase && (
+                    <span className={styles.memoDim}> · 原形 {inPlanBase}</span>
+                  )}
                   {joinedDays !== null && joinedDays >= 0 && (
                     <span className={styles.memoDim}>
                       {' · '}
@@ -163,7 +175,9 @@ export default function WordSheet({ word, onClose }: Props) {
               <>
                 <p className={styles.memoHead}>
                   还没加入墨墨
-                  <span className={styles.memoDim}> · 词库里有这个词</span>
+                  <span className={styles.memoDim}>
+                    {availableBase ? ` · 词库里是 ${availableBase}` : ' · 词库里有这个词'}
+                  </span>
                 </p>
                 <button
                   type="button"

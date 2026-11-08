@@ -82,6 +82,8 @@ let articleNo = 0
 
 // 墨墨侧的可变状态：哪些词在计划里、哪些词库里有
 const inPlan = new Set(['coherent'])
+// 词库只收原形：shipments / studying 这种变形不该命中，否则测不出还原
+const knownVocab = new Set([...TODAY_WORDS, 'shipment', 'study'].filter((w) => w !== 'scrutiny'))
 const notInVocab = new Set(['scrutiny'])
 const added = []
 const makeRecord = (spelling) => ({
@@ -116,7 +118,10 @@ page.on('request', (req) => {
       const body = JSON.parse(req.postData() ?? '{}')
       const asked = body.spellings ?? []
       const voc = asked
-        .filter((w) => !notInVocab.has(String(w).toLowerCase()))
+        .filter((w) => {
+          const k = String(w).toLowerCase()
+          return !notInVocab.has(k) && knownVocab.has(k)
+        })
         .map((w) => ({ id: `id-${w}`, spelling: w }))
       return json({ voc })
     }
@@ -166,6 +171,11 @@ page.on('request', (req) => {
             en: `Sentence ${i + 1} mentions ${TODAY_WORDS[i % TODAY_WORDS.length]} in a calm, deliberate way.`,
             zh: `第 ${i + 1} 句用平静的方式提到了 ${TODAY_WORDS[i % TODAY_WORDS.length]}。`,
           }))
+          // 词形还原用：复数与 -ing
+          sentences.push({
+            en: 'Shipments and studying keep the argument moving.',
+            zh: '出货与研究让论证继续推进。',
+          })
           return {
             choices: [
               {
@@ -543,6 +553,19 @@ ok('服务端收到了加词请求', added.includes('abandon'), JSON.stringify(a
 sheet = await sheetText()
 ok('加入后立刻显示已在计划', sheet.includes('已在学习计划'), sheet.slice(0, 100))
 ok('给出成功提示', sheet.includes('已加入学习计划'), sheet.slice(0, 120))
+await closeSheet()
+
+// 词形还原：复数 / -ing 都要能落到原形
+ok('点到复数形式', await clickWord('Shipments'))
+await t(900)
+sheet = await sheetText()
+ok('复数能落到原形 shipment', sheet.includes('词库里是 shipment'), sheet.slice(0, 120))
+await closeSheet()
+
+ok('点到 -ing 形式', await clickWord('studying'))
+await t(900)
+sheet = await sheetText()
+ok('-ing 能落到原形 study', sheet.includes('词库里是 study'), sheet.slice(0, 120))
 await closeSheet()
 
 // 词库里没有的词

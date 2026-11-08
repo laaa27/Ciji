@@ -75,9 +75,21 @@ async function loadShard(key: string): Promise<Record<string, string>> {
   return task
 }
 
+/** 不规则复数：只收考试词库里高频的那几个，宁缺毋滥 */
+const IRREGULAR: Record<string, string> = {
+  men: 'man', women: 'woman', children: 'child', feet: 'foot', teeth: 'tooth',
+  mice: 'mouse', geese: 'goose', people: 'person', oxen: 'ox', brethren: 'brother',
+  analyses: 'analysis', diagnoses: 'diagnosis', theses: 'thesis', crises: 'crisis',
+  hypotheses: 'hypothesis', parentheses: 'parenthesis',
+  criteria: 'criterion', phenomena: 'phenomenon',
+  indices: 'index', matrices: 'matrix', vertices: 'vertex', appendices: 'appendix',
+}
+
 /**
  * 词形还原候选：按常见后缀反推原形。
  * 不追求语言学正确，能覆盖考试词库里的规则变化即可。
+ *
+ * 顺序很重要：越可信的越靠前，调用方通常取第一个查得到的。
  */
 export function lemmaCandidates(word: string): string[] {
   const w = word.toLowerCase()
@@ -86,13 +98,32 @@ export function lemmaCandidates(word: string): string[] {
     if (s.length >= 2 && !out.includes(s)) out.push(s)
   }
 
+  // 规则变化
   if (w.endsWith('ies')) add(w.slice(0, -3) + 'y')
   if (w.endsWith('ied')) add(w.slice(0, -3) + 'y')
   if (w.endsWith('es')) add(w.slice(0, -2))
   if (w.endsWith('s') && !w.endsWith('ss')) add(w.slice(0, -1))
+  // wives → wife / leaves → leaf / knives → knife
+  if (w.endsWith('ves')) {
+    add(w.slice(0, -3) + 'f')
+    add(w.slice(0, -3) + 'fe')
+  }
+  // analyses → analysis（-es 只会得到 analyse，再补一条 -is）
+  if (w.endsWith('ses')) add(w.slice(0, -2) + 'is')
+
+  // 不规则复数
+  const irregular = IRREGULAR[w]
+  if (irregular) add(irregular)
   if (w.endsWith('ed')) {
-    add(w.slice(0, -2))
+    const stem = w.slice(0, -2)
+    add(stem)
     add(w.slice(0, -1))
+    // stopped → stopp → stop（去掉双写）
+    if (stem.length > 2 && stem[stem.length - 1] === stem[stem.length - 2]) {
+      add(stem.slice(0, -1))
+    }
+    // studied → studi → study
+    if (stem.endsWith('i')) add(stem.slice(0, -1) + 'y')
   }
   if (w.endsWith('ing')) {
     add(w.slice(0, -3))
@@ -104,12 +135,18 @@ export function lemmaCandidates(word: string): string[] {
     }
   }
   if (w.endsWith('est')) {
-    add(w.slice(0, -3))
+    const stem = w.slice(0, -3)
+    add(stem)
     add(w.slice(0, -2))
+    // happiest → happi → happy
+    if (stem.endsWith('i')) add(stem.slice(0, -1) + 'y')
   }
   if (w.endsWith('er')) {
-    add(w.slice(0, -2))
+    const stem = w.slice(0, -2)
+    add(stem)
     add(w.slice(0, -1))
+    // happier → happi → happy
+    if (stem.endsWith('i')) add(stem.slice(0, -1) + 'y')
   }
 
   return out
