@@ -6,6 +6,7 @@ import android.view.Window;
 import android.webkit.WebView;
 
 import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.Plugin;
@@ -57,6 +58,25 @@ public class AppearancePlugin extends Plugin {
         window.getDecorView().setBackgroundColor(color);
         if (webView != null) {
             webView.setBackgroundColor(color);
+        }
+
+        hideNavigationBars(activity);
+    }
+
+    /**
+     * 沉浸式：隐藏底部手势条（小白条）。
+     * 从底部上滑会临时呼出（半透明盖在内容上），松手自动收回。
+     * 失焦后系统不会自己收回，onWindowFocusChanged 里要再调一次。
+     */
+    static void hideNavigationBars(Activity activity) {
+        if (activity == null) return;
+        Window window = activity.getWindow();
+        WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(window, window.getDecorView());
+        if (controller != null) {
+            controller.hide(WindowInsetsCompat.Type.navigationBars());
+            controller.setSystemBarsBehavior(
+                    WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
         }
     }
 

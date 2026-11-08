@@ -15,8 +15,8 @@ const K_GLASS = 'liquid_glass'
 const K_ALPHA = 'glass_alpha'
 
 /** 滑杆范围与默认值（0.55 ≈ tokens.css 里浅色主题的默认） */
-export const GLASS_ALPHA_MIN = 0.15
-export const GLASS_ALPHA_MAX = 0.85
+export const GLASS_ALPHA_MIN = 0
+export const GLASS_ALPHA_MAX = 1
 export const GLASS_ALPHA_DEFAULT = 0.55
 
 type GlassState = {
