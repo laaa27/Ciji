@@ -271,11 +271,24 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     window.setTimeout(() => setReturning(false), 320)
   }, [])
 
+  // 手势提交：先把剩余的滑出补完（160ms）再真正关页面，避免「瞬间消失」的断裂感
+  const backClose = useCallback((close: () => void) => {
+    const over = overRef.current
+    const snapping = underRef.current?.classList.contains(styles.snap)
+    if (over && snapping) {
+      over.style.transition = 'transform 0.16s cubic-bezier(0.4, 0, 1, 1)'
+      over.style.transform = 'translateX(100%)'
+      window.setTimeout(close, 150)
+    } else {
+      close()
+    }
+  }, [])
+
   // 安卓返回键：在文章库里先回阅读页
   useEffect(() => {
     if (!libOpen) return
-    return pushBackHandler(closeLibrary)
-  }, [libOpen, closeLibrary])
+    return pushBackHandler(() => backClose(closeLibrary))
+  }, [libOpen, closeLibrary, backClose])
 
   // 词卡也是子视图，返回键先关它
   useEffect(() => {
@@ -310,8 +323,8 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   // 安卓返回键：在生成页里先回阅读页
   useEffect(() => {
     if (!genOpen) return
-    return pushBackHandler(closeGenerate)
-  }, [genOpen, closeGenerate])
+    return pushBackHandler(() => backClose(closeGenerate))
+  }, [genOpen, closeGenerate, backClose])
 
   async function handleDeleteArticle(id: string) {
     const wasOpen = article?.id === id
@@ -348,9 +361,12 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   const covered = libOpen || genOpen
 
   // 预测性返回的跟手动画（文章库 / 生成页）：
-  // 上层子视图跟手右滑变透明，下层文章以「快照」形式从 92% 缩放回来。
+  // 上层子视图是一张不透明的纸，跟手右滑；下层文章以「快照」形式从 92% 缩放回来。
   // 快照不是截图——把下层切成固定定位、恢复滚动位置，视觉上就是刚才读到的地方。
-  // 进度事件一秒几十次，全部直接改 DOM，不走 React 状态。
+  //
+  // 性能红线：每帧只写 transform（合成器线程，不掉帧）。
+  // 圆角/投影这类一改就整屏重绘的属性，在手势开始时一次画好、结束时一次清掉，
+  // 绝不跟着进度逐帧改——之前逐帧改 box-shadow，闪得没法看。
   useEffect(() => {
     if (!covered) return
 
@@ -364,16 +380,13 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
         // covered 时下层是 display:none，快照层要显式翻回来才有内容
         under.style.display = 'block'
         under.scrollTop = articleScroll.current
+        // 装饰只画这一次
+        under.style.borderRadius = '20px'
+        over.style.borderRadius = '16px 0 0 16px'
+        over.style.boxShadow = '-12px 0 28px rgba(0, 0, 0, 0.28)'
       }
-      if (under) {
-        under.style.transform = `scale(${(0.92 + 0.08 * p).toFixed(4)})`
-        under.style.borderRadius = `${((1 - p) * 20).toFixed(1)}px`
-      }
-      // 上层是一张不透明的纸：跟手右滑，左侧圆角 + 投影给出「浮起来」的层次。
-      // 不做透明度渐变——纸变透明，两层文字就会叠印
+      if (under) under.style.transform = `scale(${(0.92 + 0.08 * p).toFixed(4)})`
       over.style.transform = `translateX(${(p * 56).toFixed(2)}%)`
-      over.style.borderRadius = `${(p * 16).toFixed(1)}px 0 0 ${(p * 16).toFixed(1)}px`
-      over.style.boxShadow = `-12px 0 28px rgba(0, 0, 0, ${(0.28 * p).toFixed(3)})`
     })
   }, [covered])
 
@@ -386,13 +399,12 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       const under = underRef.current
 
       if (over) {
-        over.style.transition =
-          'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.22s ease, box-shadow 0.22s ease'
+        over.style.transition = 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)'
         over.style.transform = 'translateX(0)'
-        over.style.borderRadius = '0'
-        over.style.boxShadow = 'none'
         window.setTimeout(() => {
           over.style.transition = ''
+          over.style.borderRadius = ''
+          over.style.boxShadow = ''
         }, 240)
       }
       if (under && under.classList.contains(styles.snap)) {
@@ -409,12 +421,21 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     })
   }, [covered])
 
-  // 回到主视图后：清掉手势留下的内联样式，下层回到普通文档流
+  // 回到主视图后：拆掉快照层回到文档流，缩放补一个短动画收尾，再清干净内联样式
   useEffect(() => {
     if (covered) return
     const under = underRef.current
-    if (under) {
+    if (under && under.classList.contains(styles.snap)) {
       under.classList.remove(styles.snap)
+      under.style.transition = 'transform 0.18s cubic-bezier(0.22, 1, 0.36, 1)'
+      under.style.transform = 'scale(1)'
+      window.setTimeout(() => {
+        under.style.transition = ''
+        under.style.transform = ''
+        under.style.borderRadius = ''
+        under.style.display = ''
+      }, 190)
+    } else if (under) {
       under.style.transform = ''
       under.style.borderRadius = ''
       under.style.display = ''

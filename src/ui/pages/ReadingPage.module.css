@@ -164,6 +164,7 @@
   background: var(--paper);
   min-height: 100vh;
   min-height: 100dvh;
+  will-change: transform;
 }
 
 /* ── 配置区 ─────────────────────────────── */
