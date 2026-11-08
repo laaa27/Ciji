@@ -1,0 +1,361 @@
+/* 生成文章二级页：外层 .page 的 padding 由阅读页提供，这里不管外边距 */
+
+.header {
+  position: sticky;
+  /* sticky 的 top 作用在 margin box 上，而下面用了负 margin-top 抵消内边距，
+     所以这里要把那 8px 也减掉，否则顶边会漏出一条缝（内容从缝里穿过去） */
+  top: calc(var(--safe-top) - var(--sp-2));
+  z-index: 3;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: var(--sp-2) 0;
+  margin-top: calc(-1 * var(--sp-2));
+  margin-bottom: var(--sp-4);
+  background: var(--paper);
+  box-shadow: 0 1px 0 var(--rule);
+}
+
+.back {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  padding: 4px 6px 4px 0;
+}
+
+.title {
+  font-family: var(--font-word);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+}
+
+.count {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.field {
+  margin-bottom: var(--sp-6);
+}
+
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  margin-bottom: var(--sp-3);
+}
+
+.hint {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--ink-3);
+}
+
+/* ── 日期 ─────────────────────────────── */
+
+.days {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none;
+}
+
+.days::-webkit-scrollbar {
+  display: none;
+}
+
+.day {
+  flex: none;
+  padding: 7px 11px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.day[data-on='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ── 类型复选框 ───────────────────────── */
+
+.kinds {
+  display: flex;
+  gap: 6px;
+}
+
+.kind {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 6px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.kind[data-on='true'] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
+/* 自绘小方框：不用原生 checkbox，省得各机型样式不一致 */
+.tick {
+  width: 12px;
+  height: 12px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  opacity: 0.55;
+  position: relative;
+}
+
+.kind[data-on='true'] .tick {
+  opacity: 1;
+  background: currentColor;
+}
+
+.kind[data-on='true'] .tick::after {
+  content: '';
+  position: absolute;
+  left: 3px;
+  top: 0.5px;
+  width: 4px;
+  height: 7px;
+  border-right: 1.5px solid var(--accent);
+  border-bottom: 1.5px solid var(--accent);
+  transform: rotate(42deg);
+}
+
+.kindCount {
+  font-size: 10.5px;
+  opacity: 0.65;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 已用词开关 ───────────────────────── */
+
+.switchRow {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-5);
+  cursor: pointer;
+}
+
+.switchText {
+  flex: 1;
+  min-width: 0;
+  font-size: var(--fs-body);
+  color: var(--ink);
+  line-height: 1.5;
+}
+
+.switchText em {
+  display: block;
+  margin-top: 5px;
+  font-style: normal;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  line-height: 1.6;
+}
+
+.switch {
+  flex: none;
+  appearance: none;
+  position: relative;
+  width: 42px;
+  height: 24px;
+  margin: 2px 0 0;
+  border-radius: 12px;
+  background: var(--rule-strong);
+  transition: background 0.18s ease;
+  cursor: pointer;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--switch-knob);
+  transition: transform 0.18s ease;
+}
+
+.switch:checked {
+  background: var(--state-new);
+}
+
+.switch:checked::after {
+  transform: translateX(18px);
+}
+
+/* ── 词表 ─────────────────────────────── */
+
+.group {
+  margin-bottom: var(--sp-5);
+}
+
+.groupHead {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  padding-bottom: var(--sp-2);
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+}
+
+.groupCount {
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.word {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.word:active {
+  background: var(--tint);
+}
+
+/* 未选中的词压暗，一眼能看出两组差别 */
+.word[data-on='false'] .spelling {
+  color: var(--ink-3);
+}
+
+.word[data-on='false'] .marks {
+  opacity: 0.35;
+}
+
+.marks {
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+
+.mark {
+  width: 2px;
+  height: 15px;
+  border-radius: 1px;
+}
+
+.spelling {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-word);
+  font-size: var(--fs-word);
+  color: var(--ink);
+}
+
+.used {
+  flex: none;
+  padding: 1px 5px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.kindsText {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+/* ── 分段控件 ─────────────────────────── */
+
+.segments {
+  display: flex;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.segment {
+  flex: 1;
+  padding: 9px 4px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  border-right: 1px solid var(--rule-strong);
+  font-variant-numeric: tabular-nums;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.segment:last-child {
+  border-right: 0;
+}
+
+.segment[data-on='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* ── 提示与按钮 ───────────────────────── */
+
+.warn {
+  margin-top: 8px;
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  color: var(--state-vague);
+}
+
+.error {
+  margin: var(--sp-4) 0;
+  padding: 10px 12px;
+  background: var(--tint-danger);
+  border-left: 2px solid var(--state-forget);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.65;
+}
+
+.primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 46px;
+  margin-top: var(--sp-5);
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 2px;
+  font-size: var(--fs-body);
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+
+.primary:active {
+  opacity: 0.85;
+  transform: translateY(1px);
+}
+
+.primary:disabled {
+  opacity: 0.4;
+}

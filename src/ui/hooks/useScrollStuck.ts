@@ -7,6 +7,11 @@ import { useEffect, useRef, useState, type RefObject } from 'react'
  * 所以这里按「向上找第一个可滚动祖先」处理 —— 不要写死类名，CSS Modules 会加后缀。
  */
 
+/** 滚动容器上打了 data-scroller，页面切到子视图时也能找到它 */
+function scrollerOf(el: HTMLElement | null): HTMLElement | null {
+  return findScrollParent(el) ?? document.querySelector<HTMLElement>('[data-scroller]')
+}
+
 export function findScrollParent(el: HTMLElement | null): HTMLElement | null {
   let node = el?.parentElement ?? null
   while (node) {
@@ -33,16 +38,17 @@ export function useScrollStuck(ref: RefObject<HTMLElement | null>): boolean {
   const [stuck, setStuck] = useState(false)
 
   useEffect(() => {
-    const el = ref.current
-    if (!el) return
-    const scroller = findScrollParent(el)
+    const scroller = scrollerOf(ref.current)
     if (!scroller) return
 
     let raf = 0
     const update = () => {
       raf = 0
+      // 每次都取最新的节点：进出子视图会重建 header，
+      // 闭包里抓住的旧节点已经脱离文档，量出来是 0
+      const el = ref.current
       // 切到别的栏目时页面是 display:none，量出来的坐标没意义，跳过
-      if (el.offsetParent === null) return
+      if (!el || el.offsetParent === null) return
       setStuck(isStuckAtLine(el, scroller))
     }
     const onScroll = () => {
@@ -50,16 +56,13 @@ export function useScrollStuck(ref: RefObject<HTMLElement | null>): boolean {
     }
 
     scroller.addEventListener('scroll', onScroll, { passive: true })
+    // 换栏目时 App 会派发一次 resize —— 页面刚从 display:none 回来，需要重新量
     window.addEventListener('resize', onScroll)
-    // 页码切换回来时也要重新量一次
-    const observer = new MutationObserver(onScroll)
-    observer.observe(el.parentElement ?? el, { attributes: true, attributeFilter: ['data-active'] })
     update()
 
     return () => {
       scroller.removeEventListener('scroll', onScroll)
       window.removeEventListener('resize', onScroll)
-      observer.disconnect()
       if (raf) cancelAnimationFrame(raf)
     }
   }, [ref])
@@ -77,14 +80,13 @@ export function useScrollStuckGroup(
   const raf = useRef(0)
 
   useEffect(() => {
-    const page = containerRef.current
-    if (!page) return
-    const scroller = findScrollParent(page)
+    const scroller = scrollerOf(containerRef.current)
     if (!scroller) return
 
     const update = () => {
       raf.current = 0
-      if (page.offsetParent === null) return
+      const page = containerRef.current
+      if (!page || page.offsetParent === null) return
 
       const next: Record<string, boolean> = {}
       for (const el of page.querySelectorAll<HTMLElement>(selector)) {

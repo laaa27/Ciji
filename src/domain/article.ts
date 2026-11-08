@@ -4,25 +4,34 @@ import { lemmaCandidates } from '@/data/dict'
 import type { TodaySnapshot } from '@/domain/collect'
 
 export type ArticleMode = 'weak' | 'new' | 'all'
+/** 兼容旧数据：早期文章里可能存着 'ielts'，标签要能正常显示 */
 export type ArticleLevel = 'cet4' | 'cet6' | 'kaoyan' | 'ielts'
 
-export const MODE_LABEL: Record<ArticleMode, string> = {
-  weak: '忘记 + 模糊',
-  new: '仅新学',
-  all: '全部',
-}
-
-export const MODE_HINT: Record<ArticleMode, string> = {
-  weak: '专攻没记住的词',
-  new: '只练今天第一次见的词',
-  all: '新学、模糊、忘记全用上',
-}
+/** 新生成时可选的难度（雅思用不上，从选项里去掉） */
+export const LEVELS: ArticleLevel[] = ['cet4', 'cet6', 'kaoyan']
 
 export const LEVEL_LABEL: Record<ArticleLevel, string> = {
   cet4: '四级',
   cet6: '六级',
   kaoyan: '考研',
   ielts: '雅思',
+}
+
+/** 单词类型：与今天页的三组一一对应 */
+export type WordKind = 'forget' | 'vague' | 'new'
+
+export const KIND_LABEL: Record<WordKind, string> = {
+  forget: '忘记',
+  vague: '模糊',
+  new: '新学',
+}
+
+export interface WordCandidate {
+  spelling: string
+  /** 一个词可能同时属于多个类型（新学又答错的词） */
+  kinds: WordKind[]
+  /** 已被这一天的某篇文章用过 */
+  used: boolean
 }
 
 export interface ArticleSentence {
@@ -40,6 +49,8 @@ export interface Article {
   sentences: ArticleSentence[]
   /** 本篇要求覆盖的词 */
   targetWords: string[]
+  /** 生成时勾选了几类词（老文章没有这个字段，回退到 mode） */
+  kinds?: WordKind[]
   mode: ArticleMode
   level: ArticleLevel
   model: string
@@ -56,43 +67,67 @@ export interface Outline {
 export const MAX_TARGET_WORDS = 25
 
 /**
- * 按模式挑词。
- * 排序优先级：忘记 > 模糊 > 新学 —— 越容易忘的越值得在文章里再遇见一次。
- * exclude 里的词会被跳过，用来避免连续几篇反复覆盖同一批词。
+ * 取某一天的候选词。
+ *
+ * 以前是从最近 7 天合起来挑，会把历史词混进来 —— 这里只认传进来的那一天。
+ * 排序：忘记 > 模糊 > 新学，同优先级按字母 —— 越容易忘的越值得在文章里再遇见一次。
  */
-export function pickWords(
-  days: TodaySnapshot[],
-  mode: ArticleMode,
-  limit = MAX_TARGET_WORDS,
-  exclude?: Set<string>,
-): string[] {
-  const best = new Map<string, number>()
+export function wordCandidates(
+  day: TodaySnapshot | null,
+  usedToday: Set<string>,
+): WordCandidate[] {
+  if (!day) return []
 
-  for (const day of days) {
-    for (const w of day.words) {
-      const inNew = w.isNew
-      const inWeak = w.firstResponse === 'VAGUE' || w.firstResponse === 'FORGET'
+  const map = new Map<string, WordCandidate>()
 
-      const ok =
-        mode === 'all' ? inNew || inWeak : mode === 'new' ? inNew : inWeak
-      if (!ok) continue
+  for (const w of day.words) {
+    const spelling = w.spelling.trim()
+    if (!spelling) continue
 
-      const key = w.spelling.trim()
-      if (!key) continue
-      if (exclude?.has(key.toLowerCase())) continue
+    const kinds: WordKind[] = []
+    if (w.groups.includes('forget')) kinds.push('forget')
+    if (w.groups.includes('vague')) kinds.push('vague')
+    if (w.isNew || w.groups.includes('new')) kinds.push('new')
+    if (kinds.length === 0) continue
 
-      const score =
-        w.firstResponse === 'FORGET' ? 0 : w.firstResponse === 'VAGUE' ? 1 : 2
-
-      const prev = best.get(key)
-      if (prev === undefined || score < prev) best.set(key, score)
+    const key = spelling.toLowerCase()
+    const prev = map.get(key)
+    if (prev) {
+      // 同一天里同一个词出现多次：合并类型
+      for (const k of kinds) if (!prev.kinds.includes(k)) prev.kinds.push(k)
+      continue
     }
+    map.set(key, { spelling, kinds, used: usedToday.has(key) })
   }
 
-  return [...best.entries()]
-    .sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]))
+  const rank = (c: WordCandidate) =>
+    c.kinds.includes('forget') ? 0 : c.kinds.includes('vague') ? 1 : 2
+
+  return [...map.values()].sort(
+    (a, b) => rank(a) - rank(b) || a.spelling.localeCompare(b.spelling),
+  )
+}
+
+/**
+ * 按勾选的类型算出「默认该选哪些词」。
+ * 当天已用过的词默认排除 —— 想再用一次得自己手动勾。
+ */
+export function defaultSelection(cands: WordCandidate[], kinds: WordKind[]): string[] {
+  return cands
+    .filter((c) => !c.used && c.kinds.some((k) => kinds.includes(k)))
+    .map((c) => c.spelling.toLowerCase())
+}
+
+/** 勾选过多时按「忘记 > 模糊 > 新学」保留前 limit 个 */
+export function trimSelection(
+  cands: WordCandidate[],
+  selected: Set<string>,
+  limit: number,
+): string[] {
+  return cands
+    .filter((c) => selected.has(c.spelling.toLowerCase()))
     .slice(0, limit)
-    .map(([word]) => word)
+    .map((c) => c.spelling)
 }
 
 const LEVEL_HINT: Record<ArticleLevel, string> = {
@@ -257,10 +292,21 @@ export function missingWords(article: Pick<Article, 'sentences' | 'targetWords'>
 }
 
 export interface GenerateOptions {
+  /** 用户在选词界面里确认过的词（顺序即优先级） */
   words: string[]
-  mode: ArticleMode
+  /** 勾选过的类型，只用于记录 */
+  kinds: WordKind[]
   level: ArticleLevel
   date: string
+}
+
+/** kinds → 旧的 mode 字段，保证老代码/老数据一条线 */
+function modeOf(kinds: WordKind[]): ArticleMode {
+  const hasNew = kinds.includes('new')
+  const hasWeak = kinds.includes('forget') || kinds.includes('vague')
+  if (hasNew && !hasWeak) return 'new'
+  if (!hasNew && hasWeak) return 'weak'
+  return 'all'
 }
 
 /**
@@ -296,7 +342,8 @@ export async function generateArticle(opts: GenerateOptions): Promise<Article> {
         titleZh,
         sentences,
         targetWords: opts.words,
-        mode: opts.mode,
+        kinds: opts.kinds,
+        mode: modeOf(opts.kinds),
         level: opts.level,
         model: profile ? `${profile.name} / ${profile.model}` : 'unknown',
         createdAt: new Date().toISOString(),

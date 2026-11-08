@@ -1,6 +1,8 @@
 .header {
   position: sticky;
-  top: var(--safe-top);
+  /* sticky 的 top 作用在 margin box 上，而下面用了负 margin-top 抵消内边距，
+     所以这里要把那 8px 也减掉，否则顶边会漏出一条缝（内容从缝里穿过去） */
+  top: calc(var(--safe-top) - var(--sp-2));
   z-index: 3;
   display: flex;
   align-items: baseline;

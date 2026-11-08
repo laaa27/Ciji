@@ -106,7 +106,7 @@ export default function App() {
 
   return (
     <div className={styles.app}>
-      <div className={styles.body} ref={bodyRef}>
+      <div className={styles.body} ref={bodyRef} data-scroller>
         <div className={styles.slot} data-active={tab === 'today'}>
           {visited.has('today') && <TodayPage onGoSettings={() => changeTab('settings')} />}
         </div>

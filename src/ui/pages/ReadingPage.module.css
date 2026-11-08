@@ -30,7 +30,8 @@
 
 /* 进出文章库：往里是「从右边推进来」，返回是「从左边回来一点」，
    方向感能让人知道自己是在哪一层 */
-.page[data-view='lib'] {
+.page[data-view='lib'],
+.page[data-view='gen'] {
   animation: lib-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -56,7 +57,9 @@
   /* 吸顶：译文 / 字号 / 生成 三颗按钮要一直够得着。
      负 margin 抵消上面加的 padding，静止时的视觉位置不变。 */
   position: sticky;
-  top: var(--safe-top);
+  /* sticky 的 top 作用在 margin box 上，而下面用了负 margin-top 抵消内边距，
+     所以这里要把那 8px 也减掉，否则顶边会漏出一条缝（内容从缝里穿过去） */
+  top: calc(var(--safe-top) - var(--sp-2));
   z-index: 3;
   display: flex;
   align-items: baseline;
@@ -124,29 +127,9 @@
 
 /* ── 配置区 ─────────────────────────────── */
 
-.setup {
-  padding-top: var(--sp-2);
-  animation: fade-rise 0.24s cubic-bezier(0.22, 1, 0.36, 1);
-}
 
-.field {
-  margin-bottom: var(--sp-6);
-}
 
-.fieldLabel {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--ink-2);
-  margin-bottom: 10px;
-}
 
-.segments {
-  display: flex;
-  border: 1px solid var(--rule-strong);
-  border-radius: 2px;
-  overflow: hidden;
-}
 
 .segment {
   flex: 1;
@@ -166,11 +149,6 @@
   color: var(--on-accent);
 }
 
-.fieldHint {
-  margin-top: 8px;
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
-}
 
 .primary {
   display: inline-flex;
@@ -193,11 +171,6 @@
   opacity: 0.5;
 }
 
-.hint {
-  margin-top: 10px;
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
-}
 
 .error {
   margin: var(--sp-4) 0;

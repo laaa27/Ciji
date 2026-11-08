@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Preferences } from '@capacitor/preferences'
 
-import { getAllDays, getDay } from '@/data/store'
+import { listDays } from '@/data/store'
 import {
   deleteArticle,
   getArticleById,
-  getCoveredWordsToday,
   getLatestArticleOfDay,
   listArticles,
   saveArticle,
@@ -15,25 +14,21 @@ import { lemmaCandidates } from '@/data/dict'
 import {
   generateArticle,
   missingWords,
-  pickWords,
   wordCount,
   LEVEL_LABEL,
   MAX_TARGET_WORDS,
-  MODE_HINT,
-  MODE_LABEL,
   type Article,
   type ArticleLevel,
-  type ArticleMode,
 } from '@/domain/article'
 import { dateKey, monthDay } from '@/lib/date'
 import { getLastLlmResponse } from '@/api/llm'
 import { pushBackHandler } from '@/store/backstack'
 import { useToast } from '@/store/toast'
 import { useLlm } from '@/store/llm'
-import type { TodaySnapshot } from '@/domain/collect'
 
 import { findScrollParent, useScrollStuck } from '../hooks/useScrollStuck'
 import ArticleLibrary from '../components/ArticleLibrary'
+import GenerateArticle, { type GenerateRequest } from '../components/GenerateArticle'
 import WordSheet from '../components/WordSheet'
 import styles from './ReadingPage.module.css'
 
@@ -44,9 +39,6 @@ type Props = {
 }
 
 type FontSize = 's' | 'm' | 'l' | 'xl'
-
-const MODES: ArticleMode[] = ['weak', 'new', 'all']
-const LEVELS: ArticleLevel[] = ['cet4', 'cet6', 'kaoyan', 'ielts']
 
 const FONT_SIZES: { key: FontSize; label: string }[] = [
   { key: 's', label: '小' },
@@ -60,6 +52,7 @@ const WORD_LIMITS = [10, 15, 20, 25, 30]
 
 const FONT_KEY = 'reading_font_size'
 const LIMIT_KEY = 'reading_word_limit'
+const LEVEL_KEY = 'reading_level'
 
 /** 按单词切分句子，保留标点和空格 */
 function tokenize(sentence: string): { text: string; isWord: boolean }[] {
@@ -88,7 +81,6 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
 
   const [article, setArticle] = useState<Article | null>(null)
   const [library, setLibrary] = useState<ArticleMeta[]>([])
-  const [mode, setMode] = useState<ArticleMode>('weak')
   const [level, setLevel] = useState<ArticleLevel>('kaoyan')
   const [wordLimit, setWordLimit] = useState(MAX_TARGET_WORDS)
   const [showZh, setShowZh] = useState(false)
@@ -101,10 +93,12 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   const [sizePanel, setSizePanel] = useState(false)
   /** 是否停在文章库子视图 */
   const [libOpen, setLibOpen] = useState(false)
+  /** 是否停在生成文章子视图 */
+  const [genOpen, setGenOpen] = useState(false)
+  /** 有学习记录的日期（倒序），给生成页的日期选择用 */
+  const [days, setDays] = useState<string[]>([])
   /** 刚从文章库返回：给阅读页放一次入场动画，免得像被「刷」地换掉 */
   const [returning, setReturning] = useState(false)
-  const [showSetup, setShowSetup] = useState(false)
-  const [pool, setPool] = useState<TodaySnapshot[]>([])
 
   const headerRef = useRef<HTMLElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
@@ -113,11 +107,6 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   const headerStuck = useScrollStuck(headerRef)
 
   const today = dateKey()
-
-  const available = useMemo(
-    () => (pool.length > 0 ? pickWords(pool, mode, 999).length : null),
-    [pool, mode],
-  )
 
   const refreshLibrary = useCallback(async () => {
     setLibrary(await listArticles())
@@ -129,20 +118,21 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       if (latest) setArticle(latest)
       await refreshLibrary()
 
-      const [font, limit] = await Promise.all([
+      const [font, limit, lv] = await Promise.all([
         Preferences.get({ key: FONT_KEY }),
         Preferences.get({ key: LIMIT_KEY }),
+        Preferences.get({ key: LEVEL_KEY }),
       ])
       if (font.value === 's' || font.value === 'l' || font.value === 'xl') {
         setFontSize(font.value)
       }
       const parsedLimit = Number(limit.value)
       if (WORD_LIMITS.includes(parsedLimit)) setWordLimit(parsedLimit)
+      if (lv.value === 'cet4' || lv.value === 'cet6' || lv.value === 'kaoyan') {
+        setLevel(lv.value)
+      }
 
-      const all = await getAllDays()
-      const snap = await getDay(today)
-      const merged = snap ? [snap, ...all.filter((d) => d.date !== today)] : all
-      setPool(merged.slice(0, 7))
+      setDays(await listDays())
     })()
   }, [today, refreshLibrary])
 
@@ -166,9 +156,13 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     await Preferences.set({ key: LIMIT_KEY, value: String(next) })
   }
 
-  async function handleGenerate() {
+  async function handleGenerate(req: GenerateRequest) {
     if (!hasModel) {
       setError('还没有配置大模型。去设置里填一个 API Key，智谱的免费。')
+      return
+    }
+    if (req.words.length === 0) {
+      setError('没有选中任何单词')
       return
     }
 
@@ -177,34 +171,20 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     setMissing([])
 
     try {
-      let source = pool
-      if (source.length === 0) {
-        const all = await getAllDays()
-        const snap = await getDay(today)
-        source = (snap ? [snap, ...all.filter((d) => d.date !== today)] : all).slice(0, 7)
-        setPool(source)
-      }
-
-      // 只排除「今天」已经生成过的词：
-      // 到了第二天，之前忘过的词会重新回到候选里，可以再复习一遍。
-      const covered = await getCoveredWordsToday(today)
-
-      let words = pickWords(source, mode, wordLimit, covered)
-      if (words.length < Math.min(8, wordLimit)) {
-        words = pickWords(source, mode, wordLimit)
-      }
-      if (words.length === 0) {
-        throw new Error('这个范围里没有可用的词。先去背几个单词，或者换个生成范围。')
-      }
-
-      const draft = await generateArticle({ words, mode, level, date: today })
+      const draft = await generateArticle({
+        words: req.words,
+        kinds: req.kinds,
+        level: req.level,
+        date: req.date,
+      })
       const saved = await saveArticle(draft)
 
       setArticle(saved)
       setShowZh(false)
-      setShowSetup(false)
       setMissing(missingWords(saved))
       await refreshLibrary()
+
+      closeGenerate()
 
       // 用户已经切到别的栏目了，得让他知道文章好了
       if (!activeRef.current) useToast.getState().show('文章生成好了')
@@ -242,11 +222,35 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     return pushBackHandler(() => setSheetWord(null))
   }, [sheetWord])
 
-  function openLibrary() {
+  function rememberScroll() {
     const scroller = findScrollParent(pageRef.current)
     if (scroller) articleScroll.current = scroller.scrollTop
+  }
+
+  function openLibrary() {
+    rememberScroll()
     setLibOpen(true)
   }
+
+  const closeGenerate = useCallback(() => {
+    setGenOpen(false)
+    setReturning(true)
+    window.setTimeout(() => setReturning(false), 320)
+  }, [])
+
+  async function openGenerate() {
+    rememberScroll()
+    // 日期可能变了（比如过了零点又学了新词），每次进来重读一次
+    setDays(await listDays())
+    setError(null)
+    setGenOpen(true)
+  }
+
+  // 安卓返回键：在生成页里先回阅读页
+  useEffect(() => {
+    if (!genOpen) return
+    return pushBackHandler(closeGenerate)
+  }, [genOpen, closeGenerate])
 
   async function handleDeleteArticle(id: string) {
     const wasOpen = article?.id === id
@@ -268,7 +272,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     const scroller = findScrollParent(pageRef.current)
     if (!scroller) return
 
-    if (libOpen) {
+    if (libOpen || genOpen) {
       scroller.scrollTop = 0
       return
     }
@@ -276,9 +280,31 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       scroller.scrollTop = articleScroll.current
     })
     return () => cancelAnimationFrame(raf)
-  }, [libOpen])
+  }, [libOpen, genOpen])
 
   const hasArticle = Boolean(article)
+
+  if (genOpen) {
+    return (
+      <div className={styles.page} data-size={fontSize} data-view="gen" ref={pageRef}>
+        <GenerateArticle
+          days={days}
+          today={today}
+          initialLevel={level}
+          initialLimit={wordLimit}
+          busy={busy}
+          error={error}
+          onBack={closeGenerate}
+          onGenerate={handleGenerate}
+          onLevelChange={(next) => {
+            setLevel(next)
+            void Preferences.set({ key: LEVEL_KEY, value: next })
+          }}
+          onLimitChange={(next) => void changeWordLimit(next)}
+        />
+      </div>
+    )
+  }
 
   if (libOpen) {
     return (
@@ -327,15 +353,12 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
               >
                 字号
               </button>
-              <button
-                type="button"
-                className={styles.action}
-                data-on={showSetup}
-                onClick={() => setShowSetup((v) => !v)}
-              >
-                {busy ? '生成中' : '生成'}
-              </button>
             </>
+          )}
+          {hasModel && (
+            <button type="button" className={styles.action} onClick={() => void openGenerate()}>
+              {busy ? '生成中' : '生成'}
+            </button>
           )}
           {library.length > 0 && (
             <button type="button" className={styles.action} onClick={openLibrary}>
@@ -375,80 +398,16 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
         </div>
       )}
 
-      {hasModel && (showSetup || !hasArticle) && (
-        <section className={styles.setup}>
-          <div className={styles.field}>
-            <h2 className={styles.fieldLabel}>用哪些词</h2>
-            <div className={styles.segments}>
-              {MODES.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  className={styles.segment}
-                  data-on={mode === m}
-                  onClick={() => setMode(m)}
-                >
-                  {MODE_LABEL[m]}
-                </button>
-              ))}
-            </div>
-            <p className={styles.fieldHint}>
-              {MODE_HINT[mode]}
-              {available !== null &&
-                (available > wordLimit
-                  ? ` · 有 ${available} 个可选，本篇取前 ${wordLimit} 个`
-                  : ` · 共 ${available} 个，全部用上`)}
-            </p>
-          </div>
-
-          <div className={styles.field}>
-            <h2 className={styles.fieldLabel}>覆盖词数</h2>
-            <div className={styles.segments}>
-              {WORD_LIMITS.map((n) => (
-                <button
-                  key={n}
-                  type="button"
-                  className={styles.segment}
-                  data-on={wordLimit === n}
-                  onClick={() => void changeWordLimit(n)}
-                >
-                  {n}
-                </button>
-              ))}
-            </div>
-            <p className={styles.fieldHint}>
-              一篇文章里塞太多会变成词表，30 个已是上限。
-            </p>
-          </div>
-
-          <div className={styles.field}>
-            <h2 className={styles.fieldLabel}>难度</h2>
-            <div className={styles.segments}>
-              {LEVELS.map((l) => (
-                <button
-                  key={l}
-                  type="button"
-                  className={styles.segment}
-                  data-on={level === l}
-                  onClick={() => setLevel(l)}
-                >
-                  {LEVEL_LABEL[l]}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className={styles.primary}
-            onClick={() => void handleGenerate()}
-            disabled={busy}
-          >
-            {busy ? '正在生成…' : hasArticle ? '再生成一篇' : '生成一篇文章'}
+      {hasModel && !hasArticle && (
+        <div className={styles.notice}>
+          <p className={styles.noticeTitle}>还没有文章</p>
+          <p className={styles.noticeText}>
+            挑一天学过的词，生成一篇短文，让忘记的词再遇见一次。
+          </p>
+          <button type="button" className={styles.primary} onClick={() => void openGenerate()}>
+            去选词
           </button>
-
-          {busy && <p className={`${styles.hint} loading-pulse`}>先列提纲，再成文，通常 20~50 秒。</p>}
-        </section>
+        </div>
       )}
 
       {error && (
