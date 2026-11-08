@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Preferences } from '@capacitor/preferences'
 
 import { getAllDays, getDay } from '@/data/store'
@@ -26,14 +26,18 @@ import {
 } from '@/domain/article'
 import { dateKey, monthDay } from '@/lib/date'
 import { getLastLlmResponse } from '@/api/llm'
+import { useToast } from '@/store/toast'
 import { useLlm } from '@/store/llm'
 import type { TodaySnapshot } from '@/domain/collect'
 
+import { useScrollStuck } from '../hooks/useScrollStuck'
 import WordSheet from '../components/WordSheet'
 import styles from './ReadingPage.module.css'
 
 type Props = {
   onGoSettings: () => void
+  /** 当前是否停留在阅读栏目。生成完成时用它决定要不要弹提示 */
+  active: boolean
 }
 
 type FontSize = 's' | 'm' | 'l' | 'xl'
@@ -71,7 +75,11 @@ function tokenize(sentence: string): { text: string; isWord: boolean }[] {
   return parts
 }
 
-export default function ReadingPage({ onGoSettings }: Props) {
+export default function ReadingPage({ onGoSettings, active }: Props) {
+  // 生成是异步的，完成那一刻的 active 才是准的（过程中用户可能已经切走）
+  const activeRef = useRef(active)
+  activeRef.current = active
+
   const hasModel = useLlm((s) => s.profiles.length > 0)
   const llmReady = useLlm((s) => s.ready)
 
@@ -91,6 +99,9 @@ export default function ReadingPage({ onGoSettings }: Props) {
   const [pastOpen, setPastOpen] = useState(false)
   const [showSetup, setShowSetup] = useState(false)
   const [pool, setPool] = useState<TodaySnapshot[]>([])
+
+  const headerRef = useRef<HTMLElement>(null)
+  const headerStuck = useScrollStuck(headerRef)
 
   const today = dateKey()
 
@@ -185,6 +196,9 @@ export default function ReadingPage({ onGoSettings }: Props) {
       setShowSetup(false)
       setMissing(missingWords(saved))
       await refreshLibrary()
+
+      // 用户已经切到别的栏目了，得让他知道文章好了
+      if (!activeRef.current) useToast.getState().show('文章生成好了')
     } catch (e) {
       setError(e instanceof Error ? e.message : '生成失败，请重试')
     } finally {
@@ -205,7 +219,11 @@ export default function ReadingPage({ onGoSettings }: Props) {
 
   return (
     <div className={styles.page} data-size={fontSize}>
-      <header className={styles.header}>
+      <header
+        className={styles.header}
+        ref={headerRef}
+        data-stuck={headerStuck ? 'true' : 'false'}
+      >
         <h1 className={styles.title}>阅读</h1>
 
         {hasArticle && (

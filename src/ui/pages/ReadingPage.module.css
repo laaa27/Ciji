@@ -5,6 +5,9 @@
   --rd-fs: 17px;
   --rd-zh-fs: 12.5px;
   --rd-lh: 1.75;
+  /* 吸顶标题的实际高度（32px 标题 1.1 行高 + 上下各 8px 内边距），
+     字号档位条要贴在它下面 */
+  --rd-head: 51px;
 }
 
 .page[data-size='s'] {
@@ -26,10 +29,24 @@
 }
 
 .header {
+  /* 吸顶：译文 / 字号 / 生成 三颗按钮要一直够得着。
+     负 margin 抵消上面加的 padding，静止时的视觉位置不变。 */
+  position: sticky;
+  top: var(--safe-top);
+  z-index: 3;
   display: flex;
   align-items: baseline;
   gap: 12px;
-  margin-bottom: var(--sp-5);
+  padding: var(--sp-2) 0;
+  margin-top: calc(-1 * var(--sp-2));
+  margin-bottom: var(--sp-4);
+  background: var(--paper);
+  transition: box-shadow 0.18s ease;
+}
+
+/* 只有真贴住了才画分隔线 */
+.header[data-stuck='true'] {
+  box-shadow: 0 1px 0 var(--rule);
 }
 
 .title {
@@ -68,8 +85,13 @@
 /* ── 字号选择 ───────────────────────────── */
 
 .sizePanel {
+  /* 打开字号档位后，滑到哪儿都能调；紧贴吸顶标题的底边 */
+  position: sticky;
+  top: calc(var(--safe-top) + var(--rd-head));
+  z-index: 2;
   display: flex;
   margin-bottom: var(--sp-5);
+  background: var(--paper);
   border: 1px solid var(--rule-strong);
   border-radius: 2px;
   overflow: hidden;

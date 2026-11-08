@@ -28,8 +28,15 @@
   pointer-events: none;
 }
 
-/* 页面切换：新页从下方 6px 处淡入，替代生硬的瞬间替换 */
-.body > * {
+/* 栏目容器：去过的页面一直挂着（保住状态），没轮到的 display:none */
+.slot {
+  display: none;
+}
+
+/* 页面切换：新页从下方 6px 处淡入，替代生硬的瞬间替换。
+   动画挂在「变成 active」这一刻，所以每次切换都会重放一次。 */
+.slot[data-active='true'] {
+  display: block;
   animation: view-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -42,6 +49,7 @@
 
 .toast {
   position: fixed;
+  cursor: default;
   left: 50%;
   bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 24px);
   transform: translateX(-50%);
