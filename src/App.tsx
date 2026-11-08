@@ -72,7 +72,7 @@ export default function App() {
     return () => cancelAnimationFrame(raf)
   }, [tab])
 
-  // Android 返回键：连按两次才退出，防止误触
+  // Android 返回键：连按两次才收起应用（回桌面，不杀进程），防止误触
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
 
@@ -84,7 +84,8 @@ export default function App() {
 
       const now = Date.now()
       if (now - lastBackRef.current < EXIT_CONFIRM_MS) {
-        void CapApp.exitApp()
+        // 不退出进程：把任务移到后台，下次点图标能原样回来
+        void CapApp.minimizeApp()
         return
       }
       lastBackRef.current = now
@@ -102,7 +103,7 @@ export default function App() {
   }, [])
 
   // 退出提示优先于普通提示，避免叠两条
-  const toastText = exitHint ? '再按一次返回键退出' : toast
+  const toastText = exitHint ? '再按一次回到桌面' : toast
 
   return (
     <div className={styles.app}>

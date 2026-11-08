@@ -27,6 +27,7 @@ import styles from './GenerateArticle.module.css'
  * 这一页的职责是「把要用的词确认清楚」：
  * - 日期：只能选有记录的那一天，默认今天（以前是最近 7 天混在一起，会把历史词带进来）
  * - 类型：忘记 / 模糊 / 新学，可任意组合，决定默认勾选哪些词
+ * - 难度与词数上限：放在词表上方，先定参数再核对词
  * - 词表：分成「将使用」和「不使用」两组，每个词都能单独点
  * - 当天已被旧文章用过的词默认不出现，顶部开关可展开并手动勾选
  */
@@ -229,6 +230,51 @@ export default function GenerateArticle({
         </label>
       )}
 
+      <section className={styles.field}>
+        <h2 className={styles.fieldLabel}>难度</h2>
+        <div className={styles.segments}>
+          {LEVELS.map((l) => (
+            <button
+              key={l}
+              type="button"
+              className={styles.segment}
+              data-on={level === l}
+              onClick={() => {
+                setLevel(l)
+                onLevelChange(l)
+              }}
+            >
+              {LEVEL_LABEL[l]}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className={styles.field}>
+        <h2 className={styles.fieldLabel}>词数上限</h2>
+        <div className={styles.segments}>
+          {WORD_LIMITS.map((n) => (
+            <button
+              key={n}
+              type="button"
+              className={styles.segment}
+              data-on={limit === n}
+              onClick={() => {
+                setLimit(n)
+                onLimitChange(n)
+              }}
+            >
+              {n}
+            </button>
+          ))}
+        </div>
+        {overLimit && (
+          <p className={styles.warn}>
+            选了 {chosen.length} 个，超过上限 {limit}。按「忘记 → 模糊 → 新学」的顺序取前 {limit} 个。
+          </p>
+        )}
+      </section>
+
       {loading && <p className={`${styles.hint} loading-pulse`}>正在读取这天的单词…</p>}
 
       {!loading && visible.length === 0 && (
@@ -290,51 +336,6 @@ export default function GenerateArticle({
           </ul>
         </section>
       )}
-
-      <section className={styles.field}>
-        <h2 className={styles.fieldLabel}>难度</h2>
-        <div className={styles.segments}>
-          {LEVELS.map((l) => (
-            <button
-              key={l}
-              type="button"
-              className={styles.segment}
-              data-on={level === l}
-              onClick={() => {
-                setLevel(l)
-                onLevelChange(l)
-              }}
-            >
-              {LEVEL_LABEL[l]}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className={styles.field}>
-        <h2 className={styles.fieldLabel}>词数上限</h2>
-        <div className={styles.segments}>
-          {WORD_LIMITS.map((n) => (
-            <button
-              key={n}
-              type="button"
-              className={styles.segment}
-              data-on={limit === n}
-              onClick={() => {
-                setLimit(n)
-                onLimitChange(n)
-              }}
-            >
-              {n}
-            </button>
-          ))}
-        </div>
-        {overLimit && (
-          <p className={styles.warn}>
-            选了 {chosen.length} 个，超过上限 {limit}。按「忘记 → 模糊 → 新学」的顺序取前 {limit} 个。
-          </p>
-        )}
-      </section>
 
       {error && <p className={styles.error}>{error}</p>}
 

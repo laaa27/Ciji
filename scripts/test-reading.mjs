@@ -296,6 +296,18 @@ const levels = await page.evaluate(() =>
 ok('有四级/六级/考研', levels.slice(0, 3).every((x) => x.has), JSON.stringify(levels))
 ok('没有雅思', levels[3].has === false)
 
+// 难度与词数上限要排在词表之前
+const order = await page.evaluate(() => {
+  const all = [...document.querySelectorAll('h2')].map((h) => h.textContent?.trim() ?? '')
+  const idx = (label) => all.findIndex((x) => x.includes(label))
+  return { level: idx('难度'), limit: idx('词数上限'), chosen: idx('将使用') }
+})
+ok(
+  '难度与词数上限在词表上方',
+  order.level >= 0 && order.limit > order.level && order.chosen > order.limit,
+  JSON.stringify(order),
+)
+
 await clickText('10')
 await t(450)
 text = await bodyText()
