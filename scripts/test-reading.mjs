@@ -280,6 +280,15 @@ await t(500)
 
 let libText = await bodyText()
 ok('进入文章库页面', libText.includes('2 篇'), libText.slice(0, 60))
+
+const libAnim = await page.evaluate(() => {
+  const el = document.querySelector('[data-view="lib"]')
+  if (!el) return null
+  const cs = getComputedStyle(el)
+  return { name: cs.animationName, dur: cs.animationDuration, running: el.getAnimations().length }
+})
+ok('进入文章库带过渡动画', libAnim && libAnim.name !== 'none', JSON.stringify(libAnim))
+ok('动画时长在 200~400ms 之间', libAnim && parseFloat(libAnim.dur) >= 0.2 && parseFloat(libAnim.dur) <= 0.4, libAnim?.dur)
 ok(
   '最新的排在前面',
   libText.indexOf('The Weight of Habit 2') < libText.indexOf('The Weight of Habit 1'),
@@ -295,8 +304,18 @@ await page.evaluate(() => {
   )
   li?.querySelector('button')?.click()
 })
+await t(80)
+const returning = await page.evaluate(() => {
+  const el = document.querySelector('[data-return]')
+  return el?.dataset.return
+})
+ok('返回时阅读页也有入场动画标记', returning === 'true', returning)
+
 await t(600)
 ok('打开文章后回到阅读页', (await bodyText()).includes('The Weight of Habit 2'))
+
+const settled = await page.evaluate(() => document.querySelector('[data-return]')?.dataset.return)
+ok('动画结束后标记复位', settled === 'false', settled)
 ok('文章库入口仍在', await hasButton('文章库'))
 
 // 把第一篇删掉：两次点击

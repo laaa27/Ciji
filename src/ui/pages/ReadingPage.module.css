@@ -28,6 +28,30 @@
   --rd-lh: 1.7;
 }
 
+/* 进出文章库：往里是「从右边推进来」，返回是「从左边回来一点」，
+   方向感能让人知道自己是在哪一层 */
+.page[data-view='lib'] {
+  animation: lib-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.page[data-return='true'] {
+  animation: back-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes lib-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+}
+
+@keyframes back-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+}
+
 .header {
   /* 吸顶：译文 / 字号 / 生成 三颗按钮要一直够得着。
      负 margin 抵消上面加的 padding，静止时的视觉位置不变。 */

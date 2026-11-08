@@ -12,6 +12,7 @@ import SettingsPage from './ui/pages/SettingsPage'
 import { loadLookupSettings } from '@/data/dict'
 import { useLlm } from '@/store/llm'
 import { useSession } from '@/store/session'
+import { handleBack } from '@/store/backstack'
 import { useTheme } from '@/store/theme'
 import { useToast } from '@/store/toast'
 
@@ -78,6 +79,9 @@ export default function App() {
     let sub: { remove: () => void } | undefined
 
     void CapApp.addListener('backButton', () => {
+      // 页面里有子视图（文章库、词卡）时先退一层，别直接弹退出
+      if (handleBack()) return
+
       const now = Date.now()
       if (now - lastBackRef.current < EXIT_CONFIRM_MS) {
         void CapApp.exitApp()

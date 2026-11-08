@@ -27,6 +27,7 @@ import {
 } from '@/domain/article'
 import { dateKey, monthDay } from '@/lib/date'
 import { getLastLlmResponse } from '@/api/llm'
+import { pushBackHandler } from '@/store/backstack'
 import { useToast } from '@/store/toast'
 import { useLlm } from '@/store/llm'
 import type { TodaySnapshot } from '@/domain/collect'
@@ -100,6 +101,8 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   const [sizePanel, setSizePanel] = useState(false)
   /** 是否停在文章库子视图 */
   const [libOpen, setLibOpen] = useState(false)
+  /** 刚从文章库返回：给阅读页放一次入场动画，免得像被「刷」地换掉 */
+  const [returning, setReturning] = useState(false)
   const [showSetup, setShowSetup] = useState(false)
   const [pool, setPool] = useState<TodaySnapshot[]>([])
 
@@ -218,8 +221,26 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     setArticle(a)
     setShowZh(false)
     setMissing([])
-    setLibOpen(false)
+    closeLibrary()
   }
+
+  const closeLibrary = useCallback(() => {
+    setLibOpen(false)
+    setReturning(true)
+    window.setTimeout(() => setReturning(false), 320)
+  }, [])
+
+  // 安卓返回键：在文章库里先回阅读页
+  useEffect(() => {
+    if (!libOpen) return
+    return pushBackHandler(closeLibrary)
+  }, [libOpen, closeLibrary])
+
+  // 词卡也是子视图，返回键先关它
+  useEffect(() => {
+    if (!sheetWord) return
+    return pushBackHandler(() => setSheetWord(null))
+  }, [sheetWord])
 
   function openLibrary() {
     const scroller = findScrollParent(pageRef.current)
@@ -261,11 +282,11 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
 
   if (libOpen) {
     return (
-      <div className={styles.page} data-size={fontSize} ref={pageRef}>
+      <div className={styles.page} data-size={fontSize} data-view="lib" ref={pageRef}>
         <ArticleLibrary
           items={library}
           currentId={article?.id}
-          onBack={() => setLibOpen(false)}
+          onBack={closeLibrary}
           onOpen={(id) => void handleOpen(id)}
           onDelete={handleDeleteArticle}
         />
@@ -274,7 +295,12 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   }
 
   return (
-    <div className={styles.page} data-size={fontSize} ref={pageRef}>
+    <div
+      className={styles.page}
+      data-size={fontSize}
+      data-return={returning ? 'true' : 'false'}
+      ref={pageRef}
+    >
       <header
         className={styles.header}
         ref={headerRef}
