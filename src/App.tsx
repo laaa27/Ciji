@@ -123,7 +123,7 @@ export default function App() {
           )}
         </div>
         <div className={styles.slot} data-active={tab === 'stats'}>
-          {visited.has('stats') && <StatsPage />}
+          {visited.has('stats') && <StatsPage active={tab === 'stats'} />}
         </div>
         <div className={styles.slot} data-active={tab === 'settings'}>
           {visited.has('settings') && <SettingsPage />}

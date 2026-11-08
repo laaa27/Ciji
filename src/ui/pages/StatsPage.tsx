@@ -216,7 +216,7 @@ function TrendChart({ rows }: { rows: Row[] }) {
   return <div ref={ref} className={styles.chart} />
 }
 
-export default function StatsPage() {
+export default function StatsPage({ active }: { active: boolean }) {
   const [days, setDays] = useState<TodaySnapshot[]>([])
   const [reads, setReads] = useState<ReadingDay[]>([])
   const [loading, setLoading] = useState(true)
@@ -233,6 +233,21 @@ export default function StatsPage() {
       alive = false
     }
   }, [])
+
+  // 页面挂载后一直留着（App 的栏目缓存），每次切回来都要重读，
+  // 否则刚在阅读页攒的时长不会出现在图上
+  useEffect(() => {
+    if (!active) return
+    let alive = true
+    void Promise.all([getAllDays(), getAllReadingDays()]).then(([dayList, readList]) => {
+      if (!alive) return
+      setDays(dayList)
+      setReads(readList)
+    })
+    return () => {
+      alive = false
+    }
+  }, [active])
 
   const rows = useMemo(() => buildRows(days).slice(-30), [days])
 
@@ -281,7 +296,27 @@ export default function StatsPage() {
       {loading && <p className={`${styles.hint} loading-pulse`}>读取中…</p>}
 
       {!loading && days.length === 0 && (
-        <EmptyState title="数据还不够" hint="积累几天之后，这里会呈现你的遗忘曲线。" />
+        <>
+          <EmptyState title="数据还不够" hint="积累几天之后，这里会呈现你的遗忘曲线。" />
+
+          {/* 阅读时长不依赖学习记录，读文章就统计，放在空状态外面 */}
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>阅读时长</h2>
+            {readRows.length > 0 ? (
+              <>
+                <ReadingChart rows={readRows} />
+                <p className={styles.hint}>
+                  累计 {readRows.length} 天，共 {fmtMinutes(readTotal)}。最近一天是{' '}
+                  {monthDay(reads[0].date)}，读了 {fmtMinutes(reads[0].seconds)}。
+                </p>
+              </>
+            ) : (
+              <p className={styles.hint}>
+                还没有阅读记录。待在阅读页看文章时会自动计时，回这里就能看到。
+              </p>
+            )}
+          </section>
+        </>
       )}
 
       {!loading && days.length > 0 && (
@@ -299,16 +334,22 @@ export default function StatsPage() {
             <TrendChart rows={rows} />
           </section>
 
-          {readRows.length > 0 && (
-            <section className={styles.section}>
-              <h2 className={styles.sectionTitle}>阅读时长</h2>
-              <ReadingChart rows={readRows} />
+          <section className={styles.section}>
+            <h2 className={styles.sectionTitle}>阅读时长</h2>
+            {readRows.length > 0 ? (
+              <>
+                <ReadingChart rows={readRows} />
+                <p className={styles.hint}>
+                  累计 {readRows.length} 天，共 {fmtMinutes(readTotal)}。最近一天是{' '}
+                  {monthDay(reads[0].date)}，读了 {fmtMinutes(reads[0].seconds)}。
+                </p>
+              </>
+            ) : (
               <p className={styles.hint}>
-                累计 {readRows.length} 天，共 {fmtMinutes(readTotal)}。最近一天是{' '}
-                {monthDay(reads[0].date)}，读了 {fmtMinutes(reads[0].seconds)}。
+                还没有阅读记录。待在阅读页看文章时会自动计时，回这里就能看到。
               </p>
-            </section>
-          )}
+            )}
+          </section>
 
           <section className={styles.section}>
             <h2 className={styles.sectionTitle}>反复忘记</h2>
