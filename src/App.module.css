@@ -12,6 +12,11 @@
   overscroll-behavior-y: contain;
 }
 
+/* 玻璃底栏是悬浮的，内容要能从栏下滚过，列表末尾得留出栏的占位 */
+.app[data-glass='true'] .body {
+  padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 22px);
+}
+
 /* 顶部安全区遮罩。
    页面内容整体下移了 safe-top，但滚动时后面的内容会从状态栏底下穿过去；
    吸顶的分组标题又恰好停在 safe-top 位置，那条缝里就会露出手指下方滑过的字。

@@ -35,6 +35,11 @@
   --scrim: rgba(18, 20, 19, 0.22);
   --selection: #d9e4d0;
 
+  /* 液态玻璃（底栏开关，见 store/glass.ts） */
+  --glass-fill: rgba(255, 255, 255, 0.55);
+  --glass-edge: rgba(255, 255, 255, 0.65);
+  --glass-highlight: rgba(255, 255, 255, 0.55);
+
   /* 字体 */
   --font-word: 'Spectral', Georgia, 'Songti SC', 'Noto Serif CJK SC', serif;
   --font-ui: system-ui, -apple-system, 'PingFang SC', 'Microsoft YaHei',
@@ -101,4 +106,9 @@
   --tint-danger: #241917;
   --scrim: rgba(0, 0, 0, 0.66);
   --selection: #2f4034;
+
+  /* 液态玻璃（底栏开关，见 store/glass.ts） */
+  --glass-fill: rgba(28, 31, 30, 0.52);
+  --glass-edge: rgba(255, 255, 255, 0.14);
+  --glass-highlight: rgba(255, 255, 255, 0.12);
 }

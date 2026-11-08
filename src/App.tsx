@@ -13,6 +13,7 @@ import { loadLookupSettings } from '@/data/dict'
 import { useLlm } from '@/store/llm'
 import { useSession } from '@/store/session'
 import { handleBack } from '@/store/backstack'
+import { useGlass } from '@/store/glass'
 import { useTheme } from '@/store/theme'
 import { useToast } from '@/store/toast'
 
@@ -30,6 +31,8 @@ export default function App() {
   const load = useSession((s) => s.load)
   const loadLlm = useLlm((s) => s.load)
   const loadTheme = useTheme((s) => s.load)
+  const loadGlass = useGlass((s) => s.load)
+  const glass = useGlass((s) => s.glass)
 
   const toast = useToast((s) => s.message)
   const clearToast = useToast((s) => s.clear)
@@ -47,7 +50,8 @@ export default function App() {
     void loadLlm()
     void loadLookupSettings()
     void loadTheme()
-  }, [load, loadLlm, loadTheme])
+    void loadGlass()
+  }, [load, loadLlm, loadTheme, loadGlass])
 
   function changeTab(next: TabKey) {
     if (next === tab) return
@@ -106,7 +110,7 @@ export default function App() {
   const toastText = exitHint ? '再按一次回到桌面' : toast
 
   return (
-    <div className={styles.app}>
+    <div className={styles.app} data-glass={glass}>
       <div className={styles.body} ref={bodyRef} data-scroller>
         <div className={styles.slot} data-active={tab === 'today'}>
           {visited.has('today') && <TodayPage onGoSettings={() => changeTab('settings')} />}
