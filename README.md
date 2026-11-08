@@ -6,6 +6,14 @@
 
 基于墨墨背单词开放 API 的 Android 应用，数据只存在本机。
 
+<p align="center">
+  <img src="screenshots/today.jpg" width="19%" alt="今日" />
+  <img src="screenshots/reading.jpg" width="19%" alt="阅读" />
+  <img src="screenshots/generate.jpg" width="19%" alt="生成文章" />
+  <img src="screenshots/stats.jpg" width="19%" alt="统计" />
+  <img src="screenshots/settings.jpg" width="19%" alt="设置" />
+</p>
+
 ---
 
 ## 核心功能
