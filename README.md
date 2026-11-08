@@ -6,6 +6,19 @@ Android App，基于墨墨开放 API（公测）。数据只存在本机。
 
 ---
 
+## 主要功能
+
+- **每日采集**：自动拉取当天在墨墨的学习记录，按 新学 / 模糊 / 忘记 归档（一个词可多归属）
+- **遗忘曲线**：统计页堆叠柱状图（近 30 天），反复忘记的词单独列出
+- **AI 生成文章**：挑某天学过的词，用大模型生成一篇包含这些词的英语短文，在阅读中「再遇见」；
+  支持多份大模型配置随时切换（OpenAI 兼容 / Anthropic 两种协议）
+- **文章库**：每篇生成过都留档，按日期回看、删除
+- **阅读计时**：阅读页自动记录每天阅读时长，统计页有独立图表
+- **点词查词**：点文章里的词查本地词典释义，同时显示该词在墨墨的学习状态，
+  计划外的词可两步确认加入学习计划
+- **液态玻璃底栏（实验性）**：悬浮半透明胶囊底栏，不透明度可调，可关闭
+- **导出 / 导入**：JSON 无损备份（换机用）、CSV / Markdown 给人看
+
 ## 快速开始
 
 ```bash
@@ -26,6 +39,9 @@ node scripts/test-models.mjs     # 模型：迁移 → 添加 → 切换 → 改
 获取方式：墨墨 App → 我的 → 更多设置 → 实验功能 → 开放 API。
 
 > 还需在墨墨 App 里打开**自动同步**，否则学习数据接口会返回空。
+
+> 环境搭建、代码规范、测试与构建、出包部署的完整流程见
+> **[DEVELOPMENT.md](./DEVELOPMENT.md)**。
 
 ## 构建 APK
 
@@ -49,13 +65,14 @@ cd android && ./gradlew assembleRelease
 | 层 | 选型 | 说明 |
 |---|---|---|
 | 壳 | Capacitor 8 | 把 Web 应用包成 APK，提供原生 HTTP / 文件 / 分享能力 |
-| 构建 | Vite 7 | — |
+| 构建 | Vite | — |
 | UI | React 19 + TypeScript | — |
 | 状态 | Zustand | 每个 store 一个文件，没有样板代码 |
 | 样式 | 原生 CSS Modules | 无 UI 库，改样式就是改 CSS |
 | 图表 | ECharts 6 | 按需引入，只打包柱状图 |
 | 存储 | Capacitor Preferences | 按天存 JSON 快照，见下方说明 |
 | 词典 | ECDICT 裁剪版 | 分片 JSON，按首字母懒加载 |
+| 测试 | puppeteer-core | 无头 Chrome 跑断言脚本 |
 
 ## 目录结构
 
@@ -69,19 +86,28 @@ src/
 │   └── llm.ts      大模型调用：取配置 → 选通道 → 翻译错误
 ├── data/         存储层：只负责读写本地
 │   ├── store.ts    按天存快照（day:YYYY-MM-DD）
+│   ├── article.ts  文章全文 + 索引（article:<id> / article_index）
+│   ├── reading.ts  每日阅读秒数（reading:YYYY-MM-DD）
 │   └── dict.ts     词典分片懒加载 + 缓存
 ├── domain/       业务层：纯逻辑，好测
 │   ├── collect.ts  采集编排：拉取 → 合并 → 分类
+│   ├── article.ts  文章生成编排 + 选词逻辑
 │   ├── export.ts   CSV / Markdown / 备份 JSON 生成与分享
 │   └── backup.ts   导入：备份 JSON 与 CSV 的解析、校验、合并策略
+├── native/       app 内原生插件的 TS 类型声明
 ├── store/        状态层（Zustand）
 │   ├── session.ts  token
 │   ├── llm.ts      多份模型配置（增删改 + 当前选中 + 旧数据迁移）
-│   └── today.ts    今日数据 + 采集状态
+│   ├── today.ts    今日数据 + 采集状态
+│   ├── theme.ts    主题（深浅）
+│   ├── glass.ts    液态玻璃底栏开关 + 不透明度
+│   └── backstack.ts 安卓返回键拦截栈
 └── ui/           显示层
-    ├── pages/      今日 / 历史 / 统计 / 设置
-    ├── components/ WordRow / TabBar / EmptyState / ModelProfiles
+    ├── pages/      今日 / 历史 / 阅读 / 统计 / 设置
+    ├── components/ TabBar / WordSheet / ArticleLibrary / GenerateArticle / ModelProfiles
     └── styles/     tokens.css（设计令牌）+ global.css
+scripts/           浏览器验证脚本（puppeteer-core），见 DEVELOPMENT.md 第 4 节
+android/           Capacitor Android 工程（含 AppearancePlugin 等自研原生插件）
 ```
 
 依赖方向是单向的：`ui → store → domain → data → api`。
@@ -162,10 +188,23 @@ src/
 
 **生成页。** 选词界面是阅读页的另一个二级页：日期 → 词的类型 → 已用词开关 → 难度 → 词数上限 →
 词表（将使用 / 不使用）→ 生成。参数在上、词表在下，先定条件再核对词。
+类型框的数量口径跟随「包含已用词」开关：关着且存在已用词时显示「未用/总数」（如 `13/85`），
+打开后显示全量数；已用过的词默认折叠，打开开关后手动勾选再练。
 
 **文章库。** 入口在阅读页标题行，点开是阅读页内的一个子视图（不是新 Tab）：
 按日期分组、时间倒序，可打开可删除（删除要点两次）。删除当前正在读的那篇时，
 自动换成剩下最新的一篇；返回阅读页会回到进入前的滚动位置。
+
+**阅读计时。** 停留在阅读页且打开着文章时自动计时（文章库/生成页/词卡不算），
+切后台不计入。计时数字常驻顶栏（不走按钮逻辑），攒 15 秒批量落盘一次，
+切后台/切栏目的瞬间也会强制落盘。数据按天存 `reading:YYYY-MM-DD`（秒），
+统计页有独立的「阅读时长」柱状图（近 30 天，按分钟）。
+
+**液态玻璃底栏（实验性）。** 设置 → 外观打开后，底栏变成悬浮的半透明胶囊：
+`backdrop-filter: blur + saturate` 透出滚过的内容，颜色走 `--glass-*` 令牌随深浅主题。
+不透明度在设置里滑杆调节（0~100%），实际是覆盖 CSS 变量 `--glass-alpha`。
+玻璃开启时内容区自动留出底部占位。激活项有磨砂玻璃气泡替代下划线。
+只动 blur/saturate 两项合成器操作，投影等装饰在手势开始时一次画好——别逐帧改。
 
 **主题切换。** 优先用 View Transitions（Chromium 111+）：浏览器把新旧两帧各拍一张快照做 alpha 混合，
 是真正的交叉淡出，而且只走合成层不重排；旧内核退回给 `html.theme-fade` 临时加颜色过渡。
