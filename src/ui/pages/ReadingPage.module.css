@@ -155,10 +155,15 @@
   will-change: transform;
 }
 
-/* 上层：文章库 / 生成页。手势时 JS 直接写 transform，平时不干预布局 */
+/* 上层：文章库 / 生成页。手势时 JS 直接写 transform，平时不干预布局。
+   必须自带不透明的纸底 + 撑满整屏：下层快照随时可能露出来，
+   上层要是透明的，两层文字就叠印在一起了 */
 .over {
   position: relative;
   z-index: 2;
+  background: var(--paper);
+  min-height: 100vh;
+  min-height: 100dvh;
 }
 
 /* ── 配置区 ─────────────────────────────── */

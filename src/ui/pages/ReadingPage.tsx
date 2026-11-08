@@ -369,8 +369,11 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
         under.style.transform = `scale(${(0.92 + 0.08 * p).toFixed(4)})`
         under.style.borderRadius = `${((1 - p) * 20).toFixed(1)}px`
       }
+      // 上层是一张不透明的纸：跟手右滑，左侧圆角 + 投影给出「浮起来」的层次。
+      // 不做透明度渐变——纸变透明，两层文字就会叠印
       over.style.transform = `translateX(${(p * 56).toFixed(2)}%)`
-      over.style.opacity = String(1 - 0.35 * p)
+      over.style.borderRadius = `${(p * 16).toFixed(1)}px 0 0 ${(p * 16).toFixed(1)}px`
+      over.style.boxShadow = `-12px 0 28px rgba(0, 0, 0, ${(0.28 * p).toFixed(3)})`
     })
   }, [covered])
 
@@ -383,9 +386,11 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       const under = underRef.current
 
       if (over) {
-        over.style.transition = 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease'
+        over.style.transition =
+          'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.22s ease, box-shadow 0.22s ease'
         over.style.transform = 'translateX(0)'
-        over.style.opacity = '1'
+        over.style.borderRadius = '0'
+        over.style.boxShadow = 'none'
         window.setTimeout(() => {
           over.style.transition = ''
         }, 240)
