@@ -10,6 +10,7 @@ import ReadingPage from './ui/pages/ReadingPage'
 import StatsPage from './ui/pages/StatsPage'
 import SettingsPage from './ui/pages/SettingsPage'
 import { loadLookupSettings } from '@/data/dict'
+import { loadSettings } from '@/data/settings'
 import { useLlm } from '@/store/llm'
 import { useSession } from '@/store/session'
 import { handleBack } from '@/store/backstack'
@@ -46,6 +47,7 @@ export default function App() {
     void load()
     void loadLlm()
     void loadLookupSettings()
+    void loadSettings()
     void loadTheme()
   }, [load, loadLlm, loadTheme])
 

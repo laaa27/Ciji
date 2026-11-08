@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { lookupOne } from '@/data/dict'
 import { addToPlan, advanceWord, lookupMemoState, type MemoState } from '@/domain/memo'
@@ -6,6 +6,7 @@ import { inflectionFamily } from '@/domain/wordforms'
 import { RESPONSE_LABEL } from '@/domain/collect'
 import { dateKey, diffDays, monthDay } from '@/lib/date'
 import { useSession } from '@/store/session'
+import { onBackProgress, onBackCancel } from '@/store/backstack'
 import styles from './WordSheet.module.css'
 
 type Props = {
@@ -42,6 +43,7 @@ function daysSince(iso?: string): number | null {
 
 export default function WordSheet({ word, onClose, onPick }: Props) {
   const token = useSession((s) => s.token)
+  const sheetRef = useRef<HTMLDivElement>(null)
 
   const [gloss, setGloss] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -161,9 +163,36 @@ export default function WordSheet({ word, onClose, onPick }: Props) {
       ? memo.spelling
       : ''
 
+  // 预测性返回手势：词卡跟手下滑（progress 0→1 → 下移 0→100%），
+  // 中途松手弹回原位。提交的关闭走返回栈的 onClose，不在这里管。
+  useEffect(() => {
+    if (closing) return
+
+    const offProgress = onBackProgress((p) => {
+      const sheet = sheetRef.current
+      if (!sheet) return
+      sheet.style.transition = 'none'
+      sheet.style.transform = `translateY(${(p * 100).toFixed(2)}%)`
+    })
+    const offCancel = onBackCancel(() => {
+      const sheet = sheetRef.current
+      if (!sheet) return
+      sheet.style.transition = 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)'
+      sheet.style.transform = 'translateY(0)'
+      window.setTimeout(() => {
+        if (sheet.isConnected) sheet.style.transition = ''
+      }, 240)
+    })
+    return () => {
+      offProgress()
+      offCancel()
+    }
+  }, [closing])
+
   return (
     <div className={styles.mask} data-closing={closing} onClick={requestClose} role="presentation">
       <div
+        ref={sheetRef}
         className={styles.sheet}
         onClick={(e) => e.stopPropagation()}
         role="dialog"

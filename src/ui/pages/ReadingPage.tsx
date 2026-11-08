@@ -23,7 +23,7 @@ import {
 } from '@/domain/article'
 import { dateKey, monthDay } from '@/lib/date'
 import { getLastLlmResponse } from '@/api/llm'
-import { pushBackHandler } from '@/store/backstack'
+import { pushBackHandler, onBackProgress, onBackCancel } from '@/store/backstack'
 import { useToast } from '@/store/toast'
 import { useLlm } from '@/store/llm'
 
@@ -116,6 +116,9 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
 
   const headerRef = useRef<HTMLElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
+  /** 预测性返回的「下层」（文章主视图）与「上层」（文章库/生成页） */
+  const underRef = useRef<HTMLDivElement>(null)
+  const overRef = useRef<HTMLDivElement>(null)
   /** 打开文章库之前的阅读位置，返回时原地恢复 */
   const articleScroll = useRef(0)
   const headerStuck = useScrollStuck(headerRef)
@@ -341,51 +344,84 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   }, [libOpen, genOpen])
 
   const hasArticle = Boolean(article)
+  /** 是否停在文章库/生成页这类「可返回的子视图」 */
+  const covered = libOpen || genOpen
 
-  if (genOpen) {
-    return (
-      <div className={styles.page} data-size={fontSize} data-view="gen" ref={pageRef}>
-        <GenerateArticle
-          days={days}
-          today={today}
-          initialLevel={level}
-          initialLimit={wordLimit}
-          busy={busy}
-          error={error}
-          onBack={closeGenerate}
-          onGenerate={handleGenerate}
-          onLevelChange={(next) => {
-            setLevel(next)
-            void Preferences.set({ key: LEVEL_KEY, value: next })
-          }}
-          onLimitChange={(next) => void changeWordLimit(next)}
-        />
-      </div>
-    )
-  }
+  // 预测性返回的跟手动画（文章库 / 生成页）：
+  // 上层子视图跟手右滑变透明，下层文章以「快照」形式从 92% 缩放回来。
+  // 快照不是截图——把下层切成固定定位、恢复滚动位置，视觉上就是刚才读到的地方。
+  // 进度事件一秒几十次，全部直接改 DOM，不走 React 状态。
+  useEffect(() => {
+    if (!covered) return
 
-  if (libOpen) {
-    return (
-      <div className={styles.page} data-size={fontSize} data-view="lib" ref={pageRef}>
-        <ArticleLibrary
-          items={library}
-          currentId={article?.id}
-          onBack={closeLibrary}
-          onOpen={(id) => void handleOpen(id)}
-          onDelete={handleDeleteArticle}
-        />
-      </div>
-    )
-  }
+    return onBackProgress((p) => {
+      const over = overRef.current
+      const under = underRef.current
+      if (!over) return
+
+      if (under && !under.classList.contains(styles.snap)) {
+        under.classList.add(styles.snap)
+        under.scrollTop = articleScroll.current
+      }
+      if (under) {
+        under.style.transform = `scale(${(0.92 + 0.08 * p).toFixed(4)})`
+        under.style.borderRadius = `${((1 - p) * 20).toFixed(1)}px`
+      }
+      over.style.transform = `translateX(${(p * 56).toFixed(2)}%)`
+      over.style.opacity = String(1 - 0.35 * p)
+    })
+  }, [covered])
+
+  // 手势中途松手（取消）：上层弹回原位，下层缩回去，播完动画再拆掉快照层
+  useEffect(() => {
+    if (!covered) return
+
+    return onBackCancel(() => {
+      const over = overRef.current
+      const under = underRef.current
+
+      if (over) {
+        over.style.transition = 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease'
+        over.style.transform = 'translateX(0)'
+        over.style.opacity = '1'
+        window.setTimeout(() => {
+          over.style.transition = ''
+        }, 240)
+      }
+      if (under && under.classList.contains(styles.snap)) {
+        under.style.transition = 'transform 0.22s cubic-bezier(0.22, 1, 0.36, 1)'
+        under.style.transform = 'scale(0.92)'
+        window.setTimeout(() => {
+          under.style.transition = ''
+          under.classList.remove(styles.snap)
+          under.style.transform = ''
+          under.style.borderRadius = ''
+        }, 240)
+      }
+    })
+  }, [covered])
+
+  // 回到主视图后：清掉手势留下的内联样式，下层回到普通文档流
+  useEffect(() => {
+    if (covered) return
+    const under = underRef.current
+    if (under) {
+      under.classList.remove(styles.snap)
+      under.style.transform = ''
+      under.style.borderRadius = ''
+    }
+  }, [covered])
 
   return (
     <div
       className={styles.page}
       data-size={fontSize}
+      data-view={libOpen ? 'lib' : genOpen ? 'gen' : undefined}
       data-return={returning ? 'true' : 'false'}
       ref={pageRef}
     >
-      <header
+      <div className={styles.under} ref={underRef} data-covered={covered}>
+        <header
         className={styles.header}
         ref={headerRef}
         data-stuck={headerStuck ? 'true' : 'false'}
@@ -542,6 +578,39 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
             本篇覆盖 {article.targetWords.length} 个词 · 由 {article.model} 生成
           </p>
         </>
+      )}
+      </div>
+
+      {libOpen && (
+        <div className={styles.over} ref={overRef}>
+          <ArticleLibrary
+            items={library}
+            currentId={article?.id}
+            onBack={closeLibrary}
+            onOpen={(id) => void handleOpen(id)}
+            onDelete={handleDeleteArticle}
+          />
+        </div>
+      )}
+
+      {genOpen && (
+        <div className={styles.over} ref={overRef}>
+          <GenerateArticle
+            days={days}
+            today={today}
+            initialLevel={level}
+            initialLimit={wordLimit}
+            busy={busy}
+            error={error}
+            onBack={closeGenerate}
+            onGenerate={handleGenerate}
+            onLevelChange={(next) => {
+              setLevel(next)
+              void Preferences.set({ key: LEVEL_KEY, value: next })
+            }}
+            onLimitChange={(next) => void changeWordLimit(next)}
+          />
+        </div>
       )}
 
       {sheetWord && (

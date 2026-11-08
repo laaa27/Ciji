@@ -137,6 +137,30 @@
   animation: fade-rise 0.2s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* ── 预测性返回的两层结构 ────────────────── */
+
+/* 下层：平时就是文章主视图（普通文档流）；被子视图盖住时藏起来，
+   手势开始时由 JS 挂上 snap 类切成固定定位的「快照层」 */
+.under[data-covered='true'] {
+  display: none;
+}
+
+.snap {
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  padding: calc(var(--safe-top) + var(--sp-7)) var(--gutter) var(--sp-10);
+  background: var(--paper);
+  will-change: transform;
+}
+
+/* 上层：文章库 / 生成页。手势时 JS 直接写 transform，平时不干预布局 */
+.over {
+  position: relative;
+  z-index: 2;
+}
+
 /* ── 配置区 ─────────────────────────────── */
 
 

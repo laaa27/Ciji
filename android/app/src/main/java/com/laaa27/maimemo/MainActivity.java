@@ -14,6 +14,7 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // 必须赶在 super.onCreate 之前注册，否则 WebView 起来时插件还不存在
         registerPlugin(AppearancePlugin.class);
+        registerPlugin(PredictiveBackPlugin.class);
         super.onCreate(savedInstanceState);
 
         // 首帧之前先把系统栏上色。JS 那边的 apply 要等 React 起来才发，

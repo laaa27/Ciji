@@ -14,6 +14,9 @@ import {
 import type { TodaySnapshot } from '@/domain/collect'
 import { exportAll, exportBackup } from '@/domain/export'
 import { useSession } from '@/store/session'
+import { applyPredictiveBackSetting } from '@/store/backstack'
+import { getPredictiveBackEnabled } from '@/data/settings'
+import { Capacitor } from '@capacitor/core'
 import { useTheme, type ThemeName } from '@/store/theme'
 import { useToday } from '@/store/today'
 
@@ -48,6 +51,8 @@ export default function SettingsPage() {
   const [busy, setBusy] = useState(false)
   const [feedback, setFeedback] = useState<Feedback>(null)
   const [exporting, setExporting] = useState<ExportFormat | null>(null)
+  /** 预测性返回手势开关（Android 14+ 才有跟手动画，任何版本可开） */
+  const [predictiveBack, setPredictiveBack] = useState(() => getPredictiveBackEnabled())
   const [online, setOnline] = useState(isOnlineLookupEnabled())
 
   const [picked, setPicked] = useState<PickedFile | null>(null)
@@ -334,6 +339,32 @@ export default function SettingsPage() {
           />
         </label>
       </section>
+
+      {Capacitor.isNativePlatform() && (
+        <section className={styles.section}>
+          <h2 className={styles.label}>手势</h2>
+
+          <label className={styles.switchRow}>
+            <span className={styles.switchText}>
+              预测性返回手势
+              <em>
+                在文章库、生成页和词卡里，返回手势会带着页面跟手滑走，松手即返回。Android 14
+                以下没有动画，但返回行为照常。
+              </em>
+            </span>
+            <input
+              type="checkbox"
+              className={styles.switch}
+              checked={predictiveBack}
+              onChange={(e) => {
+                const next = e.target.checked
+                setPredictiveBack(next)
+                applyPredictiveBackSetting(next)
+              }}
+            />
+          </label>
+        </section>
+      )}
 
       <section className={styles.section}>
         <h2 className={styles.label}>数据</h2>
