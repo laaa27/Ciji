@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 
 import { lookupOne } from '@/data/dict'
-import { addToPlan, lookupMemoState, type MemoState } from '@/domain/memo'
+import { addToPlan, advanceWord, lookupMemoState, type MemoState } from '@/domain/memo'
 import { inflectionFamily } from '@/domain/wordforms'
 import { RESPONSE_LABEL } from '@/domain/collect'
 import { dateKey, diffDays, monthDay } from '@/lib/date'
@@ -54,6 +54,7 @@ export default function WordSheet({ word, onClose, onPick }: Props) {
   /** 加词要点两次：第一次只把按钮变成「确认加入」 */
   const [confirming, setConfirming] = useState(false)
   const [adding, setAdding] = useState(false)
+  const [advancing, setAdvancing] = useState(false)
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null)
   /** 同族变形（原形 + 本地词典里真实存在的其他形式） */
   const [forms, setForms] = useState<string[]>([])
@@ -99,7 +100,8 @@ export default function WordSheet({ word, onClose, onPick }: Props) {
 
   // 变形标签：定位到原形之后再算，纯本地，不发请求
   useEffect(() => {
-    if (!memo) {
+    // 只有定位到词库里真实存在的原形时才列家族，unknown/error 下没有可信基准
+    if (!memo || (memo.kind !== 'in-plan' && memo.kind !== 'available')) {
       setForms([])
       return
     }
@@ -119,6 +121,16 @@ export default function WordSheet({ word, onClose, onPick }: Props) {
       alive = false
     }
   }, [memo, gloss])
+
+  async function handleAdvance() {
+    setAdvancing(true)
+    setNotice(null)
+    const res = await advanceWord(word)
+    setAdvancing(false)
+    setNotice({ ok: res.ok, text: res.message })
+
+    if (res.ok) setMemo(await lookupMemoState(word))
+  }
 
   async function handleAdd() {
     if (!confirming) {
@@ -212,6 +224,15 @@ export default function WordSheet({ word, onClose, onPick }: Props) {
                     下次复习 {dayLabel(record.next_study_date) || '—'}
                   </p>
                 )}
+
+                <button
+                  type="button"
+                  className={styles.memoButton}
+                  onClick={() => void handleAdvance()}
+                  disabled={advancing}
+                >
+                  {advancing ? '提前中…' : '提前复习'}
+                </button>
               </>
             )}
 

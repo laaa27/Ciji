@@ -91,6 +91,11 @@ export interface QueryVocabularyResponse {
   voc: Vocabulary[]
 }
 
+export interface AdvanceStudyResponse {
+  /** 成功提前的数量；未加入计划或等级不足会小于请求数 */
+  advanced_count: number
+}
+
 export interface AddWordsResponse {
   /** 成功添加的数量；额度不足或已在计划里会少于此数 */
   added_count: number

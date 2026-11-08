@@ -1,5 +1,5 @@
 import type { StudyRecord } from '@/api/types'
-import { addWords, queryStudyRecords } from '@/api/study'
+import { addWords, advanceStudy, queryStudyRecords } from '@/api/study'
 import { queryVocabulary } from '@/api/vocabulary'
 import { lemmaCandidates } from '@/data/dict'
 
@@ -113,5 +113,41 @@ export async function addToPlan(word: string): Promise<AddResult> {
     return { ok: true, message: '已加入学习计划，会按墨墨的排期复习' }
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : '加入失败' }
+  }
+}
+
+/**
+ * 把已在计划里的词提前到今天复习。
+ *
+ * 与加入计划一样，先查状态再调用 —— 只有真正在计划里的词才有 id 可提前。
+ */
+export async function advanceWord(word: string): Promise<AddResult> {
+  const state = await lookupMemoState(word)
+
+  if (state.kind === 'error') return { ok: false, message: state.message }
+  if (state.kind === 'unknown') return { ok: false, message: '墨墨词库里没有这个词' }
+  if (state.kind === 'available') return { ok: false, message: '这个词还没加入学习计划' }
+
+  try {
+    const res = await advanceStudy([state.record.voc_id])
+    if ((res.advanced_count ?? 0) <= 0) {
+      return {
+        ok: false,
+        message: '没能提前：需要墨墨 10 级以上，或这个词今天已经排进复习了',
+      }
+    }
+
+    // 提前之后复习日期会变，把记录读回来（读不到就保留原样）
+    const rec = await queryStudyRecords({
+      spellings: [state.record.voc_spelling],
+      limit: 10,
+    }).catch(() => null)
+    if (rec?.records?.[0]) {
+      cache.set(keyOf(word), { kind: 'in-plan', record: rec.records[0] })
+    }
+
+    return { ok: true, message: '已提前到今天，去墨墨背它吧' }
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : '提前失败' }
   }
 }

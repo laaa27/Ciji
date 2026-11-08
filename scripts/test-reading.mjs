@@ -86,7 +86,7 @@ const inPlan = new Set(['coherent'])
 const knownVocab = new Set([...TODAY_WORDS, 'shipment', 'study'].filter((w) => w !== 'scrutiny'))
 const notInVocab = new Set(['scrutiny'])
 const added = []
-const memoCalls = { records: 0, voc: 0 }
+const memoCalls = { records: 0, voc: 0, advance: 0 }
 const makeRecord = (spelling) => ({
   voc_id: `id-${spelling}`,
   voc_spelling: spelling,
@@ -127,6 +127,11 @@ page.on('request', (req) => {
         })
         .map((w) => ({ id: `id-${w}`, spelling: w }))
       return json({ voc })
+    }
+
+    if (url.includes('/study/advance_study')) {
+      memoCalls.advance += 1
+      return json({ advanced_count: 1 })
     }
 
     if (url.includes('/study/add_words')) {
@@ -537,6 +542,20 @@ let sheet = await sheetText()
 ok('显示已在学习计划', sheet.includes('已在学习计划'), sheet.slice(0, 80))
 ok('显示背过次数与上次反馈', sheet.includes('背过 4 次') && sheet.includes('模糊'), sheet)
 ok('显示下次复习与标签', sheet.includes('下次复习') && sheet.includes('顽固词'), sheet)
+
+const clickDialogButton = (label) =>
+  page.evaluate((text) => {
+    const btn = [...document.querySelectorAll('[role="dialog"] button')].find(
+      (b) => b.textContent?.trim() === text,
+    )
+    btn?.click()
+    return Boolean(btn)
+  }, label)
+
+ok('已在计划的词有「提前复习」按钮', await clickDialogButton('提前复习'))
+await t(800)
+ok('发出了提前复习请求', memoCalls.advance === 1, memoCalls.advance)
+ok('给出提前结果', (await sheetText()).includes('已提前'), await sheetText())
 await closeSheet()
 
 // 词库里有、没加入 → 两步确认后加入
@@ -589,6 +608,9 @@ await page.evaluate(() => {
 })
 await t(800)
 ok('点变形标签切换了词', (await sheetText()).startsWith('shipment'), (await sheetText()).slice(0, 40))
+// 切到原形之后家族不能消失（否则就回不去了）
+ok('切到原形后仍能选回复数', await hasFormChip('shipments'), await sheetText())
+ok('原形自身也在标签里', await hasFormChip('shipment'), await sheetText())
 await closeSheet()
 
 ok('点到 -ing 形式', await clickWord('studying'))

@@ -1,6 +1,7 @@
 import { post } from './client'
 import type {
   AddWordsResponse,
+  AdvanceStudyResponse,
   ProgressResponse,
   QueryRecordsRequest,
   QueryRecordsResponse,
@@ -45,4 +46,14 @@ export function addWords(ids: string[], advance = false) {
     words: ids.map((id) => ({ id })),
     advance,
   })
+}
+
+/**
+ * 把已加入计划的词提前到当下复习。
+ *
+ * 官方文档：需要升级到 10 级解锁提前复习功能；返回的 advanced_count
+ * 会因「没加入计划」「等级不够」而变小。
+ */
+export function advanceStudy(ids: string[]) {
+  return post<AdvanceStudyResponse>(`${P}/advance_study`, { voc_ids: ids })
 }

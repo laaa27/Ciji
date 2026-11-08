@@ -69,8 +69,16 @@ function generate(base: string, pos: Pos): string[] {
 }
 
 /**
- * 同一家族的常见形式：原形在最前，后面是本地词典里真实存在的变形。
- * 词典里查不到的假词（boxe / cas 这类）会被过滤掉。
+ * 同一家族的常见形式：原形在最前，后面是常见变形。
+ *
+ * 两个坑：
+ * 1. 不能只靠词典过滤 —— ECDICT 不把复数当独立词条，`shipments` 查不到就被丢掉，
+ *    结果原形下面一个标签都没有
+ * 2. 家族必须**与当前查看的是哪个形式无关**：之前把「用户点的那个词」塞进家族，
+ *    切到原形后 that 就是原形本身，被去重掉，标签整个消失
+ *
+ * 所以规则是：原形 + 每种词性的**首要变形**（无条件收，规则最可靠）
+ * + 词典验证过的其他变形。
  */
 export async function inflectionFamily(
   base: string,
@@ -83,10 +91,14 @@ export async function inflectionFamily(
   if (!root) return []
 
   const out = [root, ...also.map((w) => w.trim().toLowerCase()).filter((w) => w && w !== root)]
-  for (const form of generate(root, posFromGloss(gloss))) {
+
+  const generated = generate(root, posFromGloss(gloss))
+  for (const [index, form] of generated.entries()) {
     if (out.length >= max) break
     if (out.includes(form)) continue
-    if (await dictHas(form)) out.push(form)
+    // 每类词性的第一条（名词复数 / 动词三单 / 形容词比较级）规则最硬，直接收；
+    // 其余靠词典验证，避免 boxe 这类假词
+    if (index === 0 || (await dictHas(form))) out.push(form)
   }
   return out
 }
