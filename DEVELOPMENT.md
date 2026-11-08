@@ -227,17 +227,3 @@ adb -s <目标> exec-out screencap -p > shot.png    # 截图
 - [ ] git 已提交，提交信息符合 2.6 规范
 
 ---
-
-## 6. 设备与 ROM 差异记录
-
-| 设备             | 系统                      | 已知差异                       |
-| -------------- | ----------------------- | -------------------------- |
-| 小米 23049RAD8C  | Android 15 / HyperOS    | adb 注入输入事件被安全层直接拒绝         |
-| 一加 13 (PKR110) | Android 16 / ColorOS 16 | 允许注入但会随机丢 tap；隐藏手势条会影响侧滑识别 |
-
-- 沉浸式隐藏手势条（`hideNavigationBars`）在一加上的手势表现与系统设置  
-  「返回手势二次确认」开关相关
-- WebView 的过卷拉伸（Android 12+ 系统级 stretch）已在 `MainActivity` 里用  
-  `OVER_SCROLL_NEVER` 全局禁用，CSS 层 `overscroll-behavior` 均为 none，别再打开
-- Android 15+ 系统栏透明覆盖，系统栏上色由 `AppearancePlugin` 统一处理；  
-  改系统栏行为改这里，不要引第三方状态栏插件
