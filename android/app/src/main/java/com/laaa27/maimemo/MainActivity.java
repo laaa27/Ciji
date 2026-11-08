@@ -2,6 +2,7 @@ package com.laaa27.maimemo;
 
 import android.content.Context;
 import android.os.Bundle;
+import android.view.View;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -21,6 +22,12 @@ public class MainActivity extends BridgeActivity {
         boolean dark = "dark".equals(
                 getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString("theme", "light"));
         AppearancePlugin.applyTo(this, getBridge() == null ? null : getBridge().getWebView(), dark);
+
+        // 关掉 WebView 的过卷拉伸（Android 12+ 的系统级 stretch 效果）：
+        // 顶/底滚到头继续拖，整个页面会被扯得变形，禁掉后到头就是停住
+        if (getBridge() != null && getBridge().getWebView() != null) {
+            getBridge().getWebView().setOverScrollMode(View.OVER_SCROLL_NEVER);
+        }
     }
 
     @Override
