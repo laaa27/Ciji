@@ -1,3 +1,4 @@
+import { useGlass } from '@/store/glass'
 import styles from './TabBar.module.css'
 
 export type TabKey = 'today' | 'history' | 'reading' | 'stats' | 'settings'
@@ -16,8 +17,10 @@ type Props = {
 }
 
 export default function TabBar({ value, onChange }: Props) {
+  const glass = useGlass((s) => s.glass)
+
   return (
-    <nav className={styles.bar} aria-label="主导航">
+    <nav className={styles.bar} data-glass={glass} aria-label="主导航">
       {TABS.map((tab) => {
         const active = tab.key === value
         return (

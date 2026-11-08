@@ -9,7 +9,14 @@
   flex: 1;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
-  overscroll-behavior-y: contain;
+  /* none：到头就停。contain 挡得住滚动 chaining，挡不住自身的
+     stretch 拉伸效果，顶到底继续拖整页还是会被扯变形 */
+  overscroll-behavior-y: none;
+}
+
+/* 玻璃底栏是悬浮的，内容要能从栏下滚过，列表末尾得留出栏的占位 */
+.app[data-glass='true'] .body {
+  padding-bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 22px);
 }
 
 /* 顶部安全区遮罩。

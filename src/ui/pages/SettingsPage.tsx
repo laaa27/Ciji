@@ -14,6 +14,7 @@ import {
 import type { TodaySnapshot } from '@/domain/collect'
 import { exportAll, exportBackup } from '@/domain/export'
 import { useSession } from '@/store/session'
+import { useGlass, GLASS_ALPHA_MIN, GLASS_ALPHA_MAX } from '@/store/glass'
 import { useTheme, type ThemeName } from '@/store/theme'
 import { useToday } from '@/store/today'
 
@@ -42,6 +43,10 @@ export default function SettingsPage() {
 
   const theme = useTheme((s) => s.theme)
   const setTheme = useTheme((s) => s.setTheme)
+  const glass = useGlass((s) => s.glass)
+  const setGlass = useGlass((s) => s.setGlass)
+  const glassAlpha = useGlass((s) => s.alpha)
+  const setGlassAlpha = useGlass((s) => s.setAlpha)
 
   const [input, setInput] = useState('')
   const [reveal, setReveal] = useState(false)
@@ -333,6 +338,43 @@ export default function SettingsPage() {
             onChange={(e) => void handleToggleOnline(e.target.checked)}
           />
         </label>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.label}>外观</h2>
+
+        <label className={styles.switchRow}>
+          <span className={styles.switchText}>
+            液态玻璃底栏
+            <em>
+              底栏变成悬浮的半透明玻璃胶囊，滚动内容从栏下透出模糊的质感。滚动觉得费劲就关掉。
+            </em>
+          </span>
+          <input
+            type="checkbox"
+            className={styles.switch}
+            checked={glass}
+            onChange={(e) => void setGlass(e.target.checked)}
+          />
+        </label>
+
+        <div className={styles.sliderRow} data-disabled={!glass}>
+          <span className={styles.switchText}>
+            玻璃不透明度
+            <em>越低越透，滚动的文字越看得清。</em>
+          </span>
+          <span className={styles.sliderValue}>{Math.round(glassAlpha * 100)}%</span>
+          <input
+            type="range"
+            className={styles.slider}
+            min={GLASS_ALPHA_MIN}
+            max={GLASS_ALPHA_MAX}
+            step={0.05}
+            value={glassAlpha}
+            disabled={!glass}
+            onChange={(e) => void setGlassAlpha(Number(e.target.value))}
+          />
+        </div>
       </section>
 
       <section className={styles.section}>

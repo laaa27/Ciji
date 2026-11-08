@@ -8,6 +8,48 @@
   background: var(--paper);
 }
 
+/* 液态玻璃：脱离文档流的悬浮胶囊，内容从栏下滚过、透出模糊的底。
+   颜色随主题走（--glass-*，见 tokens.css），只动 blur/saturate 两项合成器操作。
+   投影务必轻——重投影会在周围纸面压出一圈灰晕，晕外就像突兀的「白块」 */
+.bar[data-glass='true'] {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(var(--safe-bottom) + 10px);
+  z-index: 40;
+  height: var(--tabbar-h);
+  padding: 0 4px;
+  border: 1px solid var(--glass-edge);
+  border-radius: 999px;
+  background: var(--glass-fill);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  box-shadow:
+    inset 0 1px 0 var(--glass-highlight),
+    var(--glass-shadow);
+}
+
+/* 玻璃态的激活气泡：磨砂小圆片垫在当前项下面，替代下划线 */
+.bar[data-glass='true'] .item {
+  align-self: center;
+  height: 40px;
+  margin: 0 6px;
+  border-radius: 999px;
+  transition:
+    color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.bar[data-glass='true'] .item[data-active='true'] {
+  background: var(--glass-bubble);
+  box-shadow: inset 0 1px 0 var(--glass-highlight);
+}
+
+.bar[data-glass='true'] .label::after {
+  display: none;
+}
+
 .item {
   display: flex;
   align-items: center;
