@@ -199,24 +199,29 @@ export default function GenerateArticle({
       <section className={styles.field}>
         <h2 className={styles.fieldLabel}>词的类型</h2>
         <div className={styles.kinds}>
-          {KINDS.map((k) => (
-            <button
-              key={k}
-              type="button"
-              className={styles.kind}
-              data-on={kinds.includes(k)}
-              onClick={() => toggleKind(k)}
-            >
-              <span className={styles.tick} aria-hidden="true" />
-              {KIND_LABEL[k]}
-              <span className={styles.kindCount}>
-                {allCandidates.filter((c) => c.kinds.includes(k) && !c.used).length}
-              </span>
-            </button>
-          ))}
+          {KINDS.map((k) => {
+            const total = allCandidates.filter((c) => c.kinds.includes(k)).length
+            const unused = allCandidates.filter((c) => c.kinds.includes(k) && !c.used).length
+            // 展示口径跟着开关走：打开「包含已用」→ 全量数；
+            // 关着但还有词被藏起来 → 「未用/总数」，别让人以为词丢了
+            const shown = showUsed || total === unused ? total : `${unused}/${total}`
+            return (
+              <button
+                key={k}
+                type="button"
+                className={styles.kind}
+                data-on={kinds.includes(k)}
+                onClick={() => toggleKind(k)}
+              >
+                <span className={styles.tick} aria-hidden="true" />
+                {KIND_LABEL[k]}
+                <span className={styles.kindCount}>{shown}</span>
+              </button>
+            )
+          })}
         </div>
         <p className={styles.hint}>
-          勾选决定默认用哪些词，下面还可以逐词调整。已用过的词默认不出现。
+          勾选决定默认用哪些词，下面还可以逐词调整。斜杠后是含已用词的总数；已用过的默认不出现，打开下面的开关再练。
         </p>
       </section>
 
