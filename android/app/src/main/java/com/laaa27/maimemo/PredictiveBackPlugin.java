@@ -6,6 +6,7 @@ import android.window.OnBackAnimationCallback;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 
+import androidx.activity.OnBackPressedCallback;
 import androidx.annotation.RequiresApi;
 
 import com.getcapacitor.JSObject;
@@ -17,23 +18,22 @@ import com.getcapacitor.annotation.CapacitorPlugin;
 /**
  * 预测性返回手势的原生桥。
  *
- * JS 侧进入子视图（文章库 / 生成页 / 词卡）时调 setEnabled(true)，
- * 这里向系统注册 OnBackInvokedCallback（优先级 DEFAULT，晚于 Capacitor 的
- * AndroidX 回调注册，同优先级后注册者胜出），把手势过程转发给 JS：
+ * JS 侧进入子视图（文章库 / 生成页 / 词卡）时调 setEnabled(true)：
  *
- *   started / progress / cancelled —— JS 用来驱动跟手动画
- *   commit                         —— 相当于一次返回键，走 JS 的返回栈
+ *   Android 14+  注册 OnBackAnimationCallback，手势全程转发
+ *                （started/progress/cancelled 驱动跟手动画，commit 相当于返回键）
+ *   Android 13   注册单方法 OnBackInvokedCallback，只转发 commit
+ *   Android 12-  注册 AndroidX OnBackPressedCallback，只转发 commit
  *
- * 手势提交 / 取消后 JS 会 setEnabled(false) 注销回调，系统随之接管
- * 根层级的返回（保持「连按两次退出」的既有行为）。
- *
- * Android 13 只有单方法回调拿不到进度，直接不注册，走 Capacitor 原路。
+ * Capacitor 自带的返回处理已被关闭（disableBackButtonHandler），
+ * 子视图打开时这里就是唯一的返回接管方；setEnabled(false) 注销后，
+ * 系统在根层级播预测性「返回主页」动画。
  */
 @CapacitorPlugin(name = "PredictiveBack")
 public class PredictiveBackPlugin extends Plugin {
 
-    private boolean registered = false;
     private OnBackInvokedCallback platformCallback;
+    private OnBackPressedCallback compatCallback;
 
     @PluginMethod
     public void setEnabled(final PluginCall call) {
@@ -46,19 +46,48 @@ public class PredictiveBackPlugin extends Plugin {
     }
 
     private void update(boolean on) {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) return;
+        unregister();
 
-        OnBackInvokedDispatcher dispatcher = getActivity().getOnBackInvokedDispatcher();
-        if (on && !registered) {
+        if (!on) return;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             platformCallback = new PredictiveCallback();
-            dispatcher.registerOnBackInvokedCallback(
+            getDispatcher().registerOnBackInvokedCallback(
                     OnBackInvokedDispatcher.PRIORITY_DEFAULT, platformCallback);
-            registered = true;
-        } else if (!on && registered) {
-            dispatcher.unregisterOnBackInvokedCallback(platformCallback);
-            platformCallback = null;
-            registered = false;
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            platformCallback = new OnBackInvokedCallback() {
+                @Override
+                public void onBackInvoked() {
+                    fire("commit", 1);
+                }
+            };
+            getDispatcher().registerOnBackInvokedCallback(
+                    OnBackInvokedDispatcher.PRIORITY_DEFAULT, platformCallback);
+        } else {
+            compatCallback = new OnBackPressedCallback(true) {
+                @Override
+                public void handleOnBackPressed() {
+                    fire("commit", 1);
+                }
+            };
+            getActivity().getOnBackPressedDispatcher().addCallback(
+                    getActivity(), compatCallback);
         }
+    }
+
+    private void unregister() {
+        if (platformCallback != null) {
+            getDispatcher().unregisterOnBackInvokedCallback(platformCallback);
+            platformCallback = null;
+        }
+        if (compatCallback != null) {
+            compatCallback.remove();
+            compatCallback = null;
+        }
+    }
+
+    private OnBackInvokedDispatcher getDispatcher() {
+        return getActivity().getOnBackInvokedDispatcher();
     }
 
     @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)

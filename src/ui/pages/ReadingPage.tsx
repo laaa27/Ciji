@@ -361,6 +361,8 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
 
       if (under && !under.classList.contains(styles.snap)) {
         under.classList.add(styles.snap)
+        // covered 时下层是 display:none，快照层要显式翻回来才有内容
+        under.style.display = 'block'
         under.scrollTop = articleScroll.current
       }
       if (under) {
@@ -396,6 +398,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
           under.classList.remove(styles.snap)
           under.style.transform = ''
           under.style.borderRadius = ''
+          under.style.display = ''
         }, 240)
       }
     })
@@ -409,6 +412,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       under.classList.remove(styles.snap)
       under.style.transform = ''
       under.style.borderRadius = ''
+      under.style.display = ''
     }
   }, [covered])
 

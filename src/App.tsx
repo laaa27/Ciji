@@ -1,6 +1,4 @@
 import { useEffect, useRef, useState } from 'react'
-import { App as CapApp } from '@capacitor/app'
-import { Capacitor } from '@capacitor/core'
 
 import styles from './App.module.css'
 import TabBar, { type TabKey } from './ui/components/TabBar'
@@ -13,11 +11,8 @@ import { loadLookupSettings } from '@/data/dict'
 import { loadSettings } from '@/data/settings'
 import { useLlm } from '@/store/llm'
 import { useSession } from '@/store/session'
-import { handleBack } from '@/store/backstack'
 import { useTheme } from '@/store/theme'
 import { useToast } from '@/store/toast'
-
-const EXIT_CONFIRM_MS = 2200
 
 export default function App() {
   const [tab, setTab] = useState<TabKey>('today')
@@ -34,10 +29,6 @@ export default function App() {
 
   const toast = useToast((s) => s.message)
   const clearToast = useToast((s) => s.clear)
-
-  const [exitHint, setExitHint] = useState(false)
-  const lastBackRef = useRef(0)
-  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
   /** 每个栏目各自的滚动位置。所有页面共用一个滚动容器，不记就会串。 */
   const scrollMemory = useRef<Partial<Record<TabKey, number>>>({})
@@ -74,38 +65,9 @@ export default function App() {
     return () => cancelAnimationFrame(raf)
   }, [tab])
 
-  // Android 返回键：连按两次才收起应用（回桌面，不杀进程），防止误触
-  useEffect(() => {
-    if (!Capacitor.isNativePlatform()) return
-
-    let sub: { remove: () => void } | undefined
-
-    void CapApp.addListener('backButton', () => {
-      // 页面里有子视图（文章库、词卡）时先退一层，别直接弹退出
-      if (handleBack()) return
-
-      const now = Date.now()
-      if (now - lastBackRef.current < EXIT_CONFIRM_MS) {
-        // 不退出进程：把任务移到后台，下次点图标能原样回来
-        void CapApp.minimizeApp()
-        return
-      }
-      lastBackRef.current = now
-      setExitHint(true)
-      clearTimeout(timerRef.current)
-      timerRef.current = setTimeout(() => setExitHint(false), EXIT_CONFIRM_MS)
-    }).then((s) => {
-      sub = s
-    })
-
-    return () => {
-      sub?.remove()
-      clearTimeout(timerRef.current)
-    }
-  }, [])
-
-  // 退出提示优先于普通提示，避免叠两条
-  const toastText = exitHint ? '再按一次回到桌面' : toast
+  // Android 返回：根层级不再拦截（见 capacitor.config.ts 的 disableBackButtonHandler），
+  // 系统直接播预测性「返回主页」动画，松手 app 退后台；子视图由 PredictiveBackPlugin 接管。
+  // 原来的「连按两次退出」随之移除。
 
   return (
     <div className={styles.app}>
@@ -134,13 +96,9 @@ export default function App() {
 
       <TabBar value={tab} onChange={changeTab} />
 
-      {toastText && (
-        <div
-          className={styles.toast}
-          role="status"
-          onClick={exitHint ? undefined : clearToast}
-        >
-          {toastText}
+      {toast && (
+        <div className={styles.toast} role="status" onClick={clearToast}>
+          {toast}
         </div>
       )}
     </div>
