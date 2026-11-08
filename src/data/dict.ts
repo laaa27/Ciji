@@ -152,6 +152,17 @@ export function lemmaCandidates(word: string): string[] {
   return out
 }
 
+/**
+ * 本地词典里有没有这个词（查变形候选时用来去噪）。
+ * 纯本地分片查询，不走网络。
+ */
+export async function dictHas(word: string): Promise<boolean> {
+  const key = word.trim().toLowerCase()
+  if (!key) return false
+  const shard = await loadShard(shardKey(key))
+  return Boolean(shard[key])
+}
+
 async function lookupLocal(word: string): Promise<string | null> {
   for (const cand of lemmaCandidates(word)) {
     const shard = await loadShard(shardKey(cand))

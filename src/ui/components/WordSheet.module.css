@@ -88,6 +88,31 @@
   }
 }
 
+/* ── 同族变形 ─────────────────────────── */
+
+.forms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.form {
+  padding: 4px 9px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  font-family: var(--font-word);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+/* 当前正在看的那个形式 */
+.form[data-on='true'] {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
 /* ── 墨墨学习状态 ─────────────────────── */
 
 .memo {

@@ -86,6 +86,7 @@ const inPlan = new Set(['coherent'])
 const knownVocab = new Set([...TODAY_WORDS, 'shipment', 'study'].filter((w) => w !== 'scrutiny'))
 const notInVocab = new Set(['scrutiny'])
 const added = []
+const memoCalls = { records: 0, voc: 0 }
 const makeRecord = (spelling) => ({
   voc_id: `id-${spelling}`,
   voc_spelling: spelling,
@@ -108,6 +109,7 @@ page.on('request', (req) => {
     if (url.includes('get_today_items')) return json({ today_items: todayItems })
 
     if (url.includes('query_study_records')) {
+      memoCalls.records += 1
       const body = JSON.parse(req.postData() ?? '{}')
       const asked = body.spellings ?? []
       const records = asked.filter((w) => inPlan.has(String(w).toLowerCase())).map(makeRecord)
@@ -115,6 +117,7 @@ page.on('request', (req) => {
     }
 
     if (url.includes('/vocabulary/query')) {
+      memoCalls.voc += 1
       const body = JSON.parse(req.postData() ?? '{}')
       const asked = body.spellings ?? []
       const voc = asked
@@ -496,6 +499,15 @@ console.log('\n[12] 点词看墨墨状态、加入学习计划')
 // 上一段停在文章库里，先退回阅读页
 await clickIncludes('返回')
 await t(700)
+
+// 点词才查：文章已经显示出来了，此时不该有任何墨墨查询
+const beforeCalls = { ...memoCalls }
+await t(700)
+ok(
+  '打开文章不为全文批量查墨墨',
+  memoCalls.records === beforeCalls.records && memoCalls.voc === beforeCalls.voc,
+  JSON.stringify([beforeCalls, memoCalls]),
+)
 const clickWord = (spelling) =>
   page.evaluate((w) => {
     const btns = [...document.querySelectorAll('button')].filter(
@@ -560,6 +572,23 @@ ok('点到复数形式', await clickWord('Shipments'))
 await t(900)
 sheet = await sheetText()
 ok('复数能落到原形 shipment', sheet.includes('词库里是 shipment'), sheet.slice(0, 120))
+
+const hasFormChip = (form) =>
+  page.evaluate(
+    (f) => [...document.querySelectorAll('[role="dialog"] button')].some((b) => b.textContent?.trim() === f),
+    form,
+  )
+ok('列出同族变形', await hasFormChip('shipment'), await sheetText())
+ok('点词触发了一次查询', memoCalls.records > beforeCalls.records, JSON.stringify(memoCalls))
+
+await page.evaluate(() => {
+  const btn = [...document.querySelectorAll('[role="dialog"] button')].find(
+    (b) => b.textContent?.trim() === 'shipment',
+  )
+  btn?.click()
+})
+await t(800)
+ok('点变形标签切换了词', (await sheetText()).startsWith('shipment'), (await sheetText()).slice(0, 40))
 await closeSheet()
 
 ok('点到 -ing 形式', await clickWord('studying'))

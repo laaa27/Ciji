@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import { lookupOne } from '@/data/dict'
 import { addToPlan, lookupMemoState, type MemoState } from '@/domain/memo'
+import { inflectionFamily } from '@/domain/wordforms'
 import { RESPONSE_LABEL } from '@/domain/collect'
 import { dateKey, diffDays, monthDay } from '@/lib/date'
 import { useSession } from '@/store/session'
@@ -10,6 +11,8 @@ import styles from './WordSheet.module.css'
 type Props = {
   word: string
   onClose: () => void
+  /** 点变形小标签：换成那个词重新查 */
+  onPick: (word: string) => void
 }
 
 const TAG_LABEL: Record<string, string> = {
@@ -37,7 +40,7 @@ function daysSince(iso?: string): number | null {
   return diffDays(dateKey(new Date()), dateKey(d))
 }
 
-export default function WordSheet({ word, onClose }: Props) {
+export default function WordSheet({ word, onClose, onPick }: Props) {
   const token = useSession((s) => s.token)
 
   const [gloss, setGloss] = useState<string | null>(null)
@@ -52,6 +55,8 @@ export default function WordSheet({ word, onClose }: Props) {
   const [confirming, setConfirming] = useState(false)
   const [adding, setAdding] = useState(false)
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null)
+  /** 同族变形（原形 + 本地词典里真实存在的其他形式） */
+  const [forms, setForms] = useState<string[]>([])
 
   function requestClose() {
     if (closing) return
@@ -91,6 +96,29 @@ export default function WordSheet({ word, onClose }: Props) {
       alive = false
     }
   }, [word, token])
+
+  // 变形标签：定位到原形之后再算，纯本地，不发请求
+  useEffect(() => {
+    if (!memo) {
+      setForms([])
+      return
+    }
+
+    const base =
+      memo.kind === 'in-plan'
+        ? memo.record.voc_spelling
+        : memo.kind === 'available'
+          ? memo.spelling
+          : word
+
+    let alive = true
+    void inflectionFamily(base, gloss, [word]).then((list) => {
+      if (alive) setForms(list)
+    })
+    return () => {
+      alive = false
+    }
+  }, [memo, gloss])
 
   async function handleAdd() {
     if (!confirming) {
@@ -139,6 +167,22 @@ export default function WordSheet({ word, onClose }: Props) {
         <p className={styles.gloss}>
           {loading ? '查询中…' : gloss || '没有查到这个词的释义'}
         </p>
+
+        {forms.length > 1 && (
+          <div className={styles.forms}>
+            {forms.map((f) => (
+              <button
+                key={f}
+                type="button"
+                className={styles.form}
+                data-on={f === word.toLowerCase()}
+                onClick={() => onPick(f)}
+              >
+                {f}
+              </button>
+            ))}
+          </div>
+        )}
 
         {token && (
           <section className={styles.memo}>
