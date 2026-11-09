@@ -1,0 +1,139 @@
+/* 样式与词卡弹层（WordSheet.module.css）同一套骨架：遮罩淡入 + 底部升起 */
+
+.mask {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: flex-end;
+  background: var(--scrim);
+  animation: fade 0.18s ease;
+}
+
+.mask[data-closing='true'] {
+  animation: fade-out 0.18s ease forwards;
+}
+
+.sheet {
+  width: 100%;
+  padding: 10px var(--gutter) calc(var(--safe-bottom) + var(--sp-5));
+  background: var(--surface);
+  border-top-left-radius: 14px;
+  border-top-right-radius: 14px;
+  animation: rise 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.mask[data-closing='true'] .sheet {
+  animation: sink 0.18s ease forwards;
+}
+
+.handle {
+  width: 34px;
+  height: 3px;
+  margin: 0 auto 14px;
+  border-radius: 2px;
+  background: var(--rule-strong);
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.title {
+  font-family: var(--font-word);
+  font-size: 24px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.2;
+}
+
+.close {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  padding: 4px 0;
+}
+
+.releaseName {
+  margin-top: 4px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+/* 更新日志原文：markdown 不解析，原样展示 + 滚动 */
+.notes {
+  margin-top: var(--sp-3);
+  max-height: 38vh;
+  overflow-y: auto;
+  padding: var(--sp-3);
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.noNotes {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+
+.primary {
+  display: inline-block;
+  padding: 10px 16px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: var(--fs-body);
+  text-align: center;
+  text-decoration: none;
+}
+
+.primary:active {
+  opacity: 0.85;
+}
+
+.ghost {
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  padding: 10px 4px;
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes fade-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+}
+
+@keyframes sink {
+  to {
+    transform: translateY(16px);
+    opacity: 0;
+  }
+}

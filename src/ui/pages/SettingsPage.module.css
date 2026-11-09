@@ -579,3 +579,31 @@
   background: var(--accent);
   color: var(--on-accent);
 }
+
+/* 「关于」页的手动检查更新结果卡 */
+.updateCard {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+}
+
+.updateTitle {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: var(--sp-2);
+}
+
+.updateNotes {
+  max-height: 30vh;
+  overflow-y: auto;
+  padding: var(--sp-2);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

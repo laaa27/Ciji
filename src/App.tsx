@@ -18,6 +18,8 @@ import { handleBack } from '@/store/backstack'
 import { useGlass } from '@/store/glass'
 import { useTheme } from '@/store/theme'
 import { useToast } from '@/store/toast'
+import { checkForUpdate, type ReleaseInfo } from '@/domain/update'
+import UpdateSheet from './ui/components/UpdateSheet'
 
 const EXIT_CONFIRM_MS = 2200
 
@@ -61,6 +63,18 @@ export default function App() {
     // 先把本地那份铺上，网络请求交给今日页自己触发 —— 请求失败也还有东西可看
     void hydrateToday()
   }, [load, loadLlm, loadTheme, loadGlass, hydrateToday])
+
+  // 检查更新：延迟 3 秒再查，别跟启动时的墨墨采集抢网络；
+  // 查不到（断网/限流/没发新版本）静默跳过，绝不打扰
+  const [update, setUpdate] = useState<ReleaseInfo | null>(null)
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void checkForUpdate().then((info) => {
+        if (info) setUpdate(info)
+      })
+    }, 3000)
+    return () => window.clearTimeout(timer)
+  }, [])
 
   // 冷启动后把上次的滚动位置接回去。
   // 首帧时内容往往还没铺满（本地快照是异步读的），滚不到那么深，
@@ -208,6 +222,8 @@ export default function App() {
       </div>
 
       <TabBar value={tab} onChange={changeTab} />
+
+      {update && <UpdateSheet info={update} onClose={() => setUpdate(null)} />}
 
       {toastText && (
         <div
