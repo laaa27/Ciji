@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 
-import { lookupOne } from '@/data/dict'
+import { lookupOneDetailed } from '@/data/dict'
 import { addToPlan, advanceWord, lookupMemoState, type MemoState } from '@/domain/memo'
+import type { PhraseHit } from '@/domain/phrase'
 import { inflectionFamily } from '@/domain/wordforms'
 import { RESPONSE_LABEL } from '@/domain/collect'
 import { dateKey, diffDays, monthDay } from '@/lib/date'
@@ -10,6 +11,12 @@ import styles from './WordSheet.module.css'
 
 type Props = {
   word: string
+  /**
+   * 点词时在上下文里匹配到的固定搭配。
+   * 有值就先展示短语（聊天式地补上来，不打断已经显示的单词释义），
+   * 用户随时能切回单词——因为"我其实只想查这个词"完全合理。
+   */
+  phrase?: PhraseHit | null
   onClose: () => void
   /** 点变形小标签：换成那个词重新查 */
   onPick: (word: string) => void
@@ -40,11 +47,17 @@ function daysSince(iso?: string): number | null {
   return diffDays(dateKey(new Date()), dateKey(d))
 }
 
-export default function WordSheet({ word, onClose, onPick }: Props) {
+export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
   const token = useSession((s) => s.token)
+
+  /** 短语 / 单词：匹配到短语时默认看短语，但可以一键切回来 */
+  const [view, setView] = useState<'phrase' | 'word'>(phrase ? 'phrase' : 'word')
+  const target = view === 'phrase' && phrase ? phrase.text : word
 
   const [gloss, setGloss] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  /** 这条释义是不是 AI 给的（本地词典/缓存/在线兜底都是 false） */
+  const [aiGloss, setAiGloss] = useState(false)
   /** 关闭时先播出场动画，播完再真正卸载 */
   const [closing, setClosing] = useState(false)
 
@@ -59,6 +72,10 @@ export default function WordSheet({ word, onClose, onPick }: Props) {
   /** 同族变形（原形 + 本地词典里真实存在的其他形式） */
   const [forms, setForms] = useState<string[]>([])
 
+  useEffect(() => {
+    setView(phrase ? 'phrase' : 'word')
+  }, [phrase, word])
+
   function requestClose() {
     if (closing) return
     setClosing(true)
@@ -69,15 +86,24 @@ export default function WordSheet({ word, onClose, onPick }: Props) {
     let alive = true
     setLoading(true)
     setGloss(null)
-    void lookupOne(word).then((g) => {
+    setAiGloss(false)
+    void lookupOneDetailed(target, {
+      // 本地词典/缓存命中时先渲染——AI 释义要走一次网络调用，不该挡住瞬时查询
+      onLocal: (g) => {
+        if (!alive) return
+        setGloss(g)
+        setLoading(false)
+      },
+    }).then((res) => {
       if (!alive) return
-      setGloss(g)
+      setGloss(res.gloss)
+      setAiGloss(res.ai)
       setLoading(false)
     })
     return () => {
       alive = false
     }
-  }, [word])
+  }, [target])
 
   // 释义先出，墨墨状态后补：网络慢不该挡住看释义
   useEffect(() => {
@@ -88,7 +114,7 @@ export default function WordSheet({ word, onClose, onPick }: Props) {
     setConfirming(false)
     setNotice(null)
 
-    void lookupMemoState(word).then((state) => {
+    void lookupMemoState(target).then((state) => {
       if (!alive) return
       setMemo(state)
       setMemoLoading(false)
@@ -96,12 +122,12 @@ export default function WordSheet({ word, onClose, onPick }: Props) {
     return () => {
       alive = false
     }
-  }, [word, token])
+  }, [target, token])
 
   // 变形标签：定位到原形之后再算，纯本地，不发请求
   useEffect(() => {
-    // 只有定位到词库里真实存在的原形时才列家族，unknown/error 下没有可信基准
-    if (!memo || (memo.kind !== 'in-plan' && memo.kind !== 'available')) {
+    // 短语没有"变形家族"，只有单词才列
+    if (view === 'phrase' || !memo || (memo.kind !== 'in-plan' && memo.kind !== 'available')) {
       setForms([])
       return
     }
@@ -111,25 +137,25 @@ export default function WordSheet({ word, onClose, onPick }: Props) {
         ? memo.record.voc_spelling
         : memo.kind === 'available'
           ? memo.spelling
-          : word
+          : target
 
     let alive = true
-    void inflectionFamily(base, gloss, [word]).then((list) => {
+    void inflectionFamily(base, gloss, [target]).then((list) => {
       if (alive) setForms(list)
     })
     return () => {
       alive = false
     }
-  }, [memo, gloss])
+  }, [memo, gloss, view, target])
 
   async function handleAdvance() {
     setAdvancing(true)
     setNotice(null)
-    const res = await advanceWord(word)
+    const res = await advanceWord(target)
     setAdvancing(false)
     setNotice({ ok: res.ok, text: res.message })
 
-    if (res.ok) setMemo(await lookupMemoState(word))
+    if (res.ok) setMemo(await lookupMemoState(target))
   }
 
   async function handleAdd() {
@@ -140,12 +166,12 @@ export default function WordSheet({ word, onClose, onPick }: Props) {
     }
 
     setAdding(true)
-    const res = await addToPlan(word)
+    const res = await addToPlan(target)
     setAdding(false)
     setConfirming(false)
     setNotice({ ok: res.ok, text: res.message })
 
-    if (res.ok) setMemo(await lookupMemoState(word))
+    if (res.ok) setMemo(await lookupMemoState(target))
   }
 
   const record = memo?.kind === 'in-plan' ? memo.record : null
@@ -153,11 +179,11 @@ export default function WordSheet({ word, onClose, onPick }: Props) {
   const tag = record?.tags ? TAG_LABEL[record.tags] : ''
 
   // 点的是变体（shipments）、查到的是原形（shipment）时说清楚，否则用户会以为查错了词
-  const inPlanBase = record && record.voc_spelling.toLowerCase() !== word.toLowerCase()
+  const inPlanBase = record && record.voc_spelling.toLowerCase() !== target.toLowerCase()
     ? record.voc_spelling
     : ''
   const availableBase =
-    memo?.kind === 'available' && memo.spelling.toLowerCase() !== word.toLowerCase()
+    memo?.kind === 'available' && memo.spelling.toLowerCase() !== target.toLowerCase()
       ? memo.spelling
       : ''
 
@@ -167,20 +193,48 @@ export default function WordSheet({ word, onClose, onPick }: Props) {
         className={styles.sheet}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
-        aria-label={`${word} 的释义`}
+        aria-label={`${target} 的释义`}
       >
         <div className={styles.handle} />
         <div className={styles.head}>
-          <span className={styles.word}>{word}</span>
+          <span className={styles.word}>{target}</span>
           <button type="button" className={styles.close} onClick={requestClose} aria-label="关闭">
             关闭
           </button>
         </div>
+        {phrase && (
+          <div className={styles.views}>
+            <button
+              type="button"
+              className={styles.viewChip}
+              data-on={view === 'phrase'}
+              onClick={() => setView('phrase')}
+            >
+              短语
+            </button>
+            <button
+              type="button"
+              className={styles.viewChip}
+              data-on={view === 'word'}
+              onClick={() => setView('word')}
+            >
+              {word}
+            </button>
+          </div>
+        )}
+
         <p className={styles.gloss}>
-          {loading ? '查询中…' : gloss || '没有查到这个词的释义'}
+          {loading ? (
+            '查询中…'
+          ) : (
+            <>
+              {gloss || '没有查到这个词的释义'}
+              {aiGloss && gloss && <span className={styles.aiTag}>AI 释义</span>}
+            </>
+          )}
         </p>
 
-        {forms.length > 1 && (
+        {view === 'word' && forms.length > 1 && (
           <div className={styles.forms}>
             {forms.map((f) => (
               <button

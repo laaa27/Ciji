@@ -28,6 +28,8 @@ export default function TodayPage({ onGoSettings }: Props) {
   const snapshot = useToday((s) => s.snapshot)
   const status = useToday((s) => s.status)
   const error = useToday((s) => s.error)
+  const refreshing = useToday((s) => s.refreshing)
+  const errorDetail = useToday((s) => s.errorDetail)
   const refresh = useToday((s) => s.refresh)
 
   const today = dateKey()
@@ -118,9 +120,9 @@ export default function TodayPage({ onGoSettings }: Props) {
                 type="button"
                 className={styles.refresh}
                 onClick={() => void refresh(true)}
-                disabled={status === 'loading'}
+                disabled={refreshing}
               >
-                {status === 'loading' ? '读取中' : '刷新'}
+                {refreshing ? '读取中' : '刷新'}
               </button>
             </span>
           )}
@@ -144,6 +146,35 @@ export default function TodayPage({ onGoSettings }: Props) {
       </header>
 
       {snapshot?.warning && <p className={styles.warning}>{snapshot.warning}</p>}
+
+      {/*
+        有旧数据、只是这次没刷上：不能把已经采到的词撤掉换成一块红字。
+        一条可点的提示就够了 —— 用户要的是词，不是错误详情。
+        「详情」默认收起，但一定要有：同样是这句文案，
+        HTTP 500 和 200 带错误信封的定性完全相反，只有原始响应能分清。
+      */}
+      {token && status === 'error' && snapshot && (
+        <div className={styles.retryBox}>
+          <button
+            type="button"
+            className={styles.retryWarn}
+            onClick={() => void refresh(true)}
+            data-testid="refresh-failed"
+          >
+            这次没刷上：{error} · 点这里重试
+          </button>
+
+          {errorDetail && (
+            <details className={styles.retryDetail} data-testid="refresh-detail">
+              <summary>详情</summary>
+              <pre>
+                {`HTTP ${errorDetail.status ?? '—'} · ${errorDetail.code ?? '无错误码'}`}
+                {errorDetail.raw ? `\n\n${errorDetail.raw.slice(0, 400)}` : ''}
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
 
       {/*
         诊断行只在有词的时候出现。
@@ -176,7 +207,8 @@ export default function TodayPage({ onGoSettings }: Props) {
         <p className={`${styles.hint} loading-pulse`}>正在读取今天的学习记录…</p>
       )}
 
-      {token && status === 'error' && (
+      {/* 完全没数据时才占整屏报错；有数据的情况走上面那条细提示 */}
+      {token && status === 'error' && !snapshot && (
         <div className={styles.notice}>
           <p className={styles.noticeTitle}>没能读到数据</p>
           <p className={styles.noticeText}>{error}</p>

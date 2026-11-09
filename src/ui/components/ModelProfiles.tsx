@@ -32,9 +32,11 @@ const PROTOCOL_HINT: Record<LlmProtocol, string> = {
 export default function ModelProfiles() {
   const profiles = useLlm((s) => s.profiles)
   const activeId = useLlm((s) => s.activeId)
+  const glossActiveId = useLlm((s) => s.glossActiveId)
   const upsert = useLlm((s) => s.upsert)
   const remove = useLlm((s) => s.remove)
   const setActive = useLlm((s) => s.setActive)
+  const setGlossActive = useLlm((s) => s.setGlossActive)
 
   const [draft, setDraft] = useState<LlmProfile | null>(null)
   // 单独记「从哪个预设起的步」。不能用字段值反推 —— 一旦改协议或地址，反推就会失配，
@@ -191,6 +193,36 @@ export default function ModelProfiles() {
             )
           })}
         </ul>
+      )}
+
+      {profiles.length > 0 && (
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>查词释义模型</span>
+          <div className={styles.chips}>
+            <button
+              type="button"
+              className={styles.chip}
+              data-on={glossActiveId === null}
+              onClick={() => void setGlossActive(null)}
+            >
+              跟随文章模型
+            </button>
+            {profiles.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                className={styles.chip}
+                data-on={glossActiveId === p.id}
+                onClick={() => void setGlossActive(p.id)}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+          <span className={styles.fieldHint}>
+            点词释义用哪个模型，和文章生成互不影响；本地词典查不到才调用，释义会缓存下来复用
+          </span>
+        </div>
       )}
 
       {feedback && (

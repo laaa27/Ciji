@@ -62,6 +62,18 @@
   color: var(--ink-2);
 }
 
+/* AI 释义小标记：跟在释义文字后面，弱化展示，只说明来源不抢视觉 */
+.aiTag {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-size: var(--fs-xs);
+  vertical-align: 2px;
+  background: var(--surface-3, rgba(127, 127, 127, 0.15));
+  color: var(--ink-3);
+}
+
 @keyframes fade {
   from {
     opacity: 0;
@@ -111,6 +123,70 @@
 .form[data-on='true'] {
   border-color: var(--ink);
   color: var(--ink);
+}
+
+/* ── 短语 / 单词 切换 ─────────────────── */
+
+/*
+ * 匹配到固定搭配时给两个视角：整串和单个词。
+ * 不给切换的话，用户点 spite 想单独查 spite 就没路可走了。
+ */
+.views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.viewChip {
+  padding: 3px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.viewChip[data-on='true'] {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--tint-ok);
+}
+
+.viewChip:active {
+  opacity: 0.7;
+}
+
+/* ── 短语 / 单词 切换 ─────────────────── */
+
+/*
+ * 匹配到固定搭配时给两个视角：整串和单个词。
+ * 不给切换的话，用户点 spite 想单独查 spite 就没路可走了。
+ */
+.views {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.viewChip {
+  padding: 3px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.viewChip[data-on='true'] {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--tint-ok);
+}
+
+.viewChip:active {
+  opacity: 0.7;
 }
 
 /* ── 墨墨学习状态 ─────────────────────── */

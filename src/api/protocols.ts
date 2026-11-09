@@ -36,6 +36,14 @@ export interface RequestOptions {
 export interface BodyCompat {
   tokenField?: 'max_tokens' | 'max_completion_tokens'
   omitTemperature?: boolean
+  /**
+   * 推理模型的思考强度。
+   *
+   * 实测（deepseek-flash，cet6 生成 5 次）：`low` 的合格率 5/5，默认档 2/5 因 JSON 被思考挤断而失败，
+   * 关掉思考（thinking.disabled）虽然快 8 倍，但一半的生成会塌成一百多词的残篇。
+   * 所以生成文章时优先用 low；服务端不认这个字段（400 提到 reasoning_effort）会自动去掉。
+   */
+  reasoningEffort?: 'low' | 'medium' | 'high'
 }
 
 /** 一个协议要提供的最小能力 */
@@ -100,6 +108,7 @@ const openai: ProtocolCodec = {
       stream: false,
     }
     if (!compat.omitTemperature) body.temperature = opts.temperature ?? 0.8
+    if (compat.reasoningEffort) body.reasoning_effort = compat.reasoningEffort
     return body
   },
 

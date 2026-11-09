@@ -45,6 +45,8 @@ function proxyUrl(target: string): string {
 
 interface CallOptions extends RequestOptions {
   timeoutMs?: number
+  /** 思考强度（推理模型才需要）。服务端不支持时会在 400 里说，届时自动去掉 */
+  reasoningEffort?: 'low' | 'medium' | 'high'
 }
 
 interface Reply {
@@ -149,6 +151,10 @@ function adaptCompat(detail: string, compat: BodyCompat): Partial<BodyCompat> | 
   if (!compat.omitTemperature && msg.includes('temperature')) {
     return { omitTemperature: true }
   }
+  // 不认 reasoning_effort 的服务端（部分国产网关）会直接 400
+  if (compat.reasoningEffort && msg.includes('reasoning_effort')) {
+    return { reasoningEffort: undefined }
+  }
   return null
 }
 
@@ -198,7 +204,12 @@ export async function chatCompletion(
   if (!target) throw new LlmError('还没有添加大模型，去设置里加一个')
 
   const codec = PROTOCOLS[target.protocol]
-  let compat: BodyCompat = compatCache.get(target.id) ?? {}
+  const cached = compatCache.get(target.id)
+  let compat: BodyCompat = { ...(cached ?? {}) }
+  // 缓存里已经有这个键（值为 undefined）说明上次被服务端拒绝过，别再试探
+  if (opts.reasoningEffort && !(cached && 'reasoningEffort' in cached)) {
+    compat.reasoningEffort = opts.reasoningEffort
+  }
 
   // 上次被撑大过的预算直接沿用，省掉每次第一轮空跑
   const baseTokens = opts.maxTokens

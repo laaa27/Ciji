@@ -12,6 +12,8 @@ import SettingsPage from './ui/pages/SettingsPage'
 import { loadLookupSettings } from '@/data/dict'
 import { useLlm } from '@/store/llm'
 import { useSession } from '@/store/session'
+import { useToday } from '@/store/today'
+import { readScroll, readTab, saveScroll, saveTab } from '@/store/ui'
 import { handleBack } from '@/store/backstack'
 import { useGlass } from '@/store/glass'
 import { useTheme } from '@/store/theme'
@@ -19,19 +21,24 @@ import { useToast } from '@/store/toast'
 
 const EXIT_CONFIRM_MS = 2200
 
+/** 回到前台时，数据超过这个岁数就静默重采一次 */
+const RESUME_STALE_MS = 10 * 60 * 1000
+
 export default function App() {
-  const [tab, setTab] = useState<TabKey>('today')
+  // 上次停在哪个栏目 —— 从本地同步读，首帧就是对的，不会先闪一下「今日」
+  const [tab, setTab] = useState<TabKey>(readTab)
   /**
    * 去过的栏目。第一次进入时才挂载，之后一直留着 ——
    * 这样切走再回来，阅读进度、译文开关、正在生成的请求都还在。
    * 不一次性全挂载，是为了别让统计页的图表在 0 尺寸的容器里初始化。
    */
-  const [visited, setVisited] = useState<Set<TabKey>>(() => new Set<TabKey>(['today']))
+  const [visited, setVisited] = useState<Set<TabKey>>(() => new Set<TabKey>([tab]))
 
   const load = useSession((s) => s.load)
   const loadLlm = useLlm((s) => s.load)
   const loadTheme = useTheme((s) => s.load)
   const loadGlass = useGlass((s) => s.load)
+  const hydrateToday = useToday((s) => s.hydrate)
   const glass = useGlass((s) => s.glass)
 
   const toast = useToast((s) => s.message)
@@ -51,7 +58,30 @@ export default function App() {
     void loadLookupSettings()
     void loadTheme()
     void loadGlass()
-  }, [load, loadLlm, loadTheme, loadGlass])
+    // 先把本地那份铺上，网络请求交给今日页自己触发 —— 请求失败也还有东西可看
+    void hydrateToday()
+  }, [load, loadLlm, loadTheme, loadGlass, hydrateToday])
+
+  // 冷启动后把上次的滚动位置接回去。
+  // 首帧时内容往往还没铺满（本地快照是异步读的），滚不到那么深，
+  // 所以隔一会儿重试几次，直到滚到位或者放弃。
+  useEffect(() => {
+    const target = readScroll(tab)
+    if (target <= 0) return
+
+    let tries = 0
+    let timer = window.setTimeout(function tick() {
+      const body = bodyRef.current
+      if (!body) return
+      body.scrollTop = target
+      tries += 1
+      if (body.scrollTop < target - 2 && tries < 6) timer = window.setTimeout(tick, 120)
+    }, 60)
+
+    return () => window.clearTimeout(timer)
+    // 只在挂载时跑一次；切栏目由下面那个 effect 负责
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function changeTab(next: TabKey) {
     if (next === tab) return
@@ -60,6 +90,7 @@ export default function App() {
     if (body) scrollMemory.current[tab] = body.scrollTop
 
     setTab(next)
+    saveTab(next)
     setVisited((prev) => (prev.has(next) ? prev : new Set(prev).add(next)))
   }
 
@@ -69,11 +100,32 @@ export default function App() {
     const body = bodyRef.current
     if (!body) return
 
-    body.scrollTop = scrollMemory.current[tab] ?? 0
+    body.scrollTop = scrollMemory.current[tab] ?? readScroll(tab)
 
     // 图表是在挂载时按当时的尺寸初始化的，切走期间尺寸变过，回来要它重新量一次
     const raf = requestAnimationFrame(() => window.dispatchEvent(new Event('resize')))
     return () => cancelAnimationFrame(raf)
+  }, [tab])
+
+  // 滚动停下就记一笔。切栏目时也会写，兼容「滚到一半就切走」的情况
+  useEffect(() => {
+    const body = bodyRef.current
+    if (!body) return
+
+    let timer = 0
+    const onScroll = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        scrollMemory.current[tab] = body.scrollTop
+        saveScroll(tab, body.scrollTop)
+      }, 300)
+    }
+
+    body.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      body.removeEventListener('scroll', onScroll)
+      window.clearTimeout(timer)
+    }
   }, [tab])
 
   // Android 返回键：连按两次才收起应用（回桌面，不杀进程），防止误触
@@ -104,6 +156,27 @@ export default function App() {
       sub?.remove()
       clearTimeout(timerRef.current)
     }
+  }, [])
+
+  // 回到前台：数据旧了就静默重采一次。
+  // 之前没有任何前台恢复逻辑 —— 服务端一次抖动留下的错误卡片会一直挂着，
+  // 用户看到的其实是几小时前的失败状态。
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+
+    let sub: { remove: () => void } | undefined
+
+    void CapApp.addListener('appStateChange', ({ isActive }) => {
+      if (!isActive) return
+      const today = useToday.getState()
+      if (!today.snapshot || Date.now() - today.lastFetchAt > RESUME_STALE_MS) {
+        void today.refresh()
+      }
+    }).then((s) => {
+      sub = s
+    })
+
+    return () => sub?.remove()
   }, [])
 
   // 退出提示优先于普通提示，避免叠两条

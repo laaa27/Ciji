@@ -151,3 +151,35 @@ export async function advanceWord(word: string): Promise<AddResult> {
     return { ok: false, message: e instanceof Error ? e.message : '提前失败' }
   }
 }
+
+/* ── 短语匹配：以墨墨词库为准 ─────────────── */
+
+/**
+ * 墨墨词库里有没有这些短语。
+ *
+ * 为什么不用本地词典当唯一依据：`public/dict` 只是 ECDICT 的精简分片，
+ * 抽查 20 个高频搭配只命中 7 个（in spite of / as a result / in the dark / at the expense of 都没有），
+ * 而墨墨同一批 14/14 全收。所以本地当快路径，墨墨当权威。
+ *
+ * 一次调用只发一个请求（spellings 是数组），命中结果按短语缓存，重复点同一个位置不再请求。
+ */
+const phraseCache = new Map<string, boolean>()
+
+export async function lookupKnownPhrases(texts: string[]): Promise<Set<string>> {
+  const need = texts.filter((t) => !phraseCache.has(t))
+
+  if (need.length > 0) {
+    try {
+      const res = await queryVocabulary(need)
+      const got = new Set((res.voc ?? []).map((v) => v.spelling.toLowerCase()))
+      for (const t of need) phraseCache.set(t, got.has(t))
+      // 服务端可能把拼写规范化过（大小写/连字符），命中的按返回值再记一次
+      for (const v of res.voc ?? []) phraseCache.set(v.spelling.toLowerCase(), true)
+    } catch {
+      // 失败不写缓存：下次点还能重试，不至于永久判"没有"
+      return new Set()
+    }
+  }
+
+  return new Set(texts.filter((t) => phraseCache.get(t)))
+}

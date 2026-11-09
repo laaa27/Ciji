@@ -82,6 +82,8 @@ export const PRESETS: LlmPreset[] = [
 
 const K_PROFILES = 'llm_profiles'
 const K_ACTIVE = 'llm_active'
+/** 查词释义专用模型；空 = 跟随文章生成的模型 */
+const K_GLOSS_ACTIVE = 'llm_gloss_active'
 
 // v0.5.0 及更早的键，仅用于迁移
 const K_OLD_PROVIDER = 'llm_provider'
@@ -132,6 +134,8 @@ export function validateProfile(p: {
 type LlmState = {
   profiles: LlmProfile[]
   activeId: string | null
+  /** 查词释义用哪份配置；null = 跟随 activeId（文章生成模型） */
+  glossActiveId: string | null
   ready: boolean
 
   load: () => Promise<void>
@@ -139,8 +143,12 @@ type LlmState = {
   upsert: (profile: LlmProfile) => Promise<void>
   remove: (id: string) => Promise<void>
   setActive: (id: string) => Promise<void>
+  /** 切换查词释义模型；传 null 表示跟随文章模型 */
+  setGlossActive: (id: string | null) => Promise<void>
   /** 取当前生效的那份配置（读不到返回 null） */
   active: () => LlmProfile | null
+  /** 查词释义实际生效的配置：专用模型存在就用它，否则跟随文章模型 */
+  glossActive: () => LlmProfile | null
 }
 
 async function persist(profiles: LlmProfile[], activeId: string | null): Promise<void> {
@@ -205,16 +213,19 @@ function parseProfiles(raw: string | null): LlmProfile[] {
 export const useLlm = create<LlmState>((set, get) => ({
   profiles: [],
   activeId: null,
+  glossActiveId: null,
   ready: false,
 
   load: async () => {
-    const [stored, activeRaw] = await Promise.all([
+    const [stored, activeRaw, glossRaw] = await Promise.all([
       Preferences.get({ key: K_PROFILES }),
       Preferences.get({ key: K_ACTIVE }),
+      Preferences.get({ key: K_GLOSS_ACTIVE }),
     ])
 
     let profiles = parseProfiles(stored.value)
     let activeId = activeRaw.value?.trim() || null
+    const glossActiveId = glossRaw.value?.trim() || null
 
     if (profiles.length === 0) {
       const migrated = await migrateLegacy()
@@ -228,7 +239,7 @@ export const useLlm = create<LlmState>((set, get) => ({
     // activeId 指向已删除的配置时，退回第一条，不让界面处在「有模型但不可用」的状态
     if (!profiles.some((p) => p.id === activeId)) activeId = profiles[0]?.id ?? null
 
-    set({ profiles, activeId, ready: true })
+    set({ profiles, activeId, glossActiveId, ready: true })
   },
 
   upsert: async (profile) => {
@@ -248,8 +259,13 @@ export const useLlm = create<LlmState>((set, get) => ({
   remove: async (id) => {
     const next = get().profiles.filter((p) => p.id !== id)
     const activeId = get().activeId === id ? (next[0]?.id ?? null) : get().activeId
-    set({ profiles: next, activeId })
-    await persist(next, activeId)
+    // 释义模型指向被删的配置时一并清掉，别留悬空引用
+    const glossActiveId = get().glossActiveId === id ? null : get().glossActiveId
+    set({ profiles: next, activeId, glossActiveId })
+    await Promise.all([
+      persist(next, activeId),
+      Preferences.set({ key: K_GLOSS_ACTIVE, value: glossActiveId ?? '' }),
+    ])
   },
 
   setActive: async (id) => {
@@ -258,9 +274,23 @@ export const useLlm = create<LlmState>((set, get) => ({
     await persist(get().profiles, id)
   },
 
+  setGlossActive: async (id) => {
+    // 只允许指向真实存在的配置（null = 跟随文章模型，永远合法）
+    if (id !== null && !get().profiles.some((p) => p.id === id)) return
+    set({ glossActiveId: id })
+    await Preferences.set({ key: K_GLOSS_ACTIVE, value: id ?? '' })
+  },
+
   active: () => {
     const { profiles, activeId } = get()
     return profiles.find((p) => p.id === activeId) ?? profiles[0] ?? null
+  },
+
+  glossActive: () => {
+    const { profiles, glossActiveId } = get()
+    // 专用配置被删掉时静默回落到文章模型，不让查词挂掉
+    const gloss = glossActiveId ? profiles.find((p) => p.id === glossActiveId) : null
+    return gloss ?? get().active()
   },
 }))
 

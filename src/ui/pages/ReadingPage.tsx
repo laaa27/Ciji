@@ -12,6 +12,8 @@ import {
   type ArticleMeta,
 } from '@/data/article'
 import { lemmaCandidates } from '@/data/dict'
+import { lookupKnownPhrases } from '@/domain/memo'
+import { findPhraseAround, phraseCandidates, phraseVariants, type PhraseHit } from '@/domain/phrase'
 import {
   generateArticle,
   missingWords,
@@ -20,12 +22,15 @@ import {
   MAX_TARGET_WORDS,
   type Article,
   type ArticleLevel,
+  type ArticleSentence,
 } from '@/domain/article'
 import { dateKey, monthDay } from '@/lib/date'
 import { getLastLlmResponse } from '@/api/llm'
 import { pushBackHandler } from '@/store/backstack'
 import { useToast } from '@/store/toast'
+import { clearGenDraft, clearReadPos, readReadPos, readShowZh, saveReadPos, saveShowZh } from '@/store/ui'
 import { useLlm } from '@/store/llm'
+import { useSession } from '@/store/session'
 
 import { findScrollParent, useScrollStuck } from '../hooks/useScrollStuck'
 import ArticleLibrary from '../components/ArticleLibrary'
@@ -51,6 +56,14 @@ const FONT_SIZES: { key: FontSize; label: string }[] = [
 /** 一篇文章覆盖多少个目标词，可调 */
 const WORD_LIMITS = [10, 15, 20, 25, 30]
 
+/**
+ * 每段几句。
+ *
+ * 模型返回的是逐句数组，没有段落信息 —— 所以段落只能按固定句数切。
+ * 段内句子连排（读起来是连续的一段文字），段与段之间才留白。
+ */
+const SENTENCES_PER_PARA = 4
+
 const FONT_KEY = 'reading_font_size'
 const LIMIT_KEY = 'reading_word_limit'
 const LEVEL_KEY = 'reading_level'
@@ -68,19 +81,32 @@ function fmtDuration(sec: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
 }
 
-/** 按单词切分句子，保留标点和空格 */
-function tokenize(sentence: string): { text: string; isWord: boolean }[] {
-  const parts: { text: string; isWord: boolean }[] = []
+/**
+ * 按单词切分句子，保留标点和空格。
+ *
+ * `tail` 是紧跟在单词后面、中间没有空格的标点（`shop.` 的那个句点）。
+ * 它要跟单词一起渲染成一个不可断的整体 —— 否则浏览器会在 button（inline-block）
+ * 和标点之间断行，句号就孤零零掉到下一行去。
+ */
+function tokenize(sentence: string): { text: string; tail: string; isWord: boolean }[] {
+  const parts: { text: string; tail: string; isWord: boolean }[] = []
   const re = /[A-Za-z][A-Za-z'-]*/g
   let last = 0
   let m: RegExpExecArray | null
 
   while ((m = re.exec(sentence)) !== null) {
-    if (m.index > last) parts.push({ text: sentence.slice(last, m.index), isWord: false })
-    parts.push({ text: m[0], isWord: true })
-    last = m.index + m[0].length
+    if (m.index > last) parts.push({ text: sentence.slice(last, m.index), tail: '', isWord: false })
+
+    let end = m.index + m[0].length
+    // 只吃「非空白」的尾巴：逗号后的空格必须留在外面，不然下一句会和这个词粘死
+    const glued = /^[^\sA-Za-z]+/.exec(sentence.slice(end))
+    const tail = glued ? glued[0] : ''
+    end += tail.length
+
+    parts.push({ text: m[0], tail, isWord: true })
+    last = end
   }
-  if (last < sentence.length) parts.push({ text: sentence.slice(last), isWord: false })
+  if (last < sentence.length) parts.push({ text: sentence.slice(last), tail: '', isWord: false })
 
   return parts
 }
@@ -97,11 +123,67 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   const [library, setLibrary] = useState<ArticleMeta[]>([])
   const [level, setLevel] = useState<ArticleLevel>('kaoyan')
   const [wordLimit, setWordLimit] = useState(MAX_TARGET_WORDS)
-  const [showZh, setShowZh] = useState(false)
+  /** 译文开关：从本地同步读，重启后保持一致（否则高度变了、阅读位置就错） */
+  const [showZh, setShowZhState] = useState(readShowZh)
+  const setShowZh = (next: boolean) => {
+    setShowZhState(next)
+    saveShowZh(next)
+  }
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [missing, setMissing] = useState<string[]>([])
   const [sheetWord, setSheetWord] = useState<string | null>(null)
+  /** 点词后在上下文里匹配到的固定搭配；到货后弹层会自动切到短语视图 */
+  const [sheetPhrase, setSheetPhrase] = useState<PhraseHit | null>(null)
+  /** 防止上一次匹配的结果盖到刚点的另一个词上 */
+  const phraseForRef = useRef('')
+
+  /**
+   * 点词：立即按单词打开（本地词典通常在缓存里，几乎是瞬时的），
+   * 同时在这个位置找固定搭配；找到了弹层再补一个「短语」视图。
+   * 两段式是为了不让"匹配短语"拖慢本来很快的单词查询。
+   */
+  const openWord = (parts: { text: string; isWord: boolean }[], j: number) => {
+    const word = parts[j].text
+    phraseForRef.current = word
+    setSheetPhrase(null)
+    setSheetWord(word)
+
+    void (async () => {
+      // 快路径：本地词典命中就不用发请求
+      const local = await findPhraseAround(parts, j)
+      if (phraseForRef.current !== word) return
+      if (local) {
+        setSheetPhrase(local)
+        return
+      }
+
+      // 慢路径：本地没有就问墨墨（实测同样是 20 个高频搭配，本地命中 7 个、墨墨 14 个）
+      // 查询串做逐词还原：墨墨收录的是原形（rest on），文章里是变形（rests on）；
+      // 变体表同时记住「哪个变体属于哪个窗口」，命中后弹层显示还原出的原形
+      if (!useSession.getState().token) return
+      const cands = phraseCandidates(parts, j)
+      if (cands.length === 0) return
+
+      const variantOf = new Map<string, (typeof cands)[number]>()
+      for (const cand of cands) {
+        for (const v of phraseVariants(cand.words)) {
+          if (!variantOf.has(v)) variantOf.set(v, cand)
+        }
+      }
+
+      const known = await lookupKnownPhrases([...variantOf.keys()])
+      if (phraseForRef.current !== word) return
+      // 候选本来就是最长优先；命中时把弹层文本换成命中的那个原形变体
+      const hit = cands
+        .map((cand) => {
+          const matched = phraseVariants(cand.words).find((v) => known.has(v))
+          return matched ? { ...cand, text: matched } : null
+        })
+        .find(Boolean)
+      if (hit) setSheetPhrase(hit)
+    })()
+  }
 
   const [fontSize, setFontSize] = useState<FontSize>('m')
   const [sizePanel, setSizePanel] = useState(false)
@@ -199,6 +281,16 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     [article],
   )
 
+  /** 按固定句数切段落：段内连排，段间留白 */
+  const paragraphs = useMemo(() => {
+    const list = article?.sentences ?? []
+    const out: ArticleSentence[][] = []
+    for (let i = 0; i < list.length; i += SENTENCES_PER_PARA) {
+      out.push(list.slice(i, i + SENTENCES_PER_PARA))
+    }
+    return out
+  }, [article])
+
   const isTargetWord = useCallback(
     (word: string) => lemmaCandidates(word).some((c) => targetSet.has(c)),
     [targetSet],
@@ -236,6 +328,8 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
         date: req.date,
       })
       const saved = await saveArticle(draft)
+      // 生成成功了，选词草稿就没用了
+      clearGenDraft()
 
       setArticle(saved)
       setShowZh(false)
@@ -313,6 +407,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   async function handleDeleteArticle(id: string) {
     const wasOpen = article?.id === id
     await deleteArticle(id)
+    clearReadPos(id)
     await refreshLibrary()
 
     if (!wasOpen) return
@@ -339,6 +434,48 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     })
     return () => cancelAnimationFrame(raf)
   }, [libOpen, genOpen])
+
+  /**
+   * 阅读位置落盘。
+   *
+   * 上面那个 effect 只管「文章库往返」，位置活在内存里；进程被系统回收就没了。
+   * 这里按文章 id 存一份，冷启动回来接着读。
+   */
+  const articleId = article?.id ?? ''
+  useEffect(() => {
+    // 子视图打开时滚动容器显示的是列表，不该记成阅读位置
+    if (!active || !articleId || libOpen || genOpen) return
+
+    const scroller = findScrollParent(pageRef.current)
+    if (!scroller) return
+
+    let restoreTimer = 0
+    const saved = readReadPos(articleId)
+    if (saved > 0) {
+      // 正文是异步读出来的，首帧高度可能还不够，隔一会儿再试几次
+      articleScroll.current = saved
+      let tries = 0
+      restoreTimer = window.setTimeout(function tick() {
+        scroller.scrollTop = saved
+        tries += 1
+        if (scroller.scrollTop < saved - 2 && tries < 6) restoreTimer = window.setTimeout(tick, 120)
+      }, 60)
+    }
+
+    let debounce = 0
+    const onScroll = () => {
+      window.clearTimeout(debounce)
+      debounce = window.setTimeout(() => saveReadPos(articleId, scroller.scrollTop), 300)
+    }
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+
+    return () => {
+      scroller.removeEventListener('scroll', onScroll)
+      window.clearTimeout(debounce)
+      window.clearTimeout(restoreTimer)
+      saveReadPos(articleId, scroller.scrollTop)
+    }
+  }, [active, articleId, libOpen, genOpen])
 
   const hasArticle = Boolean(article)
 
@@ -408,7 +545,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
                 type="button"
                 className={styles.action}
                 data-on={showZh}
-                onClick={() => setShowZh((v) => !v)}
+                onClick={() => setShowZh(!showZh)}
               >
                 译文
               </button>
@@ -500,34 +637,46 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
 
             <div className={styles.meta}>
               {monthDay(article.date)} · {wordCount(article)} 词 · {LEVEL_LABEL[article.level]}
+              {/* 生成后审计没过：不挡阅读，只如实说一句 */}
+              {article.shortfall && (
+                <span className={styles.shortfall} title={article.shortfall}>
+                  {' '}
+                  · 篇幅偏短
+                </span>
+              )}
             </div>
 
             <div className={styles.body}>
-              {article.sentences.map((s, i) => (
-                <div
-                  key={i}
-                  className={styles.sentence}
-                  data-break={(i + 1) % 4 === 0 && i !== article.sentences.length - 1}
-                >
-                  <p className={styles.en}>
-                    {tokenize(s.en).map((part, j) =>
-                      part.isWord ? (
-                        <button
-                          key={j}
-                          type="button"
-                          className={styles.word}
-                          data-target={isTargetWord(part.text)}
-                          onClick={() => setSheetWord(part.text)}
-                        >
-                          {part.text}
-                        </button>
-                      ) : (
-                        <span key={j}>{part.text}</span>
-                      ),
-                    )}
-                  </p>
-                  {showZh && s.zh && <p className={styles.zh}>{s.zh}</p>}
-                </div>
+              {paragraphs.map((para, pi) => (
+                <p key={pi} className={`${styles.para} ${styles.en}`}>
+                  {para.map((s, si) => {
+                    const parts = tokenize(s.en)
+                    return (
+                    <span key={si} data-sentence="true">
+                      {parts.map((part, j) =>
+                        part.isWord ? (
+                          <span key={j} className={styles.glue}>
+                            <button
+                              type="button"
+                              className={styles.word}
+                              data-target={isTargetWord(part.text)}
+                              onClick={() => openWord(parts, j)}
+                            >
+                              {part.text}
+                            </button>
+                            {part.tail}
+                          </span>
+                        ) : (
+                          <span key={j}>{part.text}</span>
+                        ),
+                      )}
+                      {showZh && s.zh && <span className={styles.zh}>{s.zh}</span>}
+                      {/* 句子之间靠空白连排：不加这个空格，两句会粘在一起 */}
+                      {' '}
+                    </span>
+                    )
+                  })}
+                </p>
               ))}
             </div>
           </article>
@@ -547,8 +696,17 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       {sheetWord && (
         <WordSheet
           word={sheetWord}
-          onClose={() => setSheetWord(null)}
-          onPick={(next) => setSheetWord(next)}
+          phrase={sheetPhrase}
+          onClose={() => {
+            phraseForRef.current = ''
+            setSheetPhrase(null)
+            setSheetWord(null)
+          }}
+          onPick={(next) => {
+            phraseForRef.current = next
+            setSheetPhrase(null)
+            setSheetWord(next)
+          }}
         />
       )}
     </div>

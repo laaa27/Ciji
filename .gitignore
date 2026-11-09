@@ -21,3 +21,8 @@ android/app/src/main/res/xml/config.xml
 android/keystore.properties
 android/app/*.keystore
 *.jks
+
+# 真题语料与生成结果（版权 + 体积，不入库）
+scripts/corpus/
+scripts/out/
+scripts/llm.config.json

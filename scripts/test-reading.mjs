@@ -154,7 +154,8 @@ page.on('request', (req) => {
 
   if (url.includes('/__llm')) {
     llmCalls += 1
-    const isOutline = llmCalls % 2 === 1
+    // 不能用奇偶判断：生成不合格会重新生成，一次生成可能触发 2 次成文请求
+    const isOutline = !(req.postData() ?? '').includes('必须包含的单词')
     const payload = isOutline
       ? {
           choices: [
@@ -175,7 +176,7 @@ page.on('request', (req) => {
         }
       : (() => {
           articleNo += 1
-          const sentences = Array.from({ length: 12 }, (_, i) => ({
+          const sentences = Array.from({ length: 42 }, (_, i) => ({
             en: `Sentence ${i + 1} mentions ${TODAY_WORDS[i % TODAY_WORDS.length]} in a calm, deliberate way.`,
             zh: `第 ${i + 1} 句用平静的方式提到了 ${TODAY_WORDS[i % TODAY_WORDS.length]}。`,
           }))

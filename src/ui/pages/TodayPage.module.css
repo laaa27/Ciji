@@ -235,6 +235,51 @@
   line-height: 1.65;
 }
 
+/* 有数据、只是这次没刷上：整条可点，点一下重试 */
+.retryBox {
+  margin-bottom: var(--sp-6);
+}
+
+.retryWarn {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--tint-warn);
+  border-left: 2px solid var(--state-vague);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  line-height: 1.65;
+  text-align: left;
+}
+
+.retryWarn:active {
+  opacity: 0.75;
+}
+
+/* 展开的原始响应：诊断用，不打扰默认视图 */
+.retryDetail {
+  padding: 6px 12px 8px;
+  background: var(--tint-warn);
+  border-left: 2px solid var(--state-vague);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.retryDetail summary {
+  cursor: pointer;
+  line-height: 1.6;
+}
+
+.retryDetail pre {
+  margin-top: 6px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: var(--font-mono, monospace);
+  font-size: var(--fs-xs);
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+
 .diag {
   margin-top: calc(var(--sp-2) * -1);
   margin-bottom: var(--sp-6);

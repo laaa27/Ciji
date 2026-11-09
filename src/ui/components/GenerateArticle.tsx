@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { getCoveredWordsToday } from '@/data/article'
 import { getDay } from '@/data/store'
@@ -16,6 +16,7 @@ import {
 } from '@/domain/article'
 import type { TodaySnapshot } from '@/domain/collect'
 import { monthDay } from '@/lib/date'
+import { readGenDraft, saveGenDraft } from '@/store/ui'
 
 import styles from './GenerateArticle.module.css'
 
@@ -74,12 +75,19 @@ export default function GenerateArticle({
   onLevelChange,
   onLimitChange,
 }: Props) {
-  const [date, setDate] = useState(today)
+  // 上次的选词草稿：进程被系统回收后回来，不用重新挑一遍
+  const [draft] = useState(readGenDraft)
+  const restored = useRef(false)
+
+  const [date, setDate] = useState(draft?.date ?? today)
   const [snapshot, setSnapshot] = useState<TodaySnapshot | null>(null)
   const [usedWords, setUsedWords] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
 
-  const [kinds, setKinds] = useState<WordKind[]>(KINDS)
+  const [kinds, setKinds] = useState<WordKind[]>(() => {
+    const saved = draft?.kinds.filter((k): k is WordKind => KINDS.includes(k as WordKind))
+    return saved && saved.length > 0 ? saved : KINDS
+  })
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showUsed, setShowUsed] = useState(false)
   const [limit, setLimit] = useState(initialLimit)
@@ -97,7 +105,23 @@ export default function GenerateArticle({
       setUsedWords(covered)
 
       const cands = wordCandidates(snap, covered)
-      setSelected(new Set(defaultSelection(cands, KINDS)))
+      const fallback = new Set(defaultSelection(cands, KINDS))
+
+      // 第一次进来且有草稿：沿用草稿的勾选（只保留这天还在候选里的词）
+      if (!restored.current && draft?.selected?.length) {
+        const available = new Set(cands.map((c) => c.spelling.toLowerCase()))
+        const kept = new Set(draft.selected.filter((s) => available.has(s)))
+        if (kept.size > 0) {
+          restored.current = true
+          setSelected(kept)
+          setShowUsed(false)
+          setLoading(false)
+          return
+        }
+      }
+
+      restored.current = true
+      setSelected(fallback)
       setShowUsed(false)
       setLoading(false)
     })()
@@ -105,7 +129,13 @@ export default function GenerateArticle({
     return () => {
       alive = false
     }
-  }, [date])
+  }, [date, draft])
+
+  // 勾选/类型/日期一变就记一笔，被杀之后还能接着来
+  useEffect(() => {
+    if (loading) return
+    saveGenDraft({ date, kinds, selected: [...selected] })
+  }, [date, kinds, selected, loading])
 
   const allCandidates = useMemo(
     () => wordCandidates(snapshot, usedWords),
@@ -353,7 +383,7 @@ export default function GenerateArticle({
         {busy ? '生成中…' : `用 ${Math.min(chosen.length, limit)} 个词生成`}
       </button>
 
-      {busy && <p className={`${styles.hint} loading-pulse`}>先列提纲，再成文，通常 20~50 秒。</p>}
+      {busy && <p className={`${styles.hint} loading-pulse`}>先列提纲，再成文，推理模型通常 40~90 秒。</p>}
     </div>
   )
 }

@@ -10,5 +10,6 @@ const P = '/api/v1/memo/vocabulary'
  * 返回里没有释义，释义仍然走本地 ECDICT。
  */
 export function queryVocabulary(spellings: string[]) {
-  return post<QueryVocabularyResponse>(`${P}/query`, { spellings })
+  // 纯查询，重试安全
+  return post<QueryVocabularyResponse>(`${P}/query`, { spellings }, undefined, 1)
 }

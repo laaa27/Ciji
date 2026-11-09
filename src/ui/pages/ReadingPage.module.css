@@ -277,17 +277,25 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* 篇幅没达标时的轻提示：不打断阅读，只是别让人以为这是正常长度 */
+.shortfall {
+  color: var(--state-vague);
+}
+
 .body {
   margin-top: var(--sp-5);
 }
 
-.sentence {
-  margin-bottom: 2px;
+/*
+ * 段落。句子在段内连排，段与段之间才留白 ——
+ * 以前每句一个 div、句尾还带缺口，看着像一堆断句，分不清哪几句是一段。
+ */
+.para {
+  margin: 0 0 var(--sp-5);
 }
 
-/* 模型返回的是逐句数组、没有段落信息，这里每 4 句做一次呼吸 */
-.sentence[data-break='true'] {
-  margin-bottom: 15px;
+.para:last-child {
+  margin-bottom: 0;
 }
 
 .en {
@@ -296,6 +304,16 @@
   line-height: var(--rd-lh);
   color: var(--ink);
   letter-spacing: 0.002em;
+}
+
+/*
+ * 一个单词 + 紧跟的标点，绑成不可断的一节。
+ * button 是 inline-block，浏览器会在它和后面的 "。" 之间断行，
+ * 于是句号就单独掉到下一行 —— 这个 wrapper 把两者焊在一起。
+ */
+.glue {
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .word {
@@ -314,14 +332,13 @@
   background: var(--tint-ok);
 }
 
+/* 译文：跟在句子后面连排，不再另起一块 */
 .zh {
-  margin-top: 3px;
-  margin-bottom: 9px;
-  padding-left: 10px;
-  border-left: 2px solid var(--rule);
+  margin-left: 4px;
+  font-family: var(--font-ui);
   font-size: var(--rd-zh-fs);
-  line-height: 1.7;
   color: var(--ink-3);
+  letter-spacing: 0.01em;
 }
 
 .warn {

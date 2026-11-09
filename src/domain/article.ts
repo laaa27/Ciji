@@ -2,20 +2,25 @@ import { chatCompletion } from '@/api/llm'
 import { useLlm } from '@/store/llm'
 import { lemmaCandidates } from '@/data/dict'
 import type { TodaySnapshot } from '@/domain/collect'
+import {
+  buildArticleMessages,
+  buildOutlineMessages,
+  LEVEL_SPEC,
+  type ArticleLevel,
+  type Outline,
+} from '@/domain/prompts'
 
 export type ArticleMode = 'weak' | 'new' | 'all'
-/** 兼容旧数据：早期文章里可能存着 'ielts'，标签要能正常显示 */
-export type ArticleLevel = 'cet4' | 'cet6' | 'kaoyan' | 'ielts'
+
+/**
+ * 难度类型、标签、提示词全部住在 `domain/prompts.ts` —— 那边零依赖，
+ * `scripts/gen-article.mjs` 能在 node 里用同一份文本做对比实验。
+ */
+export type { ArticleLevel, Outline } from '@/domain/prompts'
+export { LEVEL_LABEL } from '@/domain/prompts'
 
 /** 新生成时可选的难度（雅思用不上，从选项里去掉） */
 export const LEVELS: ArticleLevel[] = ['cet4', 'cet6', 'kaoyan']
-
-export const LEVEL_LABEL: Record<ArticleLevel, string> = {
-  cet4: '四级',
-  cet6: '六级',
-  kaoyan: '考研',
-  ielts: '雅思',
-}
 
 /** 单词类型：与今天页的三组一一对应 */
 export type WordKind = 'forget' | 'vague' | 'new'
@@ -55,12 +60,11 @@ export interface Article {
   level: ArticleLevel
   model: string
   createdAt: string
-}
-
-/** 第一步生成出来的提纲 */
-export interface Outline {
-  topic: string
-  paragraphs: { idea: string; link?: string; words: string[] }[]
+  /**
+   * 生成后校验没通过时记下来（篇幅偏短 / 缺词 / 超长句）。
+   * 有值不代表文章不能用，只代表它没完全达到该档位的规格，界面据此轻提示。
+   */
+  shortfall?: string
 }
 
 /** 一篇文章最多塞多少个目标词，太多会变成词表 */
@@ -130,43 +134,15 @@ export function trimSelection(
     .map((c) => c.spelling)
 }
 
-const LEVEL_HINT: Record<ArticleLevel, string> = {
-  cet4: '大学英语四级：词句平实，少用复杂从句',
-  cet6: '大学英语六级：有一定句式变化，允许抽象表达',
-  kaoyan: '考研英语一阅读理解：长难句、抽象名词、从句嵌套，但逻辑清晰',
-  ielts: '雅思学术类阅读：学术语域，客观严谨，多用名词化表达',
-}
-
 /* ── 第一步：先列提纲 ─────────────────────── */
 
 async function buildOutline(words: string[], level: ArticleLevel): Promise<Outline | null> {
-  const system =
-    '你是一位资深的英语命题专家。你最重要的原则是：一篇好文章不是把指定词汇挨个造句再排列起来，' +
-    '而是先有一个真正想说的论点，词汇只是恰好出现在论证路径上。'
-
-  const user = [
-    '一位学生今天需要复习下面这些单词：',
-    words.join(', '),
-    '',
-    '请先设计一篇英语短文的写作提纲。要求：',
-    `1. 难度定位：${LEVEL_HINT[level]}`,
-    '2. 先想一个具体、可展开的论点（不要选过于宽泛的「技术很重要」这类空话）',
-    '3. 分 3~4 段，段落之间必须有明确的逻辑推进——递进、转折或因果，不允许四段并列',
-    '4. 每段给出：核心论点句（topic sentence）+ 承接关系（这段如何承接上一段）+ 该段用哪些词',
-    '5. 把每个单词分配到最合适的一段，一个词只分配一次',
-    '',
-    '只输出 JSON，不要任何解释：',
-    '{"topic":"一句话说明文章主题与核心论点","paragraphs":[{"idea":"这一段的核心论点句","link":"如何承接上一段（第一段写「开篇」）","words":["该段用到的词"]}]}',
-  ].join('\n')
-
   try {
-    const raw = await chatCompletion(
-      [
-        { role: 'system', content: system },
-        { role: 'user', content: user },
-      ],
-      { temperature: 0.9, maxTokens: 1000 },
-    )
+    const raw = await chatCompletion(buildOutlineMessages(words, level), {
+      temperature: 0.9,
+      maxTokens: 3000,
+      reasoningEffort: 'low',
+    })
 
     const obj = parseLoose(raw) as {
       topic?: unknown
@@ -190,53 +166,6 @@ async function buildOutline(words: string[], level: ArticleLevel): Promise<Outli
     // 提纲失败不影响主流程，退回单步生成
     return null
   }
-}
-
-/* ── 第二步：按提纲成文 ───────────────────── */
-
-function buildMessages(words: string[], level: ArticleLevel, outline: Outline | null) {
-  const system = [
-    '你是一位资深的英语命题专家。你最重要的原则：好文章不是把指定词汇挨个造句再排列起来，',
-    '而是先有一个真正想说的论点，词汇只是恰好出现在论证路径上。',
-  ].join('')
-
-  const parts = [`请用下面这些单词写一篇英语短文。`, '', `【必须包含的单词】`, words.join(', '), '']
-
-  if (outline) {
-    parts.push(`【已确定的写作提纲】`, `主题与论点：${outline.topic}`)
-    outline.paragraphs.forEach((p, i) => {
-      const ws = p.words.length > 0 ? `（该段用：${p.words.join(', ')}）` : ''
-      const link = p.link ? `〔承接：${p.link}〕` : ''
-      parts.push(`第 ${i + 1} 段：${p.idea}${link}${ws}`)
-    })
-    parts.push('')
-  }
-
-  parts.push(
-    `【要求】`,
-    `1. 难度：${LEVEL_HINT[level]}`,
-    `2. 篇幅：必须 320~380 词。少于 280 词视为不合格，写完先数一遍`,
-    outline
-      ? `3. 严格按提纲展开，段落顺序和论点不要改；提纲里的「承接」必须落实为真实的过渡句`
-      : `3. 分 3~4 段，段落之间用递进/转折/因果连接，不允许并列罗列`,
-    `4. 上面每一个单词都必须在正文中出现至少一次，原形或变形均可`,
-    ``,
-    `【写作红线】`,
-    `- 禁止逐词造句再拼接：每个段落必须围绕该段的中心论点展开，段内的句子要互相支撑`,
-    `- 代词必须有明确的指代对象；However / Therefore 这类衔接词必须存在真实的逻辑关系，不是装饰`,
-    `- 自查标准：把目标单词全部拿掉，剩下的文字仍然是一篇逻辑通顺的文章——达不到就重写`,
-    ``,
-    `【输出格式】`,
-    `只输出一个 JSON 对象，不要 markdown 代码块，不要任何解释文字：`,
-    `{"title":"英文标题","titleZh":"标题的中文翻译","sentences":[{"en":"英文句子","zh":"这句话的中文翻译"}]}`,
-    ``,
-    `注意：sentences 数组要把正文按句子切开，一句一项，英文和中文一一对应。`,
-  )
-
-  return [
-    { role: 'system' as const, content: system },
-    { role: 'user' as const, content: parts.join('\n') },
-  ]
 }
 
 /** 模型有时会包 ```json，或者前面带一句客套话，这里宽松取 JSON */
@@ -314,6 +243,50 @@ function modeOf(kinds: WordKind[]): ArticleMode {
  * 两步走比一步直出更不容易写成词表拼接 —— 模型先被迫想清楚要论证什么。
  * 提纲失败会自动退回单步生成；成文格式解析失败会重试一次。
  */
+/**
+ * 生成后审计：这一篇够不够得上它的档位。
+ *
+ * 实测（deepseek-flash）合格率只有四成左右：篇幅经常只有目标的六成，
+ * 偶尔还会塌成一百多词的残篇、目标词只用到三分之一。光靠提示词压不住，
+ * 所以在代码侧再拦一道，不合格就重新生成。
+ */
+function auditArticle(
+  a: Pick<Article, 'sentences' | 'targetWords'>,
+  level: ArticleLevel,
+): string[] {
+  const spec = LEVEL_SPEC[level]
+  const problems: string[] = []
+
+  const words = wordCount(a)
+  const floor = Math.round(spec.words[0] * 0.9)
+  if (words < floor) {
+    problems.push(`篇幅偏短（${words} 词，目标 ${spec.words[0]}~${spec.words[1]}）`)
+  }
+
+  const missing = missingWords(a)
+  if (missing.length > 0) {
+    const head = missing.slice(0, 5).join('、')
+    problems.push(`缺 ${missing.length} 个目标词：${head}${missing.length > 5 ? '…' : ''}`)
+  }
+
+  const longest = a.sentences.reduce(
+    (max, s) => Math.max(max, s.en.match(/[A-Za-z][A-Za-z'-]*/g)?.length ?? 0),
+    0,
+  )
+  if (longest > spec.maxSentence) {
+    problems.push(`有 ${longest} 词的长句（上限 ${spec.maxSentence}）`)
+  }
+
+  return problems
+}
+
+/** 最多生成几次：1 次初稿 + 1 次重生成 */
+const MAX_GENERATE_ATTEMPTS = 2
+/** 成文预算：推理模型会把额度分给思考，2600 根本不够（实测必被吃光） */
+const ARTICLE_MAX_TOKENS = 8192
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+
 export async function generateArticle(opts: GenerateOptions): Promise<Article> {
   if (opts.words.length === 0) throw new Error('没有可用的单词')
 
@@ -323,20 +296,25 @@ export async function generateArticle(opts: GenerateOptions): Promise<Article> {
   // 第一步：提纲
   const outline = await buildOutline(opts.words, opts.level)
 
-  const messages = buildMessages(opts.words, opts.level, outline)
+  const messages = buildArticleMessages(opts.words, opts.level, outline)
 
   let lastError: unknown = null
+  /** 审计没过但勉强能用的一篇：重生成也不合格时交它，别让用户白等 */
+  let best: { article: Article; problems: string[] } | null = null
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < MAX_GENERATE_ATTEMPTS; attempt += 1) {
+    if (attempt > 0) await sleep(400)
+
     try {
       const raw = await chatCompletion(messages, {
         temperature: 0.85,
-        maxTokens: 2600,
+        maxTokens: ARTICLE_MAX_TOKENS,
+        reasoningEffort: 'low',
       })
 
       const { title, titleZh, sentences } = validate(parseLoose(raw))
 
-      return {
+      const article: Article = {
         date: opts.date,
         title,
         titleZh,
@@ -348,10 +326,18 @@ export async function generateArticle(opts: GenerateOptions): Promise<Article> {
         model: profile ? `${profile.name} / ${profile.model}` : 'unknown',
         createdAt: new Date().toISOString(),
       }
+
+      const problems = auditArticle(article, opts.level)
+      if (problems.length === 0) return article
+
+      if (!best || problems.length < best.problems.length) best = { article, problems }
     } catch (e) {
       lastError = e
     }
   }
+
+  // 两次都没达标：交出问题最少的那篇，并如实标注，而不是假装成功
+  if (best) return { ...best.article, shortfall: best.problems.join('；') }
 
   throw lastError instanceof Error ? lastError : new Error('生成失败')
 }

@@ -1,5 +1,8 @@
 import { Preferences } from '@capacitor/preferences'
 
+import { chatCompletion } from '@/api/llm'
+import { useLlm } from '@/store/llm'
+
 /**
  * 查词：本地词典优先，查不到再走在线翻译。
  *
@@ -23,6 +26,92 @@ const ONLINE_FLAG = 'online_lookup'
 const MAX_ONLINE_PER_CALL = 20
 /** 在线请求并发上限 */
 const ONLINE_CONCURRENCY = 3
+
+/**
+ * 一次 AI 释义最多问多少个词。
+ * 批量场景（今日页/历史页词表）缺的词合并成一个请求，
+ * 不是逐词发——一次调用的等待时间和 20 次是一样的。
+ */
+export const AI_GLOSS_BATCH_CAP = 20
+
+/**
+ * AI 释义的系统提示。要点：
+ * - 词和短语混在一起问，短语要给整体含义（rest on 是「依据」，不是「休息 上」）
+ * - 词性打头、多义项分号分隔，跟 ECDICT 本地条目的观感保持一致
+ * - 严格 JSON 输出，解析失败就整批放弃走 MyMemory，不要半截结果
+ */
+const AI_GLOSS_SYSTEM = [
+  '你是英汉词典。对用户给出的每个英文单词或短语，给出简洁准确的中文释义。',
+  '要求：',
+  '1. 词性打头（n. / v. / adj. / adv. / prep. / phr. 等）',
+  '2. 多个义项用「；」分隔，最常见的放最前',
+  '3. 短语给整体含义，不要逐词直译',
+  '4. 只输出 JSON 对象（键是单词、值是释义字符串），不要输出任何其他文字',
+].join('\n')
+
+/** 解析 AI 返回的 { "单词": "释义" }；剥代码围栏、取首尾大括号，宽松容错 */
+function parseAiGlosses(reply: string, words: string[]): Map<string, string> {
+  const start = reply.indexOf('{')
+  const end = reply.lastIndexOf('}')
+  if (start < 0 || end <= start) return new Map()
+
+  try {
+    const data = JSON.parse(reply.slice(start, end + 1)) as Record<string, unknown>
+    const out = new Map<string, string>()
+    for (const w of words) {
+      const g = data[w]
+      if (typeof g === 'string' && g.trim()) out.set(w, g.trim())
+    }
+    return out
+  } catch {
+    return new Map()
+  }
+}
+
+/**
+ * 用释义模型批量查词。失败静默返回空 Map——释义是锦上添花，
+ * 挂了就落到 MyMemory，绝不能因为 AI 层报错让查词变红字。
+ */
+async function aiGlossBatch(words: string[]): Promise<Map<string, string>> {
+  const profile = useLlm.getState().glossActive()
+  if (!profile || words.length === 0) return new Map()
+
+  const list = words.slice(0, AI_GLOSS_BATCH_CAP)
+  try {
+    const reply = await chatCompletion(
+      [
+        { role: 'system', content: AI_GLOSS_SYSTEM },
+        { role: 'user', content: JSON.stringify(list) },
+      ],
+      // 释义是短事实问答：低温防跑偏；推理模型用 low 思考档（实测合格率最高的档位），
+      // 服务端不认 reasoning_effort 会自动协商去掉
+      { temperature: 0.2, maxTokens: 2048, timeoutMs: 30000, reasoningEffort: 'low' },
+      profile,
+    )
+    return parseAiGlosses(reply, list)
+  } catch {
+    return new Map()
+  }
+}
+
+/** 释义缓存读取（AI 与在线兜底共用同一个缓存，都是永久保存） */
+async function cachedGloss(word: string): Promise<string | null> {
+  const mem = GLOSS_MEMORY.get(word)
+  if (mem) return mem
+
+  const { value } = await Preferences.get({ key: GLOSS_PREFIX + word })
+  if (value) {
+    GLOSS_MEMORY.set(word, value)
+    return value
+  }
+  return null
+}
+
+/** AI 释义写入永久缓存：同一个词这辈子只问一次模型 */
+function rememberGloss(word: string, gloss: string): void {
+  GLOSS_MEMORY.set(word, gloss)
+  void Preferences.set({ key: GLOSS_PREFIX + word, value: gloss })
+}
 
 let onlineEnabled = true
 
@@ -240,6 +329,9 @@ export interface LookupOptions {
 /**
  * 批量查词，返回 拼写（小写） → 释义。
  * 查不到的不会出现在结果里，界面据此显示占位而不是空白。
+ *
+ * 三层顺序：本地词典 → AI 释义（缺词合并一次调用，结果永久缓存）→ MyMemory。
+ * AI 挂了静默落到 MyMemory，不会让批量查询变红字。
  */
 export async function lookupWords(
   spellings: string[],
@@ -262,7 +354,15 @@ export async function lookupWords(
 
   const allowOnline = opts.online ?? onlineEnabled
   if (allowOnline && missing.length > 0) {
-    const batch = missing.slice(0, MAX_ONLINE_PER_CALL)
+    // AI 层：本地没有的词交给释义模型（没配模型/调用失败都是空 Map，无缝落到下一层）
+    const ai = await aiGlossBatch(missing)
+    for (const [word, gloss] of ai) {
+      result.set(word, gloss)
+      rememberGloss(word, gloss)
+    }
+
+    const stillMissing = missing.filter((word) => !result.has(word))
+    const batch = stillMissing.slice(0, MAX_ONLINE_PER_CALL)
     await mapLimit(batch, ONLINE_CONCURRENCY, async (word) => {
       const gloss = await lookupOnline(word)
       if (gloss) result.set(word, gloss)
@@ -272,14 +372,53 @@ export async function lookupWords(
   return result
 }
 
-/** 单条查词，阅读功能点词时用 */
-export async function lookupOne(text: string): Promise<string | null> {
+export interface GlossResult {
+  gloss: string | null
+  /** 这次释义是不是 AI 产生的（本地词典 / 缓存 / 在线兜底都是 false） */
+  ai: boolean
+}
+
+/**
+ * 单条查词（阅读页点词用），带来源标记和本地先行回调。
+ *
+ * 顺序：本地词典 → 永久缓存 → AI 释义 → MyMemory。
+ * onLocal 在本地/缓存命中时先回调一次，让弹层立刻有内容——
+ * AI 释义要走一次网络调用，等它再渲染会把瞬时查询拖成秒级。
+ */
+export async function lookupOneDetailed(
+  text: string,
+  opts: { onLocal?: (gloss: string) => void } = {},
+): Promise<GlossResult> {
   const key = text.trim().toLowerCase()
-  if (!key) return null
+  if (!key) return { gloss: null, ai: false }
 
   const local = await lookupLocal(key)
-  if (local) return local
+  if (local) {
+    opts.onLocal?.(local)
+    return { gloss: local, ai: false }
+  }
 
-  if (onlineEnabled) return lookupOnline(key)
-  return null
+  const cached = await cachedGloss(key)
+  if (cached) {
+    opts.onLocal?.(cached)
+    return { gloss: cached, ai: false }
+  }
+
+  const ai = await aiGlossBatch([key])
+  const aiGloss = ai.get(key)
+  if (aiGloss) {
+    rememberGloss(key, aiGloss)
+    return { gloss: aiGloss, ai: true }
+  }
+
+  if (onlineEnabled) {
+    const online = await lookupOnline(key)
+    if (online) return { gloss: online, ai: false }
+  }
+  return { gloss: null, ai: false }
+}
+
+/** 单条查词，阅读功能点词时用（不需要来源标记的旧调用方） */
+export async function lookupOne(text: string): Promise<string | null> {
+  return (await lookupOneDetailed(text)).gloss
 }
