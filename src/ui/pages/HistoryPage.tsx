@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
+import { Preferences } from '@capacitor/preferences'
+
 import { getAllDays } from '@/data/store'
 import { lookupWords } from '@/data/dict'
 import { lineState, responseNote, type TodaySnapshot, type WordState } from '@/domain/collect'
@@ -25,10 +27,16 @@ function DayItem({
   day,
   open,
   onToggle,
+  showGloss,
+  overrides,
+  toggleGloss,
 }: {
   day: TodaySnapshot
   open: boolean
   onToggle: () => void
+  showGloss: boolean
+  overrides: Record<string, boolean>
+  toggleGloss: (vocId: string) => void
 }) {
   const counts = useMemo(() => countBy(day.words), [day.words])
   const total = day.words.length
@@ -94,6 +102,8 @@ function DayItem({
                         gloss={glosses[w.spelling.toLowerCase()]}
                         state={lineState(w)}
                         note={responseNote(w)}
+                        glossVisible={overrides[w.vocId] ?? showGloss}
+                        onToggle={() => toggleGloss(w.vocId)}
                       />
                     ))}
                 </ul>
@@ -110,6 +120,29 @@ export default function HistoryPage() {
   const [days, setDays] = useState<TodaySnapshot[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState<string | null>(null)
+  /** 全局是否展开释义。默认收起，与今日页一致——先回想再核对 */
+  const [showGloss, setShowGloss] = useState(false)
+  /** 单个词的临时覆盖：点词收起/展开，优先级高于全局 */
+  const [overrides, setOverrides] = useState<Record<string, boolean>>({})
+
+  useEffect(() => {
+    void Preferences.get({ key: 'history_show_gloss' }).then(({ value }) => {
+      if (value === 'true') setShowGloss(true)
+    })
+  }, [])
+
+  function toggleAllGloss() {
+    // 切全局时清掉个体覆盖，回到统一状态
+    setOverrides({})
+    setShowGloss((v) => {
+      void Preferences.set({ key: 'history_show_gloss', value: v ? 'false' : 'true' })
+      return !v
+    })
+  }
+
+  function toggleGloss(vocId: string) {
+    setOverrides((prev) => ({ ...prev, [vocId]: !(prev[vocId] ?? showGloss) }))
+  }
 
   useEffect(() => {
     let alive = true
@@ -125,7 +158,19 @@ export default function HistoryPage() {
 
   return (
     <div className={styles.page}>
-      <h1 className={styles.title}>历史</h1>
+      <header className={styles.titleRow}>
+        <h1 className={styles.title}>历史</h1>
+        {days.length > 0 && (
+          <button
+            type="button"
+            className={styles.glossToggle}
+            data-on={showGloss}
+            onClick={toggleAllGloss}
+          >
+            释义
+          </button>
+        )}
+      </header>
 
       {loading && <p className={`${styles.hint} loading-pulse`}>读取中…</p>}
 
@@ -141,6 +186,9 @@ export default function HistoryPage() {
               day={day}
               open={open === day.date}
               onToggle={() => setOpen(open === day.date ? null : day.date)}
+              showGloss={showGloss}
+              overrides={overrides}
+              toggleGloss={toggleGloss}
             />
           ))}
         </ul>

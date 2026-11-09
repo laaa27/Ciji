@@ -2,13 +2,34 @@
   padding: calc(var(--safe-top) + var(--sp-7)) var(--gutter) var(--sp-10);
 }
 
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--sp-6);
+}
+
 .title {
   font-family: var(--font-word);
   font-size: var(--fs-display);
   font-weight: 500;
   line-height: 1.1;
   letter-spacing: -0.02em;
-  margin-bottom: var(--sp-6);
+}
+
+/* 全局释义开关：样式沿用今日页「释义」按钮（下划线高亮） */
+.glossToggle {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  padding: 6px 0 6px 6px;
+  transition: color 0.15s ease;
+}
+
+.glossToggle[data-on='true'] {
+  color: var(--ink);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
 }
 
 .hint {

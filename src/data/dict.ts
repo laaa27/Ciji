@@ -44,7 +44,7 @@ const AI_GLOSS_SYSTEM = [
   '你是英汉词典。对用户给出的每个英文单词或短语，给出简洁准确的中文释义。',
   '要求：',
   '1. 词性打头（n. / v. / adj. / adv. / prep. / phr. 等）',
-  '2. 多个义项用「；」分隔，最常见的放最前',
+  '2. 给出 2~3 个最常用的义项，用「；」分隔，最常用的放最前',
   '3. 短语给整体含义，不要逐词直译',
   '4. 只输出 JSON 对象（键是单词、值是释义字符串），不要输出任何其他文字',
 ].join('\n')
@@ -78,14 +78,19 @@ async function aiGlossBatch(words: string[]): Promise<Map<string, string>> {
 
   const list = words.slice(0, AI_GLOSS_BATCH_CAP)
   try {
+    // 思考模式默认关（设置里可开）：释义是短事实问答，不思考 11 秒内返回且足够准确，
+    // 开了（low 档）实测要 50~90 秒，点词场景等不起。推理模型默认思考档又慢又贵，
+    // 所以「关」必须显式发 thinking.disabled，不能靠不传参数。
+    const opts = useLlm.getState().thinkGloss
+      ? { reasoningEffort: 'low' as const }
+      : { thinkingDisabled: true as const }
     const reply = await chatCompletion(
       [
         { role: 'system', content: AI_GLOSS_SYSTEM },
         { role: 'user', content: JSON.stringify(list) },
       ],
-      // 释义是短事实问答：低温防跑偏；推理模型用 low 思考档（实测合格率最高的档位），
-      // 服务端不认 reasoning_effort 会自动协商去掉
-      { temperature: 0.2, maxTokens: 2048, timeoutMs: 30000, reasoningEffort: 'low' },
+      // 释义是短事实问答：低温防跑偏；服务端不认这些字段会自动协商去掉
+      { temperature: 0.2, maxTokens: 2048, timeoutMs: 30000, ...opts },
       profile,
     )
     return parseAiGlosses(reply, list)

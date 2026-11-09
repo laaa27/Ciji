@@ -44,6 +44,15 @@ export interface BodyCompat {
    * 所以生成文章时优先用 low；服务端不认这个字段（400 提到 reasoning_effort）会自动去掉。
    */
   reasoningEffort?: 'low' | 'medium' | 'high'
+  /**
+   * 明确关闭思考（DeepSeek 系接受 `thinking: {type:'disabled'}`，实测思考 0 字、秒级返回）。
+   *
+   * 为什么不是「不传参数」：推理模型不传 reasoning_effort 时会走默认思考档，
+   * 又慢又贵（deepseek-flash 默认档 62 秒/次，还会把 JSON 挤截断）。
+   * 「关闭」必须显式声明才有意义；普通模型不认这个字段时会在 400 里说明，自动去掉并记住。
+   * 与 reasoningEffort 互斥，同时给时 thinking 优先。
+   */
+  thinkingDisabled?: boolean
 }
 
 /** 一个协议要提供的最小能力 */
@@ -108,7 +117,8 @@ const openai: ProtocolCodec = {
       stream: false,
     }
     if (!compat.omitTemperature) body.temperature = opts.temperature ?? 0.8
-    if (compat.reasoningEffort) body.reasoning_effort = compat.reasoningEffort
+    if (compat.thinkingDisabled) body.thinking = { type: 'disabled' }
+    else if (compat.reasoningEffort) body.reasoning_effort = compat.reasoningEffort
     return body
   },
 

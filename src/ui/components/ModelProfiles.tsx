@@ -33,10 +33,14 @@ export default function ModelProfiles() {
   const profiles = useLlm((s) => s.profiles)
   const activeId = useLlm((s) => s.activeId)
   const glossActiveId = useLlm((s) => s.glossActiveId)
+  const thinkGen = useLlm((s) => s.thinkGen)
+  const thinkGloss = useLlm((s) => s.thinkGloss)
   const upsert = useLlm((s) => s.upsert)
   const remove = useLlm((s) => s.remove)
   const setActive = useLlm((s) => s.setActive)
   const setGlossActive = useLlm((s) => s.setGlossActive)
+  const setThinkGen = useLlm((s) => s.setThinkGen)
+  const setThinkGloss = useLlm((s) => s.setThinkGloss)
 
   const [draft, setDraft] = useState<LlmProfile | null>(null)
   // 单独记「从哪个预设起的步」。不能用字段值反推 —— 一旦改协议或地址，反推就会失配，
@@ -221,6 +225,63 @@ export default function ModelProfiles() {
           </div>
           <span className={styles.fieldHint}>
             点词释义用哪个模型，和文章生成互不影响；本地词典查不到才调用，释义会缓存下来复用
+          </span>
+
+          <span className={styles.fieldLabel}>查词释义 · 思考模式</span>
+          <div className={styles.chips}>
+            <button
+              type="button"
+              className={styles.chip}
+              data-on={!thinkGloss}
+              onClick={() => void setThinkGloss(false)}
+            >
+              关
+            </button>
+            <button
+              type="button"
+              className={styles.chip}
+              data-on={thinkGloss}
+              onClick={() => void setThinkGloss(true)}
+            >
+              开（思考 low）
+            </button>
+          </div>
+          <span className={styles.fieldHint}>
+            默认关：释义是简短的事实查询，不思考 10 秒内返回，足够准确，费用最低。
+            开：义项会更细致，但每次查词要等约 1 分钟且更贵——点词场景一般不值得。
+          </span>
+        </div>
+      )}
+
+      <p className={styles.fieldHint}>
+        说明：思考模式只对支持思考的推理模型（如 deepseek-reasoner / deepseek-flash）生效。
+        普通对话模型没有思考过程，开关保持默认即可——首次调用若服务端拒绝相关参数，会自动去掉并记住，不会报错。
+      </p>
+
+      {profiles.length > 0 && (
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>文章生成 · 思考模式</span>
+          <div className={styles.chips}>
+            <button
+              type="button"
+              className={styles.chip}
+              data-on={thinkGen}
+              onClick={() => void setThinkGen(true)}
+            >
+              开（思考 low）
+            </button>
+            <button
+              type="button"
+              className={styles.chip}
+              data-on={!thinkGen}
+              onClick={() => void setThinkGen(false)}
+            >
+              关
+            </button>
+          </div>
+          <span className={styles.fieldHint}>
+            开：模型先思考再动笔，文章质量稳（实测推理模型合格率 100%，约 50~90 秒/篇，API 费用略高）。
+            关：直接输出，快好几倍、费用更低，但推理模型实测约半数会塌成明显偏短的文（会自动重生成一次，仍偏短会标注）。
           </span>
         </div>
       )}

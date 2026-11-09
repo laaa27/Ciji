@@ -84,6 +84,10 @@ const K_PROFILES = 'llm_profiles'
 const K_ACTIVE = 'llm_active'
 /** 查词释义专用模型；空 = 跟随文章生成的模型 */
 const K_GLOSS_ACTIVE = 'llm_gloss_active'
+/** 文章生成是否开思考（DeepSeek 实测：开=low 档合格率 100%，关=约半数塌成短文） */
+const K_THINK_GEN = 'llm_think_gen'
+/** 查词释义是否开思考（默认关：短事实问答不值得等 1 分钟） */
+const K_THINK_GLOSS = 'llm_think_gloss'
 
 // v0.5.0 及更早的键，仅用于迁移
 const K_OLD_PROVIDER = 'llm_provider'
@@ -136,6 +140,10 @@ type LlmState = {
   activeId: string | null
   /** 查词释义用哪份配置；null = 跟随 activeId（文章生成模型） */
   glossActiveId: string | null
+  /** 文章生成是否开思考模式（默认开，强度 low） */
+  thinkGen: boolean
+  /** 查词释义是否开思考模式（默认关） */
+  thinkGloss: boolean
   ready: boolean
 
   load: () => Promise<void>
@@ -145,6 +153,10 @@ type LlmState = {
   setActive: (id: string) => Promise<void>
   /** 切换查词释义模型；传 null 表示跟随文章模型 */
   setGlossActive: (id: string | null) => Promise<void>
+  /** 文章生成思考模式开关 */
+  setThinkGen: (v: boolean) => Promise<void>
+  /** 查词释义思考模式开关 */
+  setThinkGloss: (v: boolean) => Promise<void>
   /** 取当前生效的那份配置（读不到返回 null） */
   active: () => LlmProfile | null
   /** 查词释义实际生效的配置：专用模型存在就用它，否则跟随文章模型 */
@@ -214,18 +226,25 @@ export const useLlm = create<LlmState>((set, get) => ({
   profiles: [],
   activeId: null,
   glossActiveId: null,
+  thinkGen: true,
+  thinkGloss: false,
   ready: false,
 
   load: async () => {
-    const [stored, activeRaw, glossRaw] = await Promise.all([
+    const [stored, activeRaw, glossRaw, thinkGenRaw, thinkGlossRaw] = await Promise.all([
       Preferences.get({ key: K_PROFILES }),
       Preferences.get({ key: K_ACTIVE }),
       Preferences.get({ key: K_GLOSS_ACTIVE }),
+      Preferences.get({ key: K_THINK_GEN }),
+      Preferences.get({ key: K_THINK_GLOSS }),
     ])
 
     let profiles = parseProfiles(stored.value)
     let activeId = activeRaw.value?.trim() || null
     const glossActiveId = glossRaw.value?.trim() || null
+    // 生成默认开、释义默认关；只在用户显式选过 false/true 时才覆盖默认值
+    const thinkGen = thinkGenRaw.value !== 'false'
+    const thinkGloss = thinkGlossRaw.value === 'true'
 
     if (profiles.length === 0) {
       const migrated = await migrateLegacy()
@@ -239,7 +258,7 @@ export const useLlm = create<LlmState>((set, get) => ({
     // activeId 指向已删除的配置时，退回第一条，不让界面处在「有模型但不可用」的状态
     if (!profiles.some((p) => p.id === activeId)) activeId = profiles[0]?.id ?? null
 
-    set({ profiles, activeId, glossActiveId, ready: true })
+    set({ profiles, activeId, glossActiveId, thinkGen, thinkGloss, ready: true })
   },
 
   upsert: async (profile) => {
@@ -279,6 +298,16 @@ export const useLlm = create<LlmState>((set, get) => ({
     if (id !== null && !get().profiles.some((p) => p.id === id)) return
     set({ glossActiveId: id })
     await Preferences.set({ key: K_GLOSS_ACTIVE, value: id ?? '' })
+  },
+
+  setThinkGen: async (v) => {
+    set({ thinkGen: v })
+    await Preferences.set({ key: K_THINK_GEN, value: v ? 'true' : 'false' })
+  },
+
+  setThinkGloss: async (v) => {
+    set({ thinkGloss: v })
+    await Preferences.set({ key: K_THINK_GLOSS, value: v ? 'true' : 'false' })
   },
 
   active: () => {

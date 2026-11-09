@@ -47,6 +47,8 @@ interface CallOptions extends RequestOptions {
   timeoutMs?: number
   /** 思考强度（推理模型才需要）。服务端不支持时会在 400 里说，届时自动去掉 */
   reasoningEffort?: 'low' | 'medium' | 'high'
+  /** 明确关闭思考（DeepSeek 系 thinking.disabled）。与 reasoningEffort 互斥，同时给时它优先 */
+  thinkingDisabled?: boolean
 }
 
 interface Reply {
@@ -155,6 +157,10 @@ function adaptCompat(detail: string, compat: BodyCompat): Partial<BodyCompat> | 
   if (compat.reasoningEffort && msg.includes('reasoning_effort')) {
     return { reasoningEffort: undefined }
   }
+  // 不认 thinking 字段的服务端同样 400；去掉后落回服务端默认行为
+  if (compat.thinkingDisabled && msg.includes('thinking')) {
+    return { thinkingDisabled: undefined }
+  }
   return null
 }
 
@@ -209,6 +215,9 @@ export async function chatCompletion(
   // 缓存里已经有这个键（值为 undefined）说明上次被服务端拒绝过，别再试探
   if (opts.reasoningEffort && !(cached && 'reasoningEffort' in cached)) {
     compat.reasoningEffort = opts.reasoningEffort
+  }
+  if (opts.thinkingDisabled && !(cached && 'thinkingDisabled' in cached)) {
+    compat.thinkingDisabled = true
   }
 
   // 上次被撑大过的预算直接沿用，省掉每次第一轮空跑

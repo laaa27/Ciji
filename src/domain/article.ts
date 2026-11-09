@@ -141,7 +141,7 @@ async function buildOutline(words: string[], level: ArticleLevel): Promise<Outli
     const raw = await chatCompletion(buildOutlineMessages(words, level), {
       temperature: 0.9,
       maxTokens: 3000,
-      reasoningEffort: 'low',
+      ...thinkingOpts(),
     })
 
     const obj = parseLoose(raw) as {
@@ -282,6 +282,18 @@ function auditArticle(
 
 /** 最多生成几次：1 次初稿 + 1 次重生成 */
 const MAX_GENERATE_ATTEMPTS = 2
+
+/**
+ * 按设置决定思考参数（设置 → 大模型 → 「文章生成 · 思考模式」）。
+ * 开：reasoning low 档 —— deepseek-flash 实测合格率 5/5，代价是 50~90 秒/篇；
+ * 关：显式 thinking.disabled —— 秒级返回、费用更低，但推理模型实测约半数会塌成短文（审计层会兜住并重生成）。
+ * 普通模型不认这些字段时，运行时会按 400 报错自动去掉，不影响使用。
+ */
+function thinkingOpts(): { reasoningEffort: 'low' } | { thinkingDisabled: true } {
+  return useLlm.getState().thinkGen
+    ? { reasoningEffort: 'low' }
+    : { thinkingDisabled: true }
+}
 /** 成文预算：推理模型会把额度分给思考，2600 根本不够（实测必被吃光） */
 const ARTICLE_MAX_TOKENS = 8192
 
@@ -309,7 +321,7 @@ export async function generateArticle(opts: GenerateOptions): Promise<Article> {
       const raw = await chatCompletion(messages, {
         temperature: 0.85,
         maxTokens: ARTICLE_MAX_TOKENS,
-        reasoningEffort: 'low',
+        ...thinkingOpts(),
       })
 
       const { title, titleZh, sentences } = validate(parseLoose(raw))
