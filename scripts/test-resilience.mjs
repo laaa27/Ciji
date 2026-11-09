@@ -101,6 +101,11 @@ async function open({ plan, seedDay = false, token = true }) {
   const calls = {}
   await page.setRequestInterception(true)
 
+  // 首次加载时上个用例残留的 token 可能让 App 先发一轮请求（机器慢时还会越过
+  // 计数器重置点污染计数）。所以加一道门闸：种子落库前的 /open/ 请求一律
+  // 用空响应打发、不计数，从 reload 之后才开始正常计数。
+  let countable = false
+
   page.on('request', (req) => {
     const url = req.url()
 
@@ -116,6 +121,8 @@ async function open({ plan, seedDay = false, token = true }) {
     }
 
     if (!url.includes('/open/')) return req.continue()
+
+    if (!countable) return reply({ status: 200, body: { success: true, data: {} } })
 
     const kind = url.includes('get_study_progress')
       ? 'progress'
@@ -144,7 +151,8 @@ async function open({ plan, seedDay = false, token = true }) {
     { today: TODAY, seed: seedDay, hasToken: token, snapshot: seedDay ? daySnapshot() : null },
   )
 
-  // 上一次 goto 可能已经带着上个用例的 localStorage 发过请求了，从 reload 之后重新数
+  // 种子已落库、门闸放行：从 reload 之后开始正常计数
+  countable = true
   for (const k of Object.keys(calls)) delete calls[k]
 
   await page.reload({ waitUntil: 'domcontentloaded' })

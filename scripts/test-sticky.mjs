@@ -142,6 +142,15 @@ const tabs = await page.$$('nav button')
 await tabs[4].click()
 await t(400)
 
+// 0.21 起设置改为分类导航，主题开关挪进了「外观」二级页
+await page.evaluate(() => {
+  const b = [...document.querySelectorAll('button')].find(
+    (x) => x.textContent?.replace(/\s+/g, '').includes('外观'),
+  )
+  b?.click()
+})
+await t(500)
+
 // 记录 startViewTransition 是否被调用；getAnimations() 拿不到伪元素上的过渡动画，
 // 所以改用「过渡中途的那一帧是否与终态不同」来证明真的在混合
 await page.evaluate(() => {

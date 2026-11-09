@@ -172,6 +172,10 @@ const tabs = await page.$$('nav button')
 await tabs[4].click()
 await t(600)
 
+// 0.21 起设置改为分类导航，模型配置挪进了「大模型」二级页
+await clickText('大模型')
+await t(600)
+
 console.log('\n[1] 旧配置迁移')
 let s = await store()
 ok('迁出一条配置', s.profiles.length === 1, s.profiles.length)

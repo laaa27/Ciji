@@ -74,6 +74,14 @@ await page.screenshot({ path: 'verify-glass-on.png' })
 const tabs = await page.$$('nav button')
 await tabs[4].click() // 设置
 await t(600)
+// 0.21 起设置改为分类导航，玻璃开关挪进了「外观」二级页
+await page.evaluate(() => {
+  const b = [...document.querySelectorAll('button')].find(
+    (x) => x.textContent?.replace(/\s+/g, '').includes('外观'),
+  )
+  b?.click()
+})
+await t(600)
 await page.evaluate(() => {
   const label = [...document.querySelectorAll('span')].find((el) =>
     el.textContent?.includes('液态玻璃底栏'),

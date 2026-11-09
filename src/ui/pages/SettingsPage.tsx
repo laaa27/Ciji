@@ -1,551 +1,139 @@
-import { useEffect, useRef, useState, type ChangeEvent } from 'react'
+import { useEffect, useState } from 'react'
 
-import { getLastRawResponse } from '@/api/client'
-import { getStudyProgress } from '@/api/study'
-import { isOnlineLookupEnabled, saveOnlineLookup } from '@/data/dict'
-import { clearAll, listDays, writeDays } from '@/data/store'
-import {
-  parseImportText,
-  planImport,
-  summarize,
-  type ImportMode,
-  type ImportSource,
-} from '@/domain/backup'
-import type { TodaySnapshot } from '@/domain/collect'
-import { exportAll, exportBackup } from '@/domain/export'
 import { useSession } from '@/store/session'
-import { useGlass, GLASS_ALPHA_MIN, GLASS_ALPHA_MAX } from '@/store/glass'
-import { useTheme, type ThemeName } from '@/store/theme'
-import { useToday } from '@/store/today'
+import { pushBackHandler } from '@/store/backstack'
 
 import ModelProfiles from '../components/ModelProfiles'
+import MemoAccount from '../components/settings/MemoAccount'
+import LookupPrefs from '../components/settings/LookupPrefs'
+import AppearancePrefs from '../components/settings/AppearancePrefs'
+import DataPrefs from '../components/settings/DataPrefs'
+import AboutPanel from '../components/settings/AboutPanel'
 
 import styles from './SettingsPage.module.css'
 
-type Feedback = { kind: 'ok' | 'warn' | 'err'; text: string } | null
+/**
+ * 设置页：分类导航结构。
+ *
+ * 根视图只列栏目入口（一行一个：名称 + 一句话简介 + 状态摘要），
+ * 点进去是二级界面做细分设置——原先把十几块设置全堆在一页上，
+ * 滚动找东西靠眼力，拆开后每类的事都在它自己的页里。
+ *
+ * 进出动画沿用阅读板块文章库的方向感：进去从右边推进来（lib-in），
+ * 返回时主视图从左边回来一点（back-in），安卓返回键先退设置层级再考虑退出 App。
+ */
 
-type ExportFormat = 'csv' | 'md' | 'json'
+type SubPage = 'memo' | 'models' | 'lookup' | 'appearance' | 'data' | 'about'
 
-/** 选完文件后、写盘之前的状态：先让用户看清要做什么 */
-type PickedFile = {
-  name: string
-  source: ImportSource
-  days: TodaySnapshot[]
-  notes: string[]
-  existing: Set<string>
-}
+const CATEGORIES: { id: SubPage; title: string; desc: string }[] = [
+  {
+    id: 'memo',
+    title: '墨墨账号',
+    desc: '连接墨墨开放 API，同步每天的学习记录与逐词反馈',
+  },
+  {
+    id: 'models',
+    title: '大模型',
+    desc: '生成文章与查词释义用的模型，可存多份配置，思考模式分开开关',
+  },
+  {
+    id: 'lookup',
+    title: '查词与释义',
+    desc: '本地词库 → AI 释义 → 联网补查，三层查询的优先级与开关',
+  },
+  {
+    id: 'appearance',
+    title: '外观',
+    desc: '白天 / 深夜主题，液态玻璃底栏与不透明度',
+  },
+  {
+    id: 'data',
+    title: '数据',
+    desc: '导出备份、导入合并、清空记录——数据只存在这台设备上',
+  },
+  {
+    id: 'about',
+    title: '关于',
+    desc: '版本信息与开源地址',
+  },
+]
 
 export default function SettingsPage() {
   const token = useSession((s) => s.token)
-  const saveToken = useSession((s) => s.saveToken)
-  const clearToken = useSession((s) => s.clearToken)
-  const resetToday = useToday((s) => s.reset)
+  const [sub, setSub] = useState<SubPage | null>(null)
+  /** 返回时给主视图播一次 back-in，方向感与文章库一致 */
+  const [returning, setReturning] = useState(false)
 
-  const theme = useTheme((s) => s.theme)
-  const setTheme = useTheme((s) => s.setTheme)
-  const glass = useGlass((s) => s.glass)
-  const setGlass = useGlass((s) => s.setGlass)
-  const glassAlpha = useGlass((s) => s.alpha)
-  const setGlassAlpha = useGlass((s) => s.setAlpha)
+  function open(id: SubPage) {
+    setSub(id)
+  }
 
-  const [input, setInput] = useState('')
-  const [reveal, setReveal] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [feedback, setFeedback] = useState<Feedback>(null)
-  const [exporting, setExporting] = useState<ExportFormat | null>(null)
-  const [online, setOnline] = useState(isOnlineLookupEnabled())
+  function close() {
+    setSub(null)
+    setReturning(true)
+    window.setTimeout(() => setReturning(false), 320)
+  }
 
-  const [picked, setPicked] = useState<PickedFile | null>(null)
-  const [importing, setImporting] = useState<ImportMode | null>(null)
-  // 数据区的提示与「凭证」区分开，否则导出成功会同时出现在两个 section 里
-  const [dataFeedback, setDataFeedback] = useState<Feedback>(null)
-  const fileRef = useRef<HTMLInputElement>(null)
-
+  // 安卓返回键：在二级页里先回设置主页
   useEffect(() => {
-    setOnline(isOnlineLookupEnabled())
-  }, [])
+    if (!sub) return
+    return pushBackHandler(close)
+  }, [sub])
 
-  async function handleToggleOnline(next: boolean) {
-    setOnline(next)
-    await saveOnlineLookup(next)
-  }
-
-  async function handleConnect() {
-    const value = input.trim()
-    if (!value) {
-      setFeedback({ kind: 'err', text: '请先粘贴凭证' })
-      return
-    }
-
-    setBusy(true)
-    setFeedback(null)
-
-    try {
-      // 先用临时 token 探一次，确认凭证本身可用
-      const res = await getStudyProgress(value)
-      await saveToken(value)
-      setInput('')
-      resetToday()
-
-      if (res?.progress && typeof res.progress.finished === 'number') {
-        setFeedback({
-          kind: 'ok',
-          text: `连接成功。今日已完成 ${res.progress.finished}/${res.progress.total || '—'}`,
-        })
-      } else {
-        const raw = getLastRawResponse()
-        setFeedback({
-          kind: 'warn',
-          text:
-            '凭证有效，但接口没有返回今日学习数据。请确认墨墨 App 里已开启「自动同步」，并且今天打开过 App。' +
-            (raw ? `（原始响应：${raw.slice(0, 120)}）` : ''),
-        })
-      }
-    } catch (e) {
-      setFeedback({
-        kind: 'err',
-        text: e instanceof Error ? e.message : '连接失败，请检查凭证',
-      })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleRetest() {
-    setBusy(true)
-    setFeedback(null)
-    try {
-      const res = await getStudyProgress()
-      if (res?.progress && typeof res.progress.finished === 'number') {
-        setFeedback({
-          kind: 'ok',
-          text: `连接正常。今日已完成 ${res.progress.finished}/${res.progress.total || '—'}`,
-        })
-      } else {
-        const raw = getLastRawResponse()
-        setFeedback({
-          kind: 'warn',
-          text:
-            '接口通了，但没有学习数据。今天还没打开过墨墨 App，或没开启「自动同步」。' +
-            (raw ? `（原始响应：${raw.slice(0, 120)}）` : ''),
-        })
-      }
-      resetToday()
-    } catch (e) {
-      setFeedback({
-        kind: 'err',
-        text: e instanceof Error ? e.message : '连接失败',
-      })
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  async function handleDisconnect() {
-    await clearToken()
-    resetToday()
-    setFeedback(null)
-  }
-
-  // 数据区的提示与「凭证」区分开，否则导出成功会同时出现在两个 section 里
-
-  async function handleExport(format: ExportFormat) {
-    setExporting(format)
-    setDataFeedback(null)
-    try {
-      const msg = format === 'json' ? await exportBackup() : await exportAll(format)
-      setDataFeedback({ kind: 'ok', text: msg })
-    } catch (e) {
-      setDataFeedback({
-        kind: 'err',
-        text: e instanceof Error ? e.message : '导出失败',
-      })
-    } finally {
-      setExporting(null)
-    }
-  }
-
-  async function handlePickFile(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0]
-    // 清空 value，让同一个文件能再选一次（换个策略重导时常用）
-    event.target.value = ''
-    if (!file) return
-
-    setDataFeedback(null)
-    setPicked(null)
-
-    try {
-      const text = await file.text()
-      const parsed = parseImportText(file.name, text)
-      const existing = new Set(await listDays())
-      setPicked({
-        name: file.name,
-        source: parsed.source,
-        days: parsed.days,
-        notes: parsed.notes,
-        existing,
-      })
-    } catch (e) {
-      setDataFeedback({
-        kind: 'err',
-        text: e instanceof Error ? e.message : '读取文件失败',
-      })
-    }
-  }
-
-  async function handleImport(mode: ImportMode) {
-    if (!picked) return
-
-    setImporting(mode)
-    setDataFeedback(null)
-
-    try {
-      const plan = planImport(picked.days, picked.existing, mode)
-      if (plan.write.length === 0) {
-        setDataFeedback({
-          kind: 'warn',
-          text: `文件里 ${picked.days.length} 天的记录本地都已存在，没有写入任何数据`,
-        })
-        return
-      }
-
-      await writeDays(plan.write)
-      // 今天的数据可能就在这次导入里，界面上的今日页要跟着变
-      await useToday.getState().loadFromStorage()
-
-      const parts: string[] = []
-      if (plan.added > 0) parts.push(`新增 ${plan.added} 天`)
-      if (plan.replaced > 0) parts.push(`覆盖 ${plan.replaced} 天`)
-      if (plan.kept > 0) parts.push(`保留本地 ${plan.kept} 天`)
-
-      setDataFeedback({ kind: 'ok', text: `导入完成：${parts.join('，')}` })
-      setPicked(null)
-    } catch (e) {
-      setDataFeedback({
-        kind: 'err',
-        text: e instanceof Error ? e.message : '导入失败',
-      })
-    } finally {
-      setImporting(null)
-    }
-  }
-
-  async function handleClearAll() {
-    await clearAll()
-    resetToday()
-    setDataFeedback({ kind: 'ok', text: '本地记录已清空' })
-  }
-
-  const raw = feedback?.kind === 'ok' ? null : getLastRawResponse()
-
-  const pickedSummary = picked ? summarize(picked.days) : null
-  const conflicts = picked ? picked.days.filter((d) => picked.existing.has(d.date)).length : 0
-  const freshCount = pickedSummary ? pickedSummary.count - conflicts : 0
+  const activeCat = sub ? CATEGORIES.find((c) => c.id === sub) : null
 
   return (
-    <div className={styles.page}>
-      <h1 className={styles.title}>设置</h1>
+    <div className={styles.page} data-view={sub ?? 'root'} data-return={returning}>
+      {sub === null ? (
+        <>
+          <h1 className={styles.title}>设置</h1>
 
-      <section className={styles.section}>
-        <h2 className={styles.label}>接口凭证</h2>
-
-        {token ? (
-          <>
-            <p className={styles.connected}>
-              <span className={styles.dot} />
-              凭证已保存
-            </p>
-            <div className={styles.actions}>
-              <button
-                type="button"
-                className={styles.secondary}
-                onClick={() => void handleRetest()}
-                disabled={busy}
-              >
-                {busy ? '测试中…' : '测试连接'}
-              </button>
-              <button type="button" className={styles.ghost} onClick={() => void handleDisconnect()}>
-                断开并清除
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <div className={styles.inputRow}>
-              <input
-                className={styles.input}
-                type={reveal ? 'text' : 'password'}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="粘贴开放 API 凭证"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <button
-                type="button"
-                className={styles.toggle}
-                onClick={() => setReveal((v) => !v)}
-              >
-                {reveal ? '隐藏' : '显示'}
-              </button>
-            </div>
-
-            <p className={styles.help}>
-              在墨墨 App 里获取：我的 → 更多设置 → 实验功能 → 开放 API
-            </p>
-
-            <button
-              type="button"
-              className={styles.primary}
-              onClick={() => void handleConnect()}
-              disabled={busy}
-            >
-              {busy ? '连接中…' : '保存并测试'}
-            </button>
-          </>
-        )}
-
-        {feedback && (
-          <p className={styles.feedback} data-kind={feedback.kind}>
-            {feedback.text}
-          </p>
-        )}
-
-        {raw && feedback?.kind !== 'ok' && (
-          <details className={styles.rawBox}>
-            <summary>查看原始响应</summary>
-            <pre>{raw}</pre>
-          </details>
-        )}
-      </section>
-
-      <section className={styles.section}>
-        <ModelProfiles />
-      </section>
-
-      <section className={styles.section}>
-        <h2 className={styles.label}>查词</h2>
-
-        <label className={styles.switchRow}>
-          <span className={styles.switchText}>
-            联网补查
-            <em>本地词典没有的词（多是短语），用免费在线翻译兜底。查过的会存下来，不会重复请求。</em>
-          </span>
-          <input
-            type="checkbox"
-            className={styles.switch}
-            checked={online}
-            onChange={(e) => void handleToggleOnline(e.target.checked)}
-          />
-        </label>
-      </section>
-
-      <section className={styles.section}>
-        <h2 className={styles.label}>外观</h2>
-
-        <label className={styles.switchRow}>
-          <span className={styles.switchText}>
-            液态玻璃底栏
-            <em>
-              底栏变成悬浮的半透明玻璃胶囊，滚动内容从栏下透出模糊的质感。滚动觉得费劲就关掉。
-            </em>
-          </span>
-          <input
-            type="checkbox"
-            className={styles.switch}
-            checked={glass}
-            onChange={(e) => void setGlass(e.target.checked)}
-          />
-        </label>
-
-        <div className={styles.sliderRow} data-disabled={!glass}>
-          <span className={styles.switchText}>
-            玻璃不透明度
-            <em>越低越透，滚动的文字越看得清。</em>
-          </span>
-          <span className={styles.sliderValue}>{Math.round(glassAlpha * 100)}%</span>
-          <input
-            type="range"
-            className={styles.slider}
-            min={GLASS_ALPHA_MIN}
-            max={GLASS_ALPHA_MAX}
-            step={0.05}
-            value={glassAlpha}
-            disabled={!glass}
-            onChange={(e) => void setGlassAlpha(Number(e.target.value))}
-          />
-        </div>
-      </section>
-
-      <section className={styles.section}>
-        <h2 className={styles.label}>数据</h2>
-        <p className={styles.about}>
-          记录只存在这台设备上。换手机或重装前，先导出一份备份。
-        </p>
-
-        <div className={styles.actions}>
-          <button
-            type="button"
-            className={styles.secondary}
-            onClick={() => void handleExport('json')}
-            disabled={exporting !== null}
-          >
-            {exporting === 'json' ? '导出中…' : '导出备份'}
-          </button>
-          <button
-            type="button"
-            className={styles.secondary}
-            onClick={() => void handleExport('csv')}
-            disabled={exporting !== null}
-          >
-            {exporting === 'csv' ? '导出中…' : '导出 CSV'}
-          </button>
-          <button
-            type="button"
-            className={styles.secondary}
-            onClick={() => void handleExport('md')}
-            disabled={exporting !== null}
-          >
-            {exporting === 'md' ? '导出中…' : '导出 Markdown'}
-          </button>
-        </div>
-
-        <p className={styles.help}>
-          「导出备份」是 JSON，能原样导回；CSV 和 Markdown 用来给别人看，
-          只有日期和单词，导回来会丢学习时长与逐词反馈。
-        </p>
-
-        <div className={styles.importBlock}>
-          <h3 className={styles.subLabel}>导入</h3>
-
-          <input
-            ref={fileRef}
-            type="file"
-            className={styles.fileInput}
-            // 带上 octet-stream：部分 ROM 把 .json 认成未知类型，只按 application/json
-            // 过滤会让用户自己的备份文件在选择器里变灰
-            accept=".json,.csv,application/json,text/csv,text/plain,application/octet-stream"
-            onChange={(e) => void handlePickFile(e)}
-          />
-
-          <button
-            type="button"
-            className={styles.secondary}
-            onClick={() => fileRef.current?.click()}
-            disabled={importing !== null}
-          >
-            {picked ? '换一个文件…' : '选择文件…'}
-          </button>
-
-          {picked && pickedSummary && (
-            <div className={styles.preview}>
-              <p className={styles.previewName}>{picked.name}</p>
-              <p className={styles.previewMeta}>
-                {picked.source === 'csv' ? 'CSV' : '备份'} · {pickedSummary.count} 天 ·{' '}
-                {pickedSummary.words} 个词
-              </p>
-              <p className={styles.previewMeta}>
-                {pickedSummary.first} — {pickedSummary.last}
-              </p>
-
-              {conflicts > 0 && (
-                <p className={styles.previewMeta} data-warn="true">
-                  其中 {conflicts} 天本地已有记录
-                </p>
-              )}
-
-              {picked.notes.map((note) => (
-                <p key={note} className={styles.previewNote}>
-                  {note}
-                </p>
-              ))}
-
-              <div className={styles.actions}>
-                {conflicts === 0 ? (
-                  <button
-                    type="button"
-                    className={styles.secondary}
-                    onClick={() => void handleImport('fill')}
-                    disabled={importing !== null}
-                  >
-                    {importing ? '导入中…' : `导入 ${pickedSummary.count} 天`}
-                  </button>
-                ) : (
-                  <>
-                    {freshCount > 0 && (
-                      <button
-                        type="button"
-                        className={styles.secondary}
-                        onClick={() => void handleImport('fill')}
-                        disabled={importing !== null}
-                      >
-                        {importing === 'fill' ? '导入中…' : `仅补 ${freshCount} 天`}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className={styles.overwrite}
-                      onClick={() => void handleImport('overwrite')}
-                      disabled={importing !== null}
-                    >
-                      {importing === 'overwrite' ? '导入中…' : `覆盖 ${conflicts} 天`}
-                    </button>
-                  </>
-                )}
-
+          <ul className={styles.cats}>
+            {CATEGORIES.map((cat) => (
+              <li key={cat.id}>
                 <button
                   type="button"
-                  className={styles.ghost}
-                  onClick={() => setPicked(null)}
-                  disabled={importing !== null}
+                  className={styles.catRow}
+                  onClick={() => open(cat.id)}
                 >
-                  取消
+                  <span className={styles.catText}>
+                    <span className={styles.catName}>
+                      {cat.title}
+                      {cat.id === 'memo' && (
+                        <span className={styles.catMeta} data-on={Boolean(token)}>
+                          {token ? '已连接' : '未连接'}
+                        </span>
+                      )}
+                    </span>
+                    <span className={styles.catDesc}>{cat.desc}</span>
+                  </span>
+                  <span className={styles.chevron} aria-hidden="true" />
                 </button>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {dataFeedback && (
-          <p className={styles.feedback} data-kind={dataFeedback.kind}>
-            {dataFeedback.text}
-          </p>
-        )}
-
-        <button type="button" className={styles.danger} onClick={() => void handleClearAll()}>
-          清空全部记录
-        </button>
-      </section>
-
-      <section className={styles.section}>
-        <h2 className={styles.label}>外观</h2>
-
-        <div className={styles.segments}>
-          {(['light', 'dark'] as ThemeName[]).map((name) => (
-            <button
-              key={name}
-              type="button"
-              className={styles.segment}
-              data-on={theme === name}
-              onClick={() => void setTheme(name)}
-            >
-              {name === 'light' ? '白天' : '深夜'}
+              </li>
+            ))}
+          </ul>
+        </>
+      ) : (
+        <>
+          <header className={styles.subHead}>
+            <button type="button" className={styles.back} onClick={close}>
+              返回
             </button>
-          ))}
-        </div>
+            <h1 className={styles.subTitle}>{activeCat?.title}</h1>
+          </header>
 
-        <p className={styles.help}>
-          深夜主题换的是整套纸墨色，不是把白天反色。
-        </p>
-      </section>
-
-      <section className={styles.section}>
-        <h2 className={styles.label}>关于</h2>
-        <p className={styles.about}>
-          词迹记录你每天在墨墨背单词里新学、模糊、忘记的词。数据只存在这台设备上。
-        </p>
-        <p className={styles.meta}>版本 {__APP_VERSION__} · 基于墨墨开放 API（公测）</p>
-      </section>
+          {sub === 'memo' && <MemoAccount />}
+          {sub === 'models' && (
+            <section className={styles.section}>
+              <ModelProfiles />
+            </section>
+          )}
+          {sub === 'lookup' && <LookupPrefs />}
+          {sub === 'appearance' && <AppearancePrefs />}
+          {sub === 'data' && <DataPrefs />}
+          {sub === 'about' && <AboutPanel />}
+        </>
+      )}
     </div>
   )
 }

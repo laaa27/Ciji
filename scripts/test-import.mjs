@@ -120,7 +120,7 @@ const readStore = () =>
       }),
   )
 
-// 进入设置页
+// 进入设置页 → 数据分类（0.21 起设置改为分类导航，导入/导出挪进了二级页）
 const tabs = await page.$$('nav button')
 await tabs[4].click()
 await new Promise((r) => setTimeout(r, 500))
@@ -133,6 +133,9 @@ const clickByText = (text) =>
     if (btn) btn.click()
     return Boolean(btn)
   }, text)
+
+await clickByText('数据')
+await new Promise((r) => setTimeout(r, 500))
 
 const visibleText = () =>
   page.evaluate(() => document.body.innerText.replace(/\s+/g, ' '))
