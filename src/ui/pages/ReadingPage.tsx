@@ -22,6 +22,7 @@ import {
 } from '@/domain/article'
 import { dateKey, monthDay } from '@/lib/date'
 import { restoreScroll } from '@/lib/scroll'
+import { wordPattern } from '@/lib/text'
 import { getLastLlmResponse } from '@/api/llm'
 import { pushBackHandler } from '@/store/backstack'
 import { useToast } from '@/store/toast'
@@ -78,7 +79,7 @@ function fmtDuration(sec: number): string {
  */
 function tokenize(sentence: string): { text: string; tail: string; isWord: boolean }[] {
   const parts: { text: string; tail: string; isWord: boolean }[] = []
-  const re = /[A-Za-z][A-Za-z'-]*/g
+  const re = wordPattern()
   let last = 0
   let m: RegExpExecArray | null
 
@@ -484,7 +485,6 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
         </div>
       )}
 
-      {!llmReady && null}
 
       {llmReady && !hasModel && (
         <div className={styles.notice}>

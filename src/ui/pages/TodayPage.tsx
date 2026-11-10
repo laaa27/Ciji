@@ -166,7 +166,6 @@ export default function TodayPage({ onGoSettings }: Props) {
         </p>
       )}
 
-      {!sessionReady && null}
 
       {sessionReady && !token && (
         <div className={styles.notice}>
@@ -238,7 +237,6 @@ export default function TodayPage({ onGoSettings }: Props) {
           </section>
         ))}
 
-      {token && snapshot && snapshot.words.length === 0 && null}
     </div>
   )
 }

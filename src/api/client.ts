@@ -1,5 +1,7 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
 
+import { sleep } from '@/lib/async'
+
 /**
  * 统一请求封装。
  *
@@ -139,8 +141,6 @@ function unwrap<T>(raw: string, status: number): T {
   // 有 data 就用 data，没有就认为整包就是数据（兼容旧格式）
   return (env.data ?? (json as T)) as T
 }
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /** 只发一次，不重试。重试策略在 post() 里统一处理 */
 async function once<T>(path: string, body: unknown, overrideToken?: string): Promise<T> {

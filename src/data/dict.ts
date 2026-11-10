@@ -269,10 +269,6 @@ export function lemmaCandidates(word: string): string[] {
 }
 
 /**
- * 本地词典里有没有这个词（查变形候选时用来去噪）。
- * 纯本地分片查询，不走网络。
- */
-/**
  * 查不规则变形的原形（was→be、meant→mean 这类后缀规则推不出来的）。
  * 短语还原用：功能词（was/had/did…）没有后缀变形，但它们的不规则原形
  * 恰恰是词库短语的写法（be meant to / have to / do away with）。
@@ -281,6 +277,10 @@ export function irregularLemma(word: string): string | null {
   return IRREGULAR[word] ?? null
 }
 
+/**
+ * 本地词典里有没有这个词（查变形候选时用来去噪）。
+ * 纯本地分片查询，不走网络。
+ */
 export async function dictHas(word: string): Promise<boolean> {
   const key = word.trim().toLowerCase()
   if (!key) return false

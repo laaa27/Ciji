@@ -1,6 +1,7 @@
 import { Preferences } from '@capacitor/preferences'
 
 import type { Article } from '@/domain/article'
+import { countWordsIn } from '@/lib/text'
 
 /**
  * 文章存储。每次生成都留档，不覆盖。
@@ -22,13 +23,6 @@ export interface ArticleMeta {
   title: string
   wordCount: number
   createdAt: string
-}
-
-function countWords(a: Pick<Article, 'sentences'>): number {
-  return a.sentences.reduce(
-    (n, s) => n + (s.en.match(/[A-Za-z][A-Za-z'-]*/g)?.length ?? 0),
-    0,
-  )
 }
 
 function sortMetas(list: ArticleMeta[]): ArticleMeta[] {
@@ -67,7 +61,7 @@ async function readIndex(): Promise<ArticleMeta[]> {
       id,
       date: a.date,
       title: a.title,
-      wordCount: countWords(a),
+      wordCount: countWordsIn(a.sentences),
       createdAt: a.createdAt,
     })
   }
@@ -109,7 +103,7 @@ export async function saveArticle(article: Article): Promise<Article> {
     id,
     date: saved.date,
     title: saved.title,
-    wordCount: countWords(saved),
+    wordCount: countWordsIn(saved.sentences),
     createdAt: saved.createdAt,
   }
 

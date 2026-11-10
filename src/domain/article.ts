@@ -1,6 +1,8 @@
 import { chatCompletion } from '@/api/llm'
 import { useLlm } from '@/store/llm'
 import { lemmaCandidates } from '@/data/dict'
+import { sleep } from '@/lib/async'
+import { countWords, countWordsIn } from '@/lib/text'
 import type { TodaySnapshot } from '@/domain/collect'
 import {
   buildArticleMessages,
@@ -271,11 +273,6 @@ function modeOf(kinds: WordKind[]): ArticleMode {
 }
 
 /**
- * 生成一篇文章：先列提纲，再按提纲成文。
- * 两步走比一步直出更不容易写成词表拼接 —— 模型先被迫想清楚要论证什么。
- * 提纲失败会自动退回单步生成；成文格式解析失败会重试一次。
- */
-/**
  * 生成后审计：这一篇够不够得上它的档位。
  *
  * 实测（deepseek-flash）合格率只有四成左右：篇幅经常只有目标的六成，
@@ -301,10 +298,7 @@ function auditArticle(
     problems.push(`缺 ${missing.length} 个目标词：${head}${missing.length > 5 ? '…' : ''}`)
   }
 
-  const longest = a.sentences.reduce(
-    (max, s) => Math.max(max, s.en.match(/[A-Za-z][A-Za-z'-]*/g)?.length ?? 0),
-    0,
-  )
+  const longest = a.sentences.reduce((max, s) => Math.max(max, countWords(s.en)), 0)
   if (longest > spec.maxSentence) {
     problems.push(`有 ${longest} 词的长句（上限 ${spec.maxSentence}）`)
   }
@@ -329,8 +323,11 @@ function thinkingOpts(): { reasoningEffort: 'low' } | { thinkingDisabled: true }
 /** 成文预算：推理模型会把额度分给思考，2600 根本不够（实测必被吃光） */
 const ARTICLE_MAX_TOKENS = 8192
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
+/**
+ * 生成一篇文章：先列提纲，再按提纲成文。
+ * 两步走比一步直出更不容易写成词表拼接 —— 模型先被迫想清楚要论证什么。
+ * 提纲失败会自动退回单步生成；成文格式解析失败会重试一次。
+ */
 export async function generateArticle(opts: GenerateOptions): Promise<Article> {
   if (opts.words.length === 0) throw new Error('没有可用的单词')
 
@@ -387,8 +384,5 @@ export async function generateArticle(opts: GenerateOptions): Promise<Article> {
 }
 
 export function wordCount(article: Pick<Article, 'sentences'>): number {
-  return article.sentences.reduce(
-    (sum, s) => sum + (s.en.match(/[A-Za-z][A-Za-z'-]*/g)?.length ?? 0),
-    0,
-  )
+  return countWordsIn(article.sentences)
 }

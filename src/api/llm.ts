@@ -10,6 +10,7 @@ import {
   type RequestOptions,
 } from '@/api/protocols'
 import { useLlm, type LlmProfile } from '@/store/llm'
+import { sleep } from '@/lib/async'
 
 /**
  * 大模型调用。协议差异全部交给 api/protocols.ts，这里只负责三件事：
@@ -128,8 +129,6 @@ async function post(
 const MAX_TRANSIENT = 1
 const RETRY_DELAY_MS = 600
 const MAX_TOKENS_CAP = 16000
-
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 /**
  * 按 profile 记住「协商过的参数」与「够用的输出预算」，只放内存。
