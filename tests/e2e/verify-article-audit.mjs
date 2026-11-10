@@ -3,7 +3,7 @@ import puppeteer from 'puppeteer-core'
 /**
  * 生成后审计（auditArticle）的浏览器验证。
  *
- * 先 `vite preview --port 5199`（或 dev server），再 `node scripts/verify-article-audit.mjs`
+ * 先 `vite preview --port 5199`（或 dev server），再 `node tests/e2e/verify-article-audit.mjs`
  *
  * 两个场景：
  *   1. 第一次返回残篇（几十词）→ 应该自动重新生成，最终拿到长的那篇，且不标「篇幅偏短」

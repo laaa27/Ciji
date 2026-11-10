@@ -7,7 +7,7 @@ import puppeteer from 'puppeteer-core'
  *   旧配置迁移 → 添加（OpenAI 协议）→ 切换 → 编辑成 Anthropic → 删除
  * 同时断言两种协议发出的 URL / 请求头 / 请求体确实不同。
  *
- * 用法：先 `npx vite --port 5199`，再 `node scripts/test-models.mjs`
+ * 用法：先 `npx vite --port 5199`，再 `node tests/e2e/test-models.mjs`
  */
 
 const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'

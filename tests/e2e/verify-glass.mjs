@@ -3,7 +3,7 @@ import puppeteer from 'puppeteer-core'
 /**
  * 液态玻璃底栏的浏览器验证。
  *
- * 先 `npx vite --port 5199`，再 `node scripts/verify-glass.mjs`
+ * 先 `npx vite --port 5199`，再 `node tests/e2e/verify-glass.mjs`
  *
  * 覆盖：
  *   1. localStorage 预置开关打开 → 导航栏带 data-glass，backdrop-filter 生效

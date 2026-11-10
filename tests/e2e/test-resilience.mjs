@@ -3,7 +3,7 @@ import puppeteer from 'puppeteer-core'
 /**
  * 启动期韧性验证：重试、本地兜底、凭证错误不重试、栏目持久化。
  *
- * 先 `npx vite --port 5199`，再 `node scripts/test-resilience.mjs`
+ * 先 `npx vite --port 5199`，再 `node tests/e2e/test-resilience.mjs`
  *
  * 这几条断言对应的是「偶发 500 不该让用户看到空页」这一组改动：
  * - 服务端返回一次 common_internal_error，应该自动再发一次，界面正常

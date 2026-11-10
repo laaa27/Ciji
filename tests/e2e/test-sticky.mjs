@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer-core'
 
 /**
  * 今日页吸顶 + 主题切换过渡的浏览器验证。
- * 先 `npx vite --port 5199`，再 `node scripts/test-sticky.mjs`
+ * 先 `npx vite --port 5199`，再 `node tests/e2e/test-sticky.mjs`
  */
 
 const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'

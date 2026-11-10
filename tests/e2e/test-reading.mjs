@@ -12,7 +12,7 @@ import puppeteer from 'puppeteer-core'
  *   6. 生成在后台继续，切走也会弹 toast；切回来状态与滚动位置都在
  *   7. 文章库：入口、排序、打开、两步删除
  *
- * 先 `npx vite --port 5199`，再 `node scripts/test-reading.mjs`
+ * 先 `npx vite --port 5199`，再 `node tests/e2e/test-reading.mjs`
  */
 
 const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'

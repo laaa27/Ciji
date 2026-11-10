@@ -8,6 +8,8 @@ Thumbs.db
 
 # 调试截图（仓库根目录的 png 全是开发产物，资源图在 android/res 与 public/ 里）
 /*.png
+# 在 tests/e2e 目录里就地跑脚本时，截图会落在该目录
+tests/e2e/*.png
 
 # Capacitor 生成物
 android/.gradle/

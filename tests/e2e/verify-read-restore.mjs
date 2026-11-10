@@ -3,7 +3,7 @@ import puppeteer from 'puppeteer-core'
 /**
  * 阅读页「重启后回到原处」的回归：译文开启状态也必须一起恢复。
  *
- * 先 `vite preview --port 5199`，再 `node scripts/verify-read-restore.mjs`
+ * 先 `vite preview --port 5199`，再 `node tests/e2e/verify-read-restore.mjs`
  *
  * 这个用例对治一个真实 bug：
  * 译文只存在内存里（useState(false)），重启后必然变回关闭；

@@ -3,7 +3,7 @@ import puppeteer from 'puppeteer-core'
 /**
  * 阅读页排版回归：句子必须连排成段，译文必须inline跟在句后。
  *
- * 先 `vite preview --port 5199`（或 dev server），再 `node scripts/verify-reading-layout.mjs`
+ * 先 `vite preview --port 5199`（或 dev server），再 `node tests/e2e/verify-reading-layout.mjs`
  *
  * 这套断言对治的是两个具体退化：
  * 1. 每句回到一个块级容器 → 句尾出现缺口，看不出哪几句是一段

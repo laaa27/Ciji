@@ -3,7 +3,7 @@ import puppeteer from 'puppeteer-core'
 /**
  * 生成页类型计数口径的验证。
  *
- * 先 `npx vite --port 5199`，再 `node scripts/verify-gencounts.mjs`
+ * 先 `npx vite --port 5199`，再 `node tests/e2e/verify-gencounts.mjs`
  *
  * 场景：某天 8 个词，其中 3 个已被当天文章用过。
  *   - 开关关闭：类型框显示「未用/总数」（如 2/3），已选只含未用词

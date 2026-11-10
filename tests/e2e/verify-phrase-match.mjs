@@ -3,7 +3,7 @@ import puppeteer from 'puppeteer-core'
 /**
  * 点词自动匹配固定搭配（±5 词窗口）的浏览器验证。
  *
- * 先 `vite preview --port 5199`，再 `node scripts/verify-phrase-match.mjs`
+ * 先 `vite preview --port 5199`，再 `node tests/e2e/verify-phrase-match.mjs`
  *
  * 验四件事：
  *   1. 点短语里的某个词 → 弹层直接给整串（"bunch" → "a bunch of"）

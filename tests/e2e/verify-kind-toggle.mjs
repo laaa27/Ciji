@@ -18,7 +18,7 @@ import puppeteer from 'puppeteer-core'
  *   [3] 取消新学 → 已选 1（brace for；verify 因为只算新学被撤掉）
  *   [4] 点 verify → 已选 2（多选正常）
  *
- * 先 `npx vite preview --port 5199`，再 `node scripts/verify-kind-toggle.mjs`
+ * 先 `npx vite preview --port 5199`，再 `node tests/e2e/verify-kind-toggle.mjs`
  */
 
 const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'

@@ -9,7 +9,7 @@ import puppeteer from 'puppeteer-core'
  * 覆盖的真机路径：
  *   选择文件 → 解析 → 预览（几天 / 几个词 / 冲突天） → 两种合并策略 → 写 localStorage
  *
- * 用法：先 `npx vite --port 5199`，再 `node scripts/test-import.mjs`
+ * 用法：先 `npx vite --port 5199`，再 `node tests/e2e/test-import.mjs`
  */
 
 const CHROME = 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe'

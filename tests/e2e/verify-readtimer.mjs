@@ -3,7 +3,7 @@ import puppeteer from 'puppeteer-core'
 /**
  * 阅读计时器 + 统计页阅读时长图表的浏览器验证。
  *
- * 先 `npx vite --port 5199`，再 `node scripts/verify-readtimer.mjs`
+ * 先 `npx vite --port 5199`，再 `node tests/e2e/verify-readtimer.mjs`
  *
  * 覆盖：
  *   1. 预置若干天 reading:YYYY-MM-DD 记录 + 学习快照 → 统计页出现「阅读时长」图表
