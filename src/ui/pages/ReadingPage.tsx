@@ -33,6 +33,7 @@ import { useLlm } from '@/store/llm'
 import { useSession } from '@/store/session'
 
 import { findScrollParent, useScrollStuck } from '../hooks/useScrollStuck'
+import { useSubView } from '../hooks/useSubView'
 import ArticleLibrary from '../components/ArticleLibrary'
 import GenerateArticle, { type GenerateRequest } from '../components/GenerateArticle'
 import WordSheet from '../components/WordSheet'
@@ -187,14 +188,10 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
 
   const [fontSize, setFontSize] = useState<FontSize>('m')
   const [sizePanel, setSizePanel] = useState(false)
-  /** 是否停在文章库子视图 */
-  const [libOpen, setLibOpen] = useState(false)
-  /** 是否停在生成文章子视图 */
-  const [genOpen, setGenOpen] = useState(false)
+  /** 二级视图：文章库 / 生成页。同时只能开一个，返回动画与返回键由 hook 接管 */
+  const sub = useSubView<'lib' | 'gen'>()
   /** 有学习记录的日期（倒序），给生成页的日期选择用 */
   const [days, setDays] = useState<string[]>([])
-  /** 刚从文章库返回：给阅读页放一次入场动画，免得像被「刷」地换掉 */
-  const [returning, setReturning] = useState(false)
 
   const headerRef = useRef<HTMLElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
@@ -215,7 +212,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   }, [today])
 
   /** 只在真正读文章时计时：停在阅读栏目 + 打开着文章 + 不在子视图（文章库/生成） */
-  const counting = active && Boolean(article) && !libOpen && !genOpen
+  const counting = active && Boolean(article) && !sub.isOpen
 
   useEffect(() => {
     if (!counting) return
@@ -336,7 +333,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       setMissing(missingWords(saved))
       await refreshLibrary()
 
-      closeGenerate()
+      sub.close()
 
       // 用户已经切到别的栏目了，得让他知道文章好了
       if (!activeRef.current) useToast.getState().show('文章生成好了')
@@ -353,22 +350,10 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     setArticle(a)
     setShowZh(false)
     setMissing([])
-    closeLibrary()
+    sub.close()
   }
 
-  const closeLibrary = useCallback(() => {
-    setLibOpen(false)
-    setReturning(true)
-    window.setTimeout(() => setReturning(false), 320)
-  }, [])
-
-  // 安卓返回键：在文章库里先回阅读页
-  useEffect(() => {
-    if (!libOpen) return
-    return pushBackHandler(closeLibrary)
-  }, [libOpen, closeLibrary])
-
-  // 词卡也是子视图，返回键先关它
+  // 词卡是弹层不是二级视图（没有返回动画），返回键单独注册
   useEffect(() => {
     if (!sheetWord) return
     return pushBackHandler(() => setSheetWord(null))
@@ -381,28 +366,16 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
 
   function openLibrary() {
     rememberScroll()
-    setLibOpen(true)
+    sub.open('lib')
   }
-
-  const closeGenerate = useCallback(() => {
-    setGenOpen(false)
-    setReturning(true)
-    window.setTimeout(() => setReturning(false), 320)
-  }, [])
 
   async function openGenerate() {
     rememberScroll()
     // 日期可能变了（比如过了零点又学了新词），每次进来重读一次
     setDays(await listDays())
     setError(null)
-    setGenOpen(true)
+    sub.open('gen')
   }
-
-  // 安卓返回键：在生成页里先回阅读页
-  useEffect(() => {
-    if (!genOpen) return
-    return pushBackHandler(closeGenerate)
-  }, [genOpen, closeGenerate])
 
   async function handleDeleteArticle(id: string) {
     const wasOpen = article?.id === id
@@ -425,7 +398,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     const scroller = findScrollParent(pageRef.current)
     if (!scroller) return
 
-    if (libOpen || genOpen) {
+    if (sub.isOpen) {
       scroller.scrollTop = 0
       return
     }
@@ -433,7 +406,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       scroller.scrollTop = articleScroll.current
     })
     return () => cancelAnimationFrame(raf)
-  }, [libOpen, genOpen])
+  }, [sub.isOpen])
 
   /**
    * 阅读位置落盘。
@@ -444,7 +417,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   const articleId = article?.id ?? ''
   useEffect(() => {
     // 子视图打开时滚动容器显示的是列表，不该记成阅读位置
-    if (!active || !articleId || libOpen || genOpen) return
+    if (!active || !articleId || sub.isOpen) return
 
     const scroller = findScrollParent(pageRef.current)
     if (!scroller) return
@@ -475,11 +448,11 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       window.clearTimeout(restoreTimer)
       saveReadPos(articleId, scroller.scrollTop)
     }
-  }, [active, articleId, libOpen, genOpen])
+  }, [active, articleId, sub.isOpen])
 
   const hasArticle = Boolean(article)
 
-  if (genOpen) {
+  if (sub.view === 'gen') {
     return (
       <div className={styles.page} data-size={fontSize} data-view="gen" ref={pageRef}>
         <GenerateArticle
@@ -489,7 +462,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
           initialLimit={wordLimit}
           busy={busy}
           error={error}
-          onBack={closeGenerate}
+          onBack={sub.close}
           onGenerate={handleGenerate}
           onLevelChange={(next) => {
             setLevel(next)
@@ -501,13 +474,13 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     )
   }
 
-  if (libOpen) {
+  if (sub.view === 'lib') {
     return (
       <div className={styles.page} data-size={fontSize} data-view="lib" ref={pageRef}>
         <ArticleLibrary
           items={library}
           currentId={article?.id}
-          onBack={closeLibrary}
+          onBack={sub.close}
           onOpen={(id) => void handleOpen(id)}
           onDelete={handleDeleteArticle}
         />
@@ -519,7 +492,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     <div
       className={styles.page}
       data-size={fontSize}
-      data-return={returning ? 'true' : 'false'}
+      data-return={sub.returning ? 'true' : 'false'}
       ref={pageRef}
     >
       <header

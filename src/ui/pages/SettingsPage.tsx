@@ -1,8 +1,6 @@
-import { useEffect, useState } from 'react'
-
 import { useSession } from '@/store/session'
-import { pushBackHandler } from '@/store/backstack'
 
+import { useSubView } from '../hooks/useSubView'
 import ModelProfiles from '../components/ModelProfiles'
 import MemoAccount from '../components/settings/MemoAccount'
 import LookupPrefs from '../components/settings/LookupPrefs'
@@ -60,31 +58,14 @@ const CATEGORIES: { id: SubPage; title: string; desc: string }[] = [
 
 export default function SettingsPage() {
   const token = useSession((s) => s.token)
-  const [sub, setSub] = useState<SubPage | null>(null)
-  /** 返回时给主视图播一次 back-in，方向感与文章库一致 */
-  const [returning, setReturning] = useState(false)
+  /** 二级视图：六个设置栏目。返回动画、返回键都由 useSubView 接管 */
+  const nav = useSubView<SubPage>()
 
-  function open(id: SubPage) {
-    setSub(id)
-  }
-
-  function close() {
-    setSub(null)
-    setReturning(true)
-    window.setTimeout(() => setReturning(false), 320)
-  }
-
-  // 安卓返回键：在二级页里先回设置主页
-  useEffect(() => {
-    if (!sub) return
-    return pushBackHandler(close)
-  }, [sub])
-
-  const activeCat = sub ? CATEGORIES.find((c) => c.id === sub) : null
+  const activeCat = nav.view ? CATEGORIES.find((c) => c.id === nav.view) : null
 
   return (
-    <div className={styles.page} data-view={sub ?? 'root'} data-return={returning}>
-      {sub === null ? (
+    <div className={styles.page} data-view={nav.view ?? 'root'} data-return={nav.returning}>
+      {nav.view === null ? (
         <>
           <h1 className={styles.title}>设置</h1>
 
@@ -94,7 +75,7 @@ export default function SettingsPage() {
                 <button
                   type="button"
                   className={styles.catRow}
-                  onClick={() => open(cat.id)}
+                  onClick={() => nav.open(cat.id)}
                 >
                   <span className={styles.catText}>
                     <span className={styles.catName}>
@@ -116,22 +97,22 @@ export default function SettingsPage() {
       ) : (
         <>
           <header className={styles.subHead}>
-            <button type="button" className={styles.back} onClick={close}>
+            <button type="button" className={styles.back} onClick={nav.close}>
               返回
             </button>
             <h1 className={styles.subTitle}>{activeCat?.title}</h1>
           </header>
 
-          {sub === 'memo' && <MemoAccount />}
-          {sub === 'models' && (
+          {nav.view === 'memo' && <MemoAccount />}
+          {nav.view === 'models' && (
             <section className={styles.section}>
               <ModelProfiles />
             </section>
           )}
-          {sub === 'lookup' && <LookupPrefs />}
-          {sub === 'appearance' && <AppearancePrefs />}
-          {sub === 'data' && <DataPrefs />}
-          {sub === 'about' && <AboutPanel />}
+          {nav.view === 'lookup' && <LookupPrefs />}
+          {nav.view === 'appearance' && <AppearancePrefs />}
+          {nav.view === 'data' && <DataPrefs />}
+          {nav.view === 'about' && <AboutPanel />}
         </>
       )}
     </div>
