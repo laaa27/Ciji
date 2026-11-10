@@ -22,6 +22,16 @@ export type ApiFailureDetail = {
 /** 同一次会话里，这个间隔内的重复刷新直接忽略（挡住切栏目、重挂载之类的抖动） */
 const FRESH_MS = 60_000
 
+/**
+ * 正在飞的那一次请求。
+ *
+ * 光靠 `refreshing` 标志不够：StrictMode 在 dev 下会把 effect 跑两遍，
+ * 而 401 这类失败返回极快 —— 第一次结束时标志已经复位，第二次照样发出去，
+ * 于是「凭证错误不该重试」的场景会看到两个请求。
+ * 复用同一个 Promise，同一挂载期内的重复调用只会有一次真实网络请求。
+ */
+let inflight: Promise<void> | null = null
+
 type TodayState = {
   snapshot: TodaySnapshot | null
   status: Status
@@ -63,6 +73,9 @@ export const useToday = create<TodayState>((set, get) => ({
   },
 
   refresh: async (force = false) => {
+    // 已有请求在飞就直接复用：StrictMode 双挂载、快速切栏目都不该变成两次请求
+    if (inflight) return inflight
+
     const { status, refreshing, lastFetchAt, snapshot } = get()
     if (refreshing || status === 'loading') return
     // 判断依据是「这次会话拉成功过没有」，不是「本地有没有数据」：
@@ -77,26 +90,35 @@ export const useToday = create<TodayState>((set, get) => ({
       errorDetail: null,
     })
 
+    const run = async () => {
+      try {
+        const next = await collectToday()
+        // 每次都落盘；同一天重复采集直接覆盖，保证幂等
+        await saveDay(next)
+        set({
+          snapshot: next,
+          status: 'ok',
+          error: null,
+          errorDetail: null,
+          refreshing: false,
+          lastFetchAt: Date.now(),
+        })
+      } catch (e) {
+        set({
+          status: 'error',
+          refreshing: false,
+          error: e instanceof Error ? e.message : '采集失败，请稍后重试',
+          errorDetail:
+            e instanceof ApiError ? { status: e.status, code: e.code, raw: e.raw } : null,
+        })
+      }
+    }
+
+    inflight = run()
     try {
-      const next = await collectToday()
-      // 每次都落盘；同一天重复采集直接覆盖，保证幂等
-      await saveDay(next)
-      set({
-        snapshot: next,
-        status: 'ok',
-        error: null,
-        errorDetail: null,
-        refreshing: false,
-        lastFetchAt: Date.now(),
-      })
-    } catch (e) {
-      set({
-        status: 'error',
-        refreshing: false,
-        error: e instanceof Error ? e.message : '采集失败，请稍后重试',
-        errorDetail:
-          e instanceof ApiError ? { status: e.status, code: e.code, raw: e.raw } : null,
-      })
+      await inflight
+    } finally {
+      inflight = null
     }
   },
 
