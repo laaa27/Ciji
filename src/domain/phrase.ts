@@ -1,4 +1,4 @@
-import { dictHas, lemmaCandidates } from '@/data/dict'
+import { dictHas, irregularLemma, lemmaCandidates } from '@/data/dict'
 
 /**
  * 点词时顺手找一下「这个位置属于哪个固定搭配」。
@@ -149,20 +149,28 @@ export const MAX_VARIANTS = 8
  *
  * 词库和墨墨收录的都是原形（rest on），文章里出现的却常是变形（rests on）——
  * 单词查询早就靠 lemmaCandidates 解决了，这里把同一招套到短语上：
- * 对每个实词生成变形候选，按「改动越少越可信」的顺序组合：
+ * 对每个词生成变形候选，按「改动越少越可信」的顺序组合：
  * 1. 字面原样（rests on）
- * 2. 只还原一个词（rest on / rests on 的其他单变体）
+ * 2. 只还原一个词（rest on / be meant to）
  * 3. 还原两个词（仅在前两层没满时才生成）
  *
- * 虚词（of/on/the…）不参与还原——它们没有变形，还原只会制造噪音。
+ * 实词走完整的后缀还原（rests→rest、studies→study）；
+ * 功能词没有后缀变形，但它们的不规则原形恰恰是短语在词库里的写法
+ * （was→be：文章写 was meant to，词库收的是 be meant to），所以也要查不规则表。
  * 返回值已小写、去重，首位永远是字面原样。
  */
 export function phraseVariants(words: string[], cap = MAX_VARIANTS): string[] {
   const lower = words.map((w) => w.toLowerCase())
   const out: string[] = [lower.join(' ')]
 
-  // 每个词的候选形式（首位是原样；虚词只有原样）
-  const perWord = lower.map((w) => (FUNCTION_WORDS.has(w) ? [w] : lemmaCandidates(w)))
+  // 每个词的候选形式（首位是原样）
+  const perWord = lower.map((w) => {
+    if (FUNCTION_WORDS.has(w)) {
+      const irr = irregularLemma(w)
+      return irr ? [w, irr] : [w]
+    }
+    return lemmaCandidates(w)
+  })
 
   const push = (combo: string[]) => {
     const text = combo.join(' ')

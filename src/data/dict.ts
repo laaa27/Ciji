@@ -169,7 +169,7 @@ async function loadShard(key: string): Promise<Record<string, string>> {
   return task
 }
 
-/** 不规则复数：只收考试词库里高频的那几个，宁缺毋滥 */
+/** 不规则复数/不规则动词变形：只收考试词库里高频的那几个，宁缺毋滥 */
 const IRREGULAR: Record<string, string> = {
   men: 'man', women: 'woman', children: 'child', feet: 'foot', teeth: 'tooth',
   mice: 'mouse', geese: 'goose', people: 'person', oxen: 'ox', brethren: 'brother',
@@ -177,6 +177,28 @@ const IRREGULAR: Record<string, string> = {
   hypotheses: 'hypothesis', parentheses: 'parenthesis',
   criteria: 'criterion', phenomena: 'phenomenon',
   indices: 'index', matrices: 'matrix', vertices: 'vertex', appendices: 'appendix',
+  // ── 不规则动词（短语还原依赖它们：was meant to → be meant to）──
+  was: 'be', were: 'be', been: 'be', being: 'be', am: 'be', is: 'be', are: 'be',
+  has: 'have', had: 'have', does: 'do', did: 'do', done: 'do',
+  meant: 'mean', went: 'go', gone: 'go', made: 'make', said: 'say',
+  took: 'take', taken: 'take', came: 'come', got: 'get', gave: 'give', given: 'give',
+  told: 'tell', thought: 'think', left: 'leave', felt: 'feel', kept: 'keep',
+  held: 'hold', brought: 'bring', knew: 'know', known: 'know', stood: 'stand',
+  understood: 'understand', spent: 'spend', built: 'build', sent: 'send',
+  met: 'meet', heard: 'hear', led: 'lead', won: 'win', sold: 'sell', lost: 'lose',
+  caught: 'catch', chose: 'choose', chosen: 'choose', found: 'find',
+  seen: 'see', saw: 'see', spoken: 'speak', spoke: 'speak', written: 'write',
+  drove: 'drive', driven: 'drive', broken: 'break', broke: 'break',
+  forgotten: 'forget', forgot: 'forget', hidden: 'hide', hid: 'hide',
+  eaten: 'eat', ate: 'eat', fallen: 'fall', fell: 'fall', drawn: 'draw', drew: 'draw',
+  grown: 'grow', grew: 'grow', flown: 'fly', flew: 'fly', worn: 'wear', wore: 'wear',
+  torn: 'tear', tore: 'tear', begun: 'begin', began: 'begin', become: 'become',
+  became: 'become', ran: 'run', rose: 'rise', arisen: 'arise', arose: 'arise',
+  drunk: 'drink', drank: 'drink', sung: 'sing', sang: 'sing', swum: 'swim', swam: 'swim',
+  woken: 'wake', woke: 'wake', frozen: 'freeze', froze: 'freeze', stolen: 'steal', stole: 'steal',
+  hung: 'hang', dug: 'dig', stuck: 'stick', struck: 'strike', shaken: 'shake', shook: 'shake',
+  lent: 'lend', bent: 'bend', crept: 'creep', dealt: 'deal',
+  sat: 'sit', bit: 'bite', wound: 'wind', ridden: 'ride', rode: 'ride',
 }
 
 /**
@@ -250,6 +272,15 @@ export function lemmaCandidates(word: string): string[] {
  * 本地词典里有没有这个词（查变形候选时用来去噪）。
  * 纯本地分片查询，不走网络。
  */
+/**
+ * 查不规则变形的原形（was→be、meant→mean 这类后缀规则推不出来的）。
+ * 短语还原用：功能词（was/had/did…）没有后缀变形，但它们的不规则原形
+ * 恰恰是词库短语的写法（be meant to / have to / do away with）。
+ */
+export function irregularLemma(word: string): string | null {
+  return IRREGULAR[word] ?? null
+}
+
 export async function dictHas(word: string): Promise<boolean> {
   const key = word.trim().toLowerCase()
   if (!key) return false

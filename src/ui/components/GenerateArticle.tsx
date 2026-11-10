@@ -153,9 +153,15 @@ export default function GenerateArticle({
         const key = c.spelling.toLowerCase()
         const match = c.kinds.includes(kind)
         if (!match || c.used) continue
-        // 刚勾上这个类型 → 补进选择；刚取消 → 从这个类型里撤掉
-        if (nextKinds.includes(kind)) next.add(key)
-        else next.delete(key)
+        if (nextKinds.includes(kind)) {
+          // 刚勾上这个类型 → 补进选择
+          next.add(key)
+        } else if (!c.kinds.some((k) => nextKinds.includes(k))) {
+          // 刚取消 → 只撤掉「不落在任何剩余类型里」的词。
+          // 多重归属的词（比如既是忘记又是新学）只要还有别的类型勾着就保留——
+          // 否则「只看忘记」会把既是忘记又是新学的词全删光，明明 22 个忘记词只剩 1 个
+          next.delete(key)
+        }
       }
       return next
     })

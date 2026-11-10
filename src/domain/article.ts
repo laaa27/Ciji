@@ -212,12 +212,33 @@ export function missingWords(article: Pick<Article, 'sentences' | 'targetWords'>
   const text = article.sentences.map((s) => s.en).join(' ').toLowerCase()
   const tokens = text.match(/[a-z][a-z'-]*/g) ?? []
 
-  const normalized = new Set<string>()
-  for (const token of tokens) {
-    for (const cand of lemmaCandidates(token)) normalized.add(cand)
-  }
+  // 每个 token 的全部还原候选（rests → [rests, rest]），既做单词条集合，也保住位置
+  const lemmas: string[][] = tokens.map((token) => lemmaCandidates(token))
+  const normalized = new Set(lemmas.flat())
 
-  return article.targetWords.filter((w) => !normalized.has(w.toLowerCase()))
+  return article.targetWords.filter((w) => !isCovered(w, lemmas, normalized))
+}
+
+/**
+ * 目标词是否被正文覆盖。
+ *
+ * 单词：词元集合里找得到就算用上（rests / rest 都算覆盖了 rest）。
+ * 短语（rest on / be meant to）：在词元序列里找一个**连续窗口**逐词覆盖——
+ * 原先把它当整体字符串查集合，永远查不到，「明明用上了却说未用到」；
+ * 逐词覆盖后，rests on 覆盖 rest on，was meant to（was→be）覆盖 be meant to。
+ */
+function isCovered(word: string, lemmas: string[][], normalized: Set<string>): boolean {
+  const words = word.toLowerCase().trim().split(/\s+/)
+  if (words.length === 1) return normalized.has(words[0])
+
+  if (words.length > lemmas.length) return false
+  outer: for (let i = 0; i + words.length <= lemmas.length; i += 1) {
+    for (let j = 0; j < words.length; j += 1) {
+      if (!lemmas[i + j].includes(words[j])) continue outer
+    }
+    return true
+  }
+  return false
 }
 
 export interface GenerateOptions {

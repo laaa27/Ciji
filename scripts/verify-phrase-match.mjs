@@ -38,6 +38,10 @@ const ARTICLE = {
       en: 'The officer in charge of the unit recorded every deliberate delay.',
       zh: '负责这个单位的官员记录了每一次故意的拖延。',
     },
+    {
+      en: 'What follows is a workforce trained to look diligent on film, which is what monitoring was meant to verify.',
+      zh: '随之而来的是一支被训练成在镜头前显得勤勉的劳动队伍——而这恰恰是监控本想核实的东西。',
+    },
   ],
   targetWords: [],
   mode: 'weak',
@@ -81,9 +85,11 @@ page.on('request', (req) => {
   if (url.includes('vocabulary/query')) {
     vocQueryCalls += 1
     // 白名单模拟墨墨真实词库：不是问什么都答"有"
-    // 注意：放的是「原形」——墨墨收录的是 rest on，文章里出现的是 rests on，
-    // 正好用来验证逐词还原路径（rests on → rest on）
-    const KNOWN = new Set(['nothing more than', 'a bunch of', 'in charge of', 'rest on'])
+    // 注意：放的是「原形」——墨墨收录的是 rest on / be meant to，文章里出现的是
+    // rests on / was meant to，正好用来验证逐词还原路径（含功能词 was→be）
+    const KNOWN = new Set([
+      'nothing more than', 'a bunch of', 'in charge of', 'rest on', 'be meant to',
+    ])
     const asked = JSON.parse(req.postData() ?? '{}').spellings ?? []
     const voc = asked.filter((s) => KNOWN.has(String(s).toLowerCase()))
       .map((s) => ({ id: `voc-${s}`, spelling: s }))
@@ -198,6 +204,13 @@ ok('点到了 rests', await clickWord('rests'))
 text = await sheetText()
 ok('弹层标题是还原后的 rest on', text.startsWith('rest on'), text.slice(0, 50))
 ok('走的是墨墨查询（发起了请求）', vocQueryCalls > 0, vocQueryCalls)
+
+console.log('\n[7] 功能词不规则还原：点 meant → was meant to 命中 be meant to')
+await page.evaluate(() => document.querySelector('[role="dialog"]')?.closest('[class*="mask"]')?.click())
+await sleep(400)
+ok('点到了 meant', await clickWord('meant'))
+text = await sheetText()
+ok('弹层标题是还原后的 be meant to', text.startsWith('be meant to'), text.slice(0, 50))
 
 await browser.close()
 console.log(`\n结果：${pass} 过，${fail} 挂`)
