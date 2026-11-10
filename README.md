@@ -86,8 +86,8 @@ npx cap sync         # 把 dist/ 同步进 Android 工程
 浏览器里验证导入导出（需先跑 `npx vite --port 5199`）：
 
 ```bash
-node scripts/test-import.mjs     # 导入：选文件 → 预览 → 两种合并策略 → 写盘断言
-node scripts/test-models.mjs     # 模型：迁移 → 添加 → 切换 → 改协议 → 删除（需 dev server）
+node tests/e2e/test-import.mjs   # 导入：选文件 → 预览 → 两种合并策略 → 写盘断言
+node tests/e2e/test-models.mjs   # 模型：迁移 → 添加 → 切换 → 改协议 → 删除（需 dev server）
 ```
 
 ## 构建 APK

@@ -142,18 +142,26 @@ git checkout master && git merge feat/xxx   # 验证通过后合并
 
 **前置：dev server 跑在 5199**（`npx vite --port 5199 --strictPort`）。
 
-| 脚本                             | 覆盖内容                                               |
-| ------------------------------ | -------------------------------------------------- |
-| `scripts/test-reading.mjs`     | 阅读页 + 生成页 + 文章库 + 词卡的完整回归（66 项断言）                  |
-| `scripts/test-import.mjs`      | 导入：选文件 → 预览 → 两种合并策略 → 写盘断言                        |
-| `scripts/test-models.mjs`      | 大模型配置：迁移 → 添加 → 切换 → 改协议 → 删除                      |
-| `scripts/verify-readtimer.mjs` | 阅读计时器 + 统计页阅读时长图表（10 项）                            |
-| `scripts/verify-gencounts.mjs` | 生成页词数口径随「包含已用词」开关同步（13 项）                          |
-| `scripts/verify-glass.mjs`     | 液态玻璃底栏开关与样式（7 项）                                   |
-| `scripts/seed.mjs`             | 造数据：往 localStorage 预置 30 天快照 / 文章，配合截图             |
-| `scripts/shot.mjs`             | 万能截图：`node scripts/shot.mjs [url] [out.png] [tab]` |
+验证脚本在 `tests/e2e/`（用完即可清理，分工见 `tests/README.md`）：
 
-跑法：`node scripts/test-xxx.mjs`，输出逐项 ✓/✗ 和总结，**退出码非 0 即有失败**。
+| 脚本                                      | 覆盖内容                              |
+| --------------------------------------- | --------------------------------- |
+| `tests/e2e/test-reading.mjs`            | 阅读页 + 生成页 + 文章库 + 词卡的完整回归（66 项断言） |
+| `tests/e2e/test-import.mjs`             | 导入：选文件 → 预览 → 两种合并策略 → 写盘断言       |
+| `tests/e2e/test-models.mjs`             | 大模型配置：迁移 → 添加 → 切换 → 改协议 → 删除     |
+| `tests/e2e/verify-readtimer.mjs`        | 阅读计时器 + 统计页阅读时长图表（10 项）          |
+| `tests/e2e/verify-gencounts.mjs`        | 生成页词数口径随「包含已用词」开关同步（13 项）       |
+| `tests/e2e/verify-glass.mjs`            | 液态玻璃底栏开关与样式（7 项）                 |
+
+长期工具留在 `scripts/`：
+
+| 脚本                        | 用途                                                          |
+| ------------------------- | ----------------------------------------------------------- |
+| `scripts/seed.mjs`        | 造数据：往 localStorage 预置 30 天快照 / 文章，配合截图                     |
+| `scripts/shot.mjs`        | 万能截图：`node scripts/shot.mjs [url] [out.png] [tab]`          |
+| `scripts/gen-article.mjs` | 生成文章并与真题语料对比；依赖同目录的 `corpus/` 与 `llm.config.json`，因此不随测试脚本迁走 |
+
+跑法：`node tests/e2e/test-xxx.mjs`（**从仓库根目录跑**，脚本用相对路径写截图，才落在被 gitignore 的 `/*.png`），输出逐项 ✓/✗ 和总结，**退出码非 0 即有失败**。
 
 写新验证脚本的要求：
 
