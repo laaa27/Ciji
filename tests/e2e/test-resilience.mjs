@@ -95,7 +95,12 @@ const browser = await puppeteer.launch({
  * @param plan (kind, nth) => { status, body }
  */
 async function open({ plan, seedDay = false, token = true }) {
-  const page = await browser.newPage()
+  // 每个用例一个独立 context：localStorage 按 context 隔离。
+  // 否则上一个用例留下的 token / 快照会让本用例首次加载就带数据启动，
+  // 请求计数会从 2 起跳（曾表现为「401 只发 1 次」偶发失败）。
+  const context = await browser.createBrowserContext()
+  const page = await context.newPage()
+  page.once('close', () => void context.close().catch(() => {}))
   await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
 
   const calls = {}

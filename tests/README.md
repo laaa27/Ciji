@@ -17,12 +17,19 @@
 
 ```bash
 # 1. 先起服务（多数脚本要 5199 端口）
-npx vite --port 5199          # 或 npx vite preview --port 5199
+npx vite --port 5199          # dev server：改源码即时生效
+npx vite preview --port 5199  # 或 preview：**服务的是 dist/，必须先 npm run build**
 
 # 2. 再跑脚本
 node tests/e2e/verify-kind-toggle.mjs
 node tests/e2e/verify-phrase-match.mjs
 ```
+
+> ⚠️ 用 `vite preview` 时，脚本测的是 `dist/` 里的构建产物，**不看你当前的源码**。
+> 改完源码不 `npm run build` 就跑测试，等于在验证上一版代码——这次重构踩过这个坑：
+> 测试全绿却完全没覆盖到新改动，白跑了一轮。
+> 判断当前跑的是哪种：`curl -s http://localhost:5199/ | grep script`，
+> 引用 `./assets/index-xxx.js` 是 preview，引用 `/src/main.tsx` 是 dev。
 
 输出逐项 `✓` / `✗` 并给总结，**退出码非 0 即有失败**。
 
