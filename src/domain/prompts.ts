@@ -8,7 +8,7 @@
  *
  * 这里不许出现任何 import：Node 的 `--experimental-strip-types` 只能剥类型，不解析 `@/` 别名。
  *
- * ⚠️ 改这个文件 = 改 app 的生成行为。改完跑 `npm run build` + `scripts/test-reading.mjs`。
+ * ⚠️ 改这个文件 = 改 app 的生成行为。改完跑 `npm run build` + `tests/e2e/test-reading.mjs`。
  */
 
 export type ArticleLevel = 'cet4' | 'cet6' | 'kaoyan' | 'ielts'
