@@ -83,12 +83,15 @@ npm run build        # 构建 Web 产物到 dist/
 npx cap sync         # 把 dist/ 同步进 Android 工程
 ```
 
-浏览器里验证导入导出（需先跑 `npx vite --port 5199`）：
+浏览器里验证（需先在 5199 起服务，**用 `vite preview` 的话要先 `npm run build`**）：
 
 ```bash
 node tests/e2e/test-import.mjs   # 导入：选文件 → 预览 → 两种合并策略 → 写盘断言
 node tests/e2e/test-models.mjs   # 模型：迁移 → 添加 → 切换 → 改协议 → 删除（需 dev server）
 ```
+
+> 环境搭建、13 个脚本的完整清单、出包与发布的逐层校验、常见问题排查，见
+> **[DEVELOPMENT.md](./DEVELOPMENT.md)**。
 
 ## 构建 APK
 
@@ -119,55 +122,45 @@ cd android && ./gradlew assembleRelease
 | 图表 | ECharts 6 | 按需引入，只打包柱状图 |
 | 存储 | Capacitor Preferences | 按天存 JSON 快照，见下方说明 |
 | 词典 | ECDICT 裁剪版 | 分片 JSON，按首字母懒加载。数据来自 [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT)（MIT） |
-| 测试 | puppeteer-core | 无头 Chrome 跑断言脚本 |
+| 测试 | puppeteer-core | 无头 Chrome 跑断言脚本，13 个脚本 / 262 项断言 |
 
 ## 目录结构
 
 ```
 src/
-├── api/          请求层：只负责发请求、返回类型化数据
-│   ├── types.ts    所有接口类型（唯一来源）
-│   ├── client.ts   鉴权、超时、错误文案、原生/浏览器分支
-│   ├── study.ts    三个学习接口
-│   ├── protocols.ts 大模型两种协议的请求构造与响应解析（纯函数）
-│   └── llm.ts      大模型调用：取配置 → 选通道 → 翻译错误
-├── data/         存储层：只负责读写本地
-│   ├── store.ts    按天存快照（day:YYYY-MM-DD）
-│   ├── article.ts  文章全文 + 索引（article:<id> / article_index）
-│   ├── reading.ts  每日阅读秒数（reading:YYYY-MM-DD）
-│   └── dict.ts     词典分片懒加载 + 缓存
-├── domain/       业务层：纯逻辑，好测
-│   ├── collect.ts  采集编排：拉取 → 合并 → 分类
-│   ├── article.ts  文章生成编排 + 选词逻辑
-│   ├── export.ts   CSV / Markdown / 备份 JSON 生成与分享
-│   └── backup.ts   导入：备份 JSON 与 CSV 的解析、校验、合并策略
-├── native/       app 内原生插件的 TS 类型声明
-├── store/        状态层（Zustand）
-│   ├── session.ts  token
-│   ├── llm.ts      多份模型配置（增删改 + 当前选中 + 旧数据迁移）
-│   ├── today.ts    今日数据 + 采集状态
-│   ├── theme.ts    主题（深浅）
-│   ├── glass.ts    液态玻璃底栏开关 + 不透明度
-│   └── backstack.ts 安卓返回键拦截栈
-└── ui/           显示层
+├── api/          请求层：发请求、解信封、把失败翻译成人话
+├── data/         存储层：只读写本地（Preferences / 词典分片）
+├── domain/       业务层：采集、生成、查词、备份、更新等纯逻辑
+├── store/        状态层（Zustand）：session / today / llm / prefs / theme / glass / ui / backstack / toast
+├── lib/          零依赖工具：date / text / scroll / async
+└── ui/
     ├── pages/      今日 / 历史 / 阅读 / 统计 / 设置
-    ├── components/ TabBar / WordSheet / ArticleLibrary / GenerateArticle / ModelProfiles
+    ├── components/ TabBar / WordSheet / ArticleLibrary / GenerateArticle / ModelProfiles / settings
+    ├── hooks/      useSubView / useReadingClock / useGlossToggle / useScrollStuck
     └── styles/     tokens.css（设计令牌）+ global.css
-scripts/           浏览器验证脚本（puppeteer-core），见 DEVELOPMENT.md 第 4 节
-android/           Capacitor Android 工程（含 AppearancePlugin 等自研原生插件）
+tests/e2e/        浏览器验证脚本（13 个，共 262 项断言）
+scripts/          长期工具：生成文章与真题对比 / 造数据 / 截图
+android/          Capacitor Android 工程（含 AppearancePlugin 自研原生插件）
 ```
 
-依赖方向是单向的：`ui → store → domain → data → api`。
+依赖方向是单向的：`ui → store → domain → data → api`，`lib/` 在底层、任何层可用。
+
+> 逐模块职责、三条历史遗留的反向依赖、以及新增文件该放哪，见
+> **[DEVELOPMENT.md](./DEVELOPMENT.md)** 第 2 章（结构与模块职责）。
 
 ## 加功能要改哪里
 
 | 想加的功能 | 改哪里 |
 |---|---|
-| 生词本（汇总所有忘记过的词） | `data/store.ts` 加一个聚合函数 → 新建 `ui/pages/Notebook.tsx` → `TabBar` 注册入口 |
-| 分享打卡图 | 新建 `ui/pages/ShareCard.tsx` → 引 html2canvas → 设置页加入口。数据层不动 |
-| 换翻译源 | 只改 `data/dict.ts` |
-| 加一个统计维度 | 只改 `domain/collect.ts` 的分类逻辑 + `StatsPage` |
-| 支持第三种导入格式 | 只改 `domain/backup.ts`（加一个 parser 分支），UI 不用动 |
+| 一个开关 / 选项 | `data/keys.ts` 加键 → `store/prefs.ts` 的 `Prefs`/`DEFAULTS`/`PARSERS` 三处 → 组件里 `usePrefs()` |
+| 一个二级页面 | 用 `useSubView`，返回动画与安卓返回键自动接管 |
+| 生词本（汇总所有忘记过的词） | `data/store.ts` 加一个聚合函数 → 新建页面 → `TabBar` 注册入口 |
+| 分享打卡图 | 新建页面 → 引 html2canvas → 设置页加入口。数据层不动 |
+| 换翻译源 | 改 `data/dict.ts` 里 `lookupOnline` 那一层 |
+| 加一个统计维度 | `domain/collect.ts` 的分类逻辑 + `StatsPage` |
+| 支持第三种导入格式 | `domain/backup.ts` 加一个 parser 分支，UI 不用动 |
+
+> 更完整的「六类新功能该落在哪、什么规模该拆」，见 **DEVELOPMENT.md 第 9 章（防止再次腐化）**。
 
 ## 设计说明
 
