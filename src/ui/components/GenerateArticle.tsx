@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { getCoveredWordsToday } from '@/data/article'
+import { getCoveredWordsToday, markDayCoverageSkipped } from '@/data/article'
 import { getDay } from '@/data/store'
 import {
   defaultSelection,
@@ -93,6 +93,28 @@ export default function GenerateArticle({
   const [limit, setLimit] = useState(initialLimit)
   const [level, setLevel] = useState<ArticleLevel>(initialLevel)
 
+  // 「清除当天已用记录」：两步确认 + 完成后重读数据
+  const [confirmClear, setConfirmClear] = useState(false)
+  const [clearMsg, setClearMsg] = useState<string | null>(null)
+  const [reloadTick, setReloadTick] = useState(0)
+
+  async function handleClearCoverage() {
+    if (!confirmClear) {
+      setConfirmClear(true)
+      return
+    }
+    setConfirmClear(false)
+    try {
+      const n = await markDayCoverageSkipped(date)
+      setClearMsg(
+        n > 0 ? `已清除 ${n} 篇文章的已用标记，单词恢复可选` : '今天还没有需要清除的记录',
+      )
+    } catch (e) {
+      setClearMsg(e instanceof Error ? e.message : '清除失败，请重试')
+    }
+    setReloadTick((t) => t + 1)
+  }
+
   // 换日期：读那天的快照 + 那天已用过的词，然后按当前类型重算默认勾选
   useEffect(() => {
     let alive = true
@@ -129,7 +151,7 @@ export default function GenerateArticle({
     return () => {
       alive = false
     }
-  }, [date, draft])
+  }, [date, draft, reloadTick])
 
   // 勾选/类型/日期一变就记一笔，被杀之后还能接着来
   useEffect(() => {
@@ -269,6 +291,22 @@ export default function GenerateArticle({
           </span>
           <input type="checkbox" className={styles.switch} checked={showUsed} onChange={toggleUsed} />
         </label>
+      )}
+
+      {usedWords.size > 0 && (
+        <div className={styles.clearRow}>
+          <button
+            type="button"
+            className={confirmClear ? styles.clearBtn : styles.clearBtnGhost}
+            onClick={() => void handleClearCoverage()}
+            disabled={loading}
+          >
+            {confirmClear
+              ? '确认清除？（单词会恢复默认可选）'
+              : '清除今天已生成文章的记录'}
+          </button>
+          {clearMsg && <p className={styles.hint}>{clearMsg}</p>}
+        </div>
       )}
 
       <section className={styles.field}>

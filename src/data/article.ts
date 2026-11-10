@@ -143,9 +143,29 @@ export async function getCoveredWordsToday(date: string): Promise<Set<string>> {
   for (const id of ids) {
     const a = await getArticleById(id)
     if (!a) continue
+    // 用户在生成页点了「清除当天已用记录」的文章不算覆盖，那些词恢复默认可选
+    if (a.skipCoverage) continue
     for (const w of a.targetWords) covered.add(w.toLowerCase())
   }
   return covered
+}
+
+/**
+ * 把某天所有文章标记为「不计入已用」（生成页「清除当天已用记录」按钮）。
+ * 文章本身保留，可继续阅读；返回实际标记了几篇。
+ */
+export async function markDayCoverageSkipped(date: string): Promise<number> {
+  const index = await readIndex()
+  const ids = index.filter((a) => a.date === date).map((a) => a.id)
+
+  let marked = 0
+  for (const id of ids) {
+    const a = await getArticleById(id)
+    if (!a || a.skipCoverage) continue
+    await saveArticle({ ...a, skipCoverage: true })
+    marked += 1
+  }
+  return marked
 }
 
 /** 某天最后一篇，用于打开阅读页时默认展示 */

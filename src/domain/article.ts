@@ -65,6 +65,11 @@ export interface Article {
    * 有值不代表文章不能用，只代表它没完全达到该档位的规格，界面据此轻提示。
    */
   shortfall?: string
+  /**
+   * 用户在生成页点了「清除当天已用记录」：本篇的 targetWords 不再计入当天已用，
+   * 那些词恢复默认可选。文章本身保留，可继续阅读。老文章没有此字段 = 计入。
+   */
+  skipCoverage?: boolean
 }
 
 /** 一篇文章最多塞多少个目标词，太多会变成词表 */
@@ -88,10 +93,16 @@ export function wordCandidates(
     const spelling = w.spelling.trim()
     if (!spelling) continue
 
+    // 三类互斥（与 collect.classify 同规则）：新学词只算「新学」，
+    // 忘记 / 模糊只收复习词。旧快照里可能残留多归属分组，这里统一掰正。
     const kinds: WordKind[] = []
-    if (w.groups.includes('forget')) kinds.push('forget')
-    if (w.groups.includes('vague')) kinds.push('vague')
-    if (w.isNew || w.groups.includes('new')) kinds.push('new')
+    if (w.isNew) {
+      kinds.push('new')
+    } else {
+      if (w.groups.includes('forget')) kinds.push('forget')
+      if (w.groups.includes('vague')) kinds.push('vague')
+      if (w.groups.includes('new')) kinds.push('new')
+    }
     if (kinds.length === 0) continue
 
     const key = spelling.toLowerCase()

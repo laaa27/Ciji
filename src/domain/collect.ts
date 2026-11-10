@@ -60,20 +60,21 @@ function wasStudied(item: {
 }
 
 /**
- * 这个词属于哪几组。多归属，不互斥。
- * - 新学：is_new 为真（无论当天答得怎么样）
- * - 模糊 / 忘记：按当天第一次反馈
+ * 这个词属于哪一组。三类彻底互斥（2026-11-10 用户要求）。
+ * - 新学：is_new 为真 → 只进「新学」，哪怕今天答了忘记/模糊
+ * - 复习词（非新学）：按当天第一次反馈进「模糊 / 忘记」
  * 只复习且答「认识」的词不属于任何组，界面上不需要展示。
+ *
+ * 竖线颜色仍按反馈走（lineState），新学组里答错的词照样能一眼看出来。
  */
 function classify(item: {
   is_new: boolean
   first_response?: StudyResponse
 }): WordState[] {
-  const groups: WordState[] = []
-  if (item.is_new) groups.push('new')
-  if (item.first_response === 'VAGUE') groups.push('vague')
-  if (item.first_response === 'FORGET') groups.push('forget')
-  return groups
+  if (item.is_new) return ['new']
+  if (item.first_response === 'VAGUE') return ['vague']
+  if (item.first_response === 'FORGET') return ['forget']
+  return []
 }
 
 /** 竖线颜色按反馈走，不按分组走 —— 新学组里答错的词也能一眼看出来 */

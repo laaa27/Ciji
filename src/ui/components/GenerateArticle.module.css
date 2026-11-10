@@ -359,3 +359,33 @@
 .primary:disabled {
   opacity: 0.4;
 }
+
+/* ── 清除当天已用记录 ─────────────────────── */
+
+.clearRow {
+  margin-bottom: var(--sp-5);
+}
+
+.clearBtnGhost {
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  padding: 6px 0;
+  transition: color 0.15s ease;
+}
+
+.clearBtnGhost:active {
+  color: var(--ink-2);
+}
+
+/* 两步确认态：换成危险色按钮，避免误触一下就真清了 */
+.clearBtn {
+  font-size: var(--fs-sm);
+  color: var(--on-accent);
+  background: var(--danger, #a33);
+  padding: 8px 14px;
+  border-radius: 6px;
+}
+
+.clearBtn:active {
+  opacity: 0.85;
+}
