@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { addReadingSeconds, getReadingSeconds } from '@/data/reading'
 import { listDays } from '@/data/store'
 import {
   deleteArticle,
@@ -22,6 +21,7 @@ import {
   type ArticleSentence,
 } from '@/domain/article'
 import { dateKey, monthDay } from '@/lib/date'
+import { restoreScroll } from '@/lib/scroll'
 import { getLastLlmResponse } from '@/api/llm'
 import { pushBackHandler } from '@/store/backstack'
 import { useToast } from '@/store/toast'
@@ -31,6 +31,7 @@ import { usePrefs, type FontSize } from '@/store/prefs'
 import { useSession } from '@/store/session'
 
 import { findScrollParent, useScrollStuck } from '../hooks/useScrollStuck'
+import { useReadingClock } from '../hooks/useReadingClock'
 import { useSubView } from '../hooks/useSubView'
 import ArticleLibrary from '../components/ArticleLibrary'
 import GenerateArticle, { type GenerateRequest } from '../components/GenerateArticle'
@@ -57,9 +58,6 @@ const FONT_SIZES: { key: FontSize; label: string }[] = [
  * 段内句子连排（读起来是连续的一段文字），段与段之间才留白。
  */
 const SENTENCES_PER_PARA = 4
-
-/** 内存里攒够这么多秒才落盘一次，避免每秒都打原生存储 */
-const READ_FLUSH_SEC = 15
 
 /** 把秒数排成 05:24 / 1:02:03 这样的表盘格式 */
 function fmtDuration(sec: number): string {
@@ -191,49 +189,9 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
 
   const today = dateKey()
 
-  // ── 阅读计时 ─────────────────────────────
-  // todaySeconds 是「今天累计」（已落盘的 + 本次会话正在攒的），
-  // sessionRef 只在内存里攒，够 15 秒或离开计时状态时一次性落盘
-  const [todaySeconds, setTodaySeconds] = useState(0)
-  const sessionRef = useRef(0)
-
-  useEffect(() => {
-    void getReadingSeconds(today).then(setTodaySeconds)
-  }, [today])
-
   /** 只在真正读文章时计时：停在阅读栏目 + 打开着文章 + 不在子视图（文章库/生成） */
   const counting = active && Boolean(article) && !sub.isOpen
-
-  useEffect(() => {
-    if (!counting) return
-
-    const flush = () => {
-      const sec = sessionRef.current
-      if (sec <= 0) return
-      sessionRef.current = 0
-      void addReadingSeconds(today, sec)
-    }
-
-    const id = window.setInterval(() => {
-      // 切后台时 WebView 的定时器不可靠，挂后台的时长不能算进阅读时间
-      if (document.hidden) return
-      sessionRef.current += 1
-      setTodaySeconds((s) => s + 1)
-      if (sessionRef.current >= READ_FLUSH_SEC) flush()
-    }, 1000)
-
-    // 用户把应用切到后台的那一刻，先把攒着的秒数存掉
-    const onVisibility = () => {
-      if (document.hidden) flush()
-    }
-    document.addEventListener('visibilitychange', onVisibility)
-
-    return () => {
-      window.clearInterval(id)
-      document.removeEventListener('visibilitychange', onVisibility)
-      flush()
-    }
-  }, [counting, today])
+  const todaySeconds = useReadingClock(today, counting)
 
   const refreshLibrary = useCallback(async () => {
     setLibrary(await listArticles())
@@ -395,17 +353,12 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     const scroller = findScrollParent(pageRef.current)
     if (!scroller) return
 
-    let restoreTimer = 0
+    // 正文是异步读出来的，首帧高度往往不够，交给 restoreScroll 重试到位
     const saved = readReadPos(articleId)
+    let cancelRestore = () => {}
     if (saved > 0) {
-      // 正文是异步读出来的，首帧高度可能还不够，隔一会儿再试几次
       articleScroll.current = saved
-      let tries = 0
-      restoreTimer = window.setTimeout(function tick() {
-        scroller.scrollTop = saved
-        tries += 1
-        if (scroller.scrollTop < saved - 2 && tries < 6) restoreTimer = window.setTimeout(tick, 120)
-      }, 60)
+      cancelRestore = restoreScroll(scroller, saved)
     }
 
     let debounce = 0
@@ -418,7 +371,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     return () => {
       scroller.removeEventListener('scroll', onScroll)
       window.clearTimeout(debounce)
-      window.clearTimeout(restoreTimer)
+      cancelRestore()
       saveReadPos(articleId, scroller.scrollTop)
     }
   }, [active, articleId, sub.isOpen])

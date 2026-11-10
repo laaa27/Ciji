@@ -10,6 +10,7 @@ import ReadingPage from './ui/pages/ReadingPage'
 import StatsPage from './ui/pages/StatsPage'
 import SettingsPage from './ui/pages/SettingsPage'
 import { loadLookupSettings } from '@/data/dict'
+import { restoreScroll } from '@/lib/scroll'
 import { useLlm } from '@/store/llm'
 import { useSession } from '@/store/session'
 import { useToday } from '@/store/today'
@@ -81,23 +82,11 @@ export default function App() {
 
   // 冷启动后把上次的滚动位置接回去。
   // 首帧时内容往往还没铺满（本地快照是异步读的），滚不到那么深，
-  // 所以隔一会儿重试几次，直到滚到位或者放弃。
+  // 重试逻辑在 restoreScroll 里，与阅读页共用同一份。
   useEffect(() => {
-    const target = readScroll(tab)
-    if (target <= 0) return
-
-    let tries = 0
-    let timer = window.setTimeout(function tick() {
-      const body = bodyRef.current
-      if (!body) return
-      body.scrollTop = target
-      tries += 1
-      if (body.scrollTop < target - 2 && tries < 6) timer = window.setTimeout(tick, 120)
-    }, 60)
-
-    return () => window.clearTimeout(timer)
     // 只在挂载时跑一次；切栏目由下面那个 effect 负责
     // eslint-disable-next-line react-hooks/exhaustive-deps
+    return restoreScroll(bodyRef.current, readScroll(tab))
   }, [])
 
   function changeTab(next: TabKey) {
