@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Preferences } from '@capacitor/preferences'
 
 import { addReadingSeconds, getReadingSeconds } from '@/data/reading'
 import { listDays } from '@/data/store'
@@ -19,9 +18,7 @@ import {
   missingWords,
   wordCount,
   LEVEL_LABEL,
-  MAX_TARGET_WORDS,
   type Article,
-  type ArticleLevel,
   type ArticleSentence,
 } from '@/domain/article'
 import { dateKey, monthDay } from '@/lib/date'
@@ -30,6 +27,7 @@ import { pushBackHandler } from '@/store/backstack'
 import { useToast } from '@/store/toast'
 import { clearGenDraft, clearReadPos, readReadPos, readShowZh, saveReadPos, saveShowZh } from '@/store/ui'
 import { useLlm } from '@/store/llm'
+import { usePrefs, type FontSize } from '@/store/prefs'
 import { useSession } from '@/store/session'
 
 import { findScrollParent, useScrollStuck } from '../hooks/useScrollStuck'
@@ -45,17 +43,12 @@ type Props = {
   active: boolean
 }
 
-type FontSize = 's' | 'm' | 'l' | 'xl'
-
 const FONT_SIZES: { key: FontSize; label: string }[] = [
   { key: 's', label: '小' },
   { key: 'm', label: '标准' },
   { key: 'l', label: '大' },
   { key: 'xl', label: '特大' },
 ]
-
-/** 一篇文章覆盖多少个目标词，可调 */
-const WORD_LIMITS = [10, 15, 20, 25, 30]
 
 /**
  * 每段几句。
@@ -64,10 +57,6 @@ const WORD_LIMITS = [10, 15, 20, 25, 30]
  * 段内句子连排（读起来是连续的一段文字），段与段之间才留白。
  */
 const SENTENCES_PER_PARA = 4
-
-const FONT_KEY = 'reading_font_size'
-const LIMIT_KEY = 'reading_word_limit'
-const LEVEL_KEY = 'reading_level'
 
 /** 内存里攒够这么多秒才落盘一次，避免每秒都打原生存储 */
 const READ_FLUSH_SEC = 15
@@ -122,8 +111,9 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
 
   const [article, setArticle] = useState<Article | null>(null)
   const [library, setLibrary] = useState<ArticleMeta[]>([])
-  const [level, setLevel] = useState<ArticleLevel>('kaoyan')
-  const [wordLimit, setWordLimit] = useState(MAX_TARGET_WORDS)
+  /** 字号 / 词数上限 / 难度：统一走偏好层，不再各自 useState + 落盘 */
+  const level = usePrefs((s) => s.readingLevel)
+  const wordLimit = usePrefs((s) => s.readingLimit)
   /** 译文开关：从本地同步读，重启后保持一致（否则高度变了、阅读位置就错） */
   const [showZh, setShowZhState] = useState(readShowZh)
   const setShowZh = (next: boolean) => {
@@ -186,7 +176,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     })()
   }
 
-  const [fontSize, setFontSize] = useState<FontSize>('m')
+  const fontSize = usePrefs((s) => s.readingFont)
   const [sizePanel, setSizePanel] = useState(false)
   /** 二级视图：文章库 / 生成页。同时只能开一个，返回动画与返回键由 hook 接管 */
   const sub = useSubView<'lib' | 'gen'>()
@@ -254,21 +244,6 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       const latest = await getLatestArticleOfDay(today)
       if (latest) setArticle(latest)
       await refreshLibrary()
-
-      const [font, limit, lv] = await Promise.all([
-        Preferences.get({ key: FONT_KEY }),
-        Preferences.get({ key: LIMIT_KEY }),
-        Preferences.get({ key: LEVEL_KEY }),
-      ])
-      if (font.value === 's' || font.value === 'l' || font.value === 'xl') {
-        setFontSize(font.value)
-      }
-      const parsedLimit = Number(limit.value)
-      if (WORD_LIMITS.includes(parsedLimit)) setWordLimit(parsedLimit)
-      if (lv.value === 'cet4' || lv.value === 'cet6' || lv.value === 'kaoyan') {
-        setLevel(lv.value)
-      }
-
       setDays(await listDays())
     })()
   }, [today, refreshLibrary])
@@ -293,14 +268,12 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     [targetSet],
   )
 
-  async function changeFontSize(next: FontSize) {
-    setFontSize(next)
-    await Preferences.set({ key: FONT_KEY, value: next })
+  function changeFontSize(next: FontSize) {
+    usePrefs.getState().set('readingFont', next)
   }
 
-  async function changeWordLimit(next: number) {
-    setWordLimit(next)
-    await Preferences.set({ key: LIMIT_KEY, value: String(next) })
+  function changeWordLimit(next: number) {
+    usePrefs.getState().set('readingLimit', next)
   }
 
   async function handleGenerate(req: GenerateRequest) {
@@ -464,11 +437,8 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
           error={error}
           onBack={sub.close}
           onGenerate={handleGenerate}
-          onLevelChange={(next) => {
-            setLevel(next)
-            void Preferences.set({ key: LEVEL_KEY, value: next })
-          }}
-          onLimitChange={(next) => void changeWordLimit(next)}
+          onLevelChange={(next) => usePrefs.getState().set('readingLevel', next)}
+          onLimitChange={changeWordLimit}
         />
       </div>
     )

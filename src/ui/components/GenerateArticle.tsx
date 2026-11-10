@@ -9,7 +9,7 @@ import {
   trimSelection,
   wordCandidates,
   KIND_LABEL,
-  MAX_TARGET_WORDS,
+  WORD_LIMITS,
   type ArticleLevel,
   type WordCandidate,
   type WordKind,
@@ -55,7 +55,6 @@ type Props = {
 }
 
 const KINDS: WordKind[] = ['forget', 'vague', 'new']
-const WORD_LIMITS = [10, 15, 20, MAX_TARGET_WORDS, 30]
 
 const KIND_COLOR: Record<WordKind, string> = {
   forget: 'var(--state-forget)',

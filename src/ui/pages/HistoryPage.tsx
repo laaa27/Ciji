@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react'
 
-import { Preferences } from '@capacitor/preferences'
-
 import { getAllDays } from '@/data/store'
 import { lookupWords } from '@/data/dict'
 import { lineState, responseNote, type TodaySnapshot, type WordState } from '@/domain/collect'
 import { monthDay, weekday } from '@/lib/date'
 
+import { useGlossToggle } from '../hooks/useGlossToggle'
 import WordRow from '../components/WordRow'
 import EmptyState from '../components/EmptyState'
 import styles from './HistoryPage.module.css'
@@ -27,15 +26,14 @@ function DayItem({
   day,
   open,
   onToggle,
-  showGloss,
-  overrides,
+  isGlossShown,
   toggleGloss,
 }: {
   day: TodaySnapshot
   open: boolean
   onToggle: () => void
-  showGloss: boolean
-  overrides: Record<string, boolean>
+  /** 某个词最终该不该展开（总闸 + 单次覆盖已在 hook 里合并） */
+  isGlossShown: (vocId: string) => boolean
   toggleGloss: (vocId: string) => void
 }) {
   const counts = useMemo(() => countBy(day.words), [day.words])
@@ -102,7 +100,7 @@ function DayItem({
                         gloss={glosses[w.spelling.toLowerCase()]}
                         state={lineState(w)}
                         note={responseNote(w)}
-                        glossVisible={overrides[w.vocId] ?? showGloss}
+                        glossVisible={isGlossShown(w.vocId)}
                         onToggle={() => toggleGloss(w.vocId)}
                       />
                     ))}
@@ -120,29 +118,8 @@ export default function HistoryPage() {
   const [days, setDays] = useState<TodaySnapshot[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState<string | null>(null)
-  /** 全局是否展开释义。默认收起，与今日页一致——先回想再核对 */
-  const [showGloss, setShowGloss] = useState(false)
-  /** 单个词的临时覆盖：点词收起/展开，优先级高于全局 */
-  const [overrides, setOverrides] = useState<Record<string, boolean>>({})
-
-  useEffect(() => {
-    void Preferences.get({ key: 'history_show_gloss' }).then(({ value }) => {
-      if (value === 'true') setShowGloss(true)
-    })
-  }, [])
-
-  function toggleAllGloss() {
-    // 切全局时清掉个体覆盖，回到统一状态
-    setOverrides({})
-    setShowGloss((v) => {
-      void Preferences.set({ key: 'history_show_gloss', value: v ? 'false' : 'true' })
-      return !v
-    })
-  }
-
-  function toggleGloss(vocId: string) {
-    setOverrides((prev) => ({ ...prev, [vocId]: !(prev[vocId] ?? showGloss) }))
-  }
+  /** 释义展开：总闸 + 单个词的临时覆盖（默认收起，与今日页一致） */
+  const gloss = useGlossToggle('glossHistory')
 
   useEffect(() => {
     let alive = true
@@ -164,8 +141,8 @@ export default function HistoryPage() {
           <button
             type="button"
             className={styles.glossToggle}
-            data-on={showGloss}
-            onClick={toggleAllGloss}
+            data-on={gloss.showGloss}
+            onClick={gloss.toggleAll}
           >
             释义
           </button>
@@ -186,9 +163,8 @@ export default function HistoryPage() {
               day={day}
               open={open === day.date}
               onToggle={() => setOpen(open === day.date ? null : day.date)}
-              showGloss={showGloss}
-              overrides={overrides}
-              toggleGloss={toggleGloss}
+              isGlossShown={gloss.isShown}
+              toggleGloss={gloss.toggle}
             />
           ))}
         </ul>

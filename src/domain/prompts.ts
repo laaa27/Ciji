@@ -108,6 +108,17 @@ export const LEVEL_LABEL: Record<ArticleLevel, string> = {
   ielts: '雅思',
 }
 
+/**
+ * 一篇文章最多塞多少个目标词。太多会变成"词表拼文章"，模型也覆盖不住。
+ *
+ * 放在这个零依赖模块里，是为了让 store/prefs.ts 能直接引用而不用拉进
+ * domain/article.ts（后者依赖 api 与 store，会让偏好层变重）。
+ */
+export const MAX_TARGET_WORDS = 25
+
+/** 生成页可选的词数上限档位（顺序即界面上的展示顺序） */
+export const WORD_LIMITS: number[] = [10, 15, 20, MAX_TARGET_WORDS, 30]
+
 export type ChatMessage = { role: 'system' | 'user'; content: string }
 
 export interface OutlineParagraph {

@@ -16,6 +16,7 @@ import { useToday } from '@/store/today'
 import { readScroll, readTab, saveScroll, saveTab } from '@/store/ui'
 import { handleBack } from '@/store/backstack'
 import { useGlass } from '@/store/glass'
+import { usePrefs } from '@/store/prefs'
 import { useTheme } from '@/store/theme'
 import { useToast } from '@/store/toast'
 import { checkForUpdate, type ReleaseInfo } from '@/domain/update'
@@ -40,6 +41,7 @@ export default function App() {
   const loadLlm = useLlm((s) => s.load)
   const loadTheme = useTheme((s) => s.load)
   const loadGlass = useGlass((s) => s.load)
+  const loadPrefs = usePrefs((s) => s.load)
   const hydrateToday = useToday((s) => s.hydrate)
   const glass = useGlass((s) => s.glass)
 
@@ -60,9 +62,10 @@ export default function App() {
     void loadLookupSettings()
     void loadTheme()
     void loadGlass()
+    void loadPrefs()
     // 先把本地那份铺上，网络请求交给今日页自己触发 —— 请求失败也还有东西可看
     void hydrateToday()
-  }, [load, loadLlm, loadTheme, loadGlass, hydrateToday])
+  }, [load, loadLlm, loadTheme, loadGlass, loadPrefs, hydrateToday])
 
   // 检查更新：延迟 3 秒再查，别跟启动时的墨墨采集抢网络；
   // 查不到（断网/限流/没发新版本）静默跳过，绝不打扰

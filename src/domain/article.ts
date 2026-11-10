@@ -72,8 +72,8 @@ export interface Article {
   skipCoverage?: boolean
 }
 
-/** 一篇文章最多塞多少个目标词，太多会变成词表 */
-export const MAX_TARGET_WORDS = 25
+/** 选词上限与档位定义在 prompts.ts（零依赖），这里转出去保持既有 import 路径不变 */
+export { MAX_TARGET_WORDS, WORD_LIMITS } from '@/domain/prompts'
 
 /**
  * 取某一天的候选词。
