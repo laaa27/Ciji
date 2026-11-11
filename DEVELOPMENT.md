@@ -258,7 +258,7 @@ WordSheet → lookupOneDetailed：本地词典 → 永久缓存 → AI 释义 �
 | `day:YYYY-MM-DD` | 每日学习快照 | `data/store.ts` |
 | `article:<id>` / `article_index` | 文章全文 / 元信息索引 | `data/article.ts` |
 | `reading:YYYY-MM-DD` | 每日阅读秒数 | `data/reading.ts` |
-| `gloss:<word>` | 永久释义缓存 | `data/dict.ts` |
+| `gloss:<word>` | 永久释义缓存，值是 `{ gloss, ai }` 的 JSON（`ai` 决定界面标不标「AI 释义」；修复前写入的纯文本条目按非 AI 读） | `data/dict.ts` |
 | `reading_font_size` / `reading_word_limit` / `reading_level` | 阅读偏好 | 🆕 `data/keys.ts` → `store/prefs.ts` |
 | `today_show_gloss` / `history_show_gloss` | 释义展开总闸 | 🆕 同上 |
 | `theme` / `theme_boot` | 主题 + 启动镜像 | `store/theme.ts` |
@@ -385,7 +385,7 @@ curl -s http://localhost:5199/ | grep script
 **用 preview 时不 build 就跑测试，等于在验证上一版代码。** 这个坑真实发生过：一轮 262 断言全绿，
 但完全没覆盖新改动，白跑还差点误判回归。
 
-### 5.2 验证脚本（13 个，`tests/e2e/`）
+### 5.2 验证脚本（14 个，`tests/e2e/`）
 
 ```bash
 # 前置：5199 上有服务；本机装了 Chrome
@@ -402,9 +402,10 @@ node tests/e2e/verify-glass.mjs         #  7 项：液态玻璃
 node tests/e2e/verify-read-restore.mjs  #  7 项：重启后回到原处
 node tests/e2e/verify-article-audit.mjs #  6 项：生成后审计与重生成
 node tests/e2e/verify-phrase-match.mjs  # 23 项：点词匹配固定搭配
+node tests/e2e/verify-gloss-source.mjs  # 24 项：AI 释义标注在缓存命中后不丢（含本地/MyMemory 不误标）
 ```
 
-合计 **262 项断言**。跑法约定：
+合计 **286 项断言**。跑法约定：
 
 - **从仓库根目录执行**（脚本用相对路径写截图，才会落在被 `/*.png` 忽略的位置）
 - 输出逐项 ✓ / ✗，**退出码非 0 即有失败**

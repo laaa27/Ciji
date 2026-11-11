@@ -11,13 +11,25 @@ import { useLlm } from '@/store/llm'
  * 2. 词形还原 —— went → go，studies → study，解决变形词
  * 3. 在线兜底（MyMemory，免费无 key）—— 解决短语和生僻词
  *
- * 在线结果会写进 Preferences 永久缓存，同一个词只请求一次。
+ * 在线结果（AI 与 MyMemory）会写进 Preferences 永久缓存，同一个词只请求一次。
+ * 缓存里除释义本身还存了**来源**：AI 释义要在界面标「AI 释义」，只存文字的话
+ * 第二次查（命中缓存）就再也判断不出来了。
  * 墨墨自己的 Vocabulary 接口不含释义（只有 id + spelling），所以释义必须外部解决。
  */
 
+/**
+ * 释义缓存条目。`ai` 是给界面用的来源标记，必须与释义一起持久化——
+ * 否则首次查（走 AI）有标注、二次查（命中缓存）标注丢失，同一个词两副面孔。
+ */
+interface GlossEntry {
+  gloss: string
+  /** 这条释义是不是 AI 产生的（本地词典 / MyMemory 都是 false） */
+  ai: boolean
+}
+
 const SHARD_CACHE = new Map<string, Record<string, string>>()
 const SHARD_INFLIGHT = new Map<string, Promise<Record<string, string>>>()
-const GLOSS_MEMORY = new Map<string, string>()
+const GLOSS_MEMORY = new Map<string, GlossEntry>()
 
 const GLOSS_PREFIX = 'gloss:'
 const ONLINE_FLAG = 'online_lookup'
@@ -100,22 +112,41 @@ async function aiGlossBatch(words: string[]): Promise<Map<string, string>> {
 }
 
 /** 释义缓存读取（AI 与在线兜底共用同一个缓存，都是永久保存） */
-async function cachedGloss(word: string): Promise<string | null> {
+async function cachedGloss(word: string): Promise<GlossEntry | null> {
   const mem = GLOSS_MEMORY.get(word)
   if (mem) return mem
 
   const { value } = await Preferences.get({ key: GLOSS_PREFIX + word })
-  if (value) {
-    GLOSS_MEMORY.set(word, value)
-    return value
-  }
-  return null
+  if (!value) return null
+
+  const entry = parseGlossEntry(value)
+  GLOSS_MEMORY.set(word, entry)
+  return entry
 }
 
-/** AI 释义写入永久缓存：同一个词这辈子只问一次模型 */
-function rememberGloss(word: string, gloss: string): void {
-  GLOSS_MEMORY.set(word, gloss)
-  void Preferences.set({ key: GLOSS_PREFIX + word, value: gloss })
+/**
+ * 缓存值解析。加来源标记之前写入的是纯文本，没有来源信息——
+ * 一律当作非 AI，不猜：猜错会把 MyMemory 的词对词死译也标成 AI 释义。
+ */
+function parseGlossEntry(raw: string): GlossEntry {
+  if (raw.startsWith('{')) {
+    try {
+      const data = JSON.parse(raw) as { gloss?: unknown; ai?: unknown }
+      if (typeof data.gloss === 'string' && data.gloss) {
+        return { gloss: data.gloss, ai: data.ai === true }
+      }
+    } catch {
+      // 内容不合法就落到下面：原样当释义返回，至少不丢已缓存的文字
+    }
+  }
+  return { gloss: raw, ai: false }
+}
+
+/** 写释义缓存：同一个词这辈子只问一次模型，来源标记跟着释义一起落盘 */
+function rememberGloss(word: string, gloss: string, ai: boolean): void {
+  const entry: GlossEntry = { gloss, ai }
+  GLOSS_MEMORY.set(word, entry)
+  void Preferences.set({ key: GLOSS_PREFIX + word, value: JSON.stringify(entry) })
 }
 
 let onlineEnabled = true
@@ -317,14 +348,8 @@ async function mapLimit<T>(
 
 /** MyMemory：免费、无需 key、带 CORS 头 */
 async function lookupOnline(word: string): Promise<string | null> {
-  const mem = GLOSS_MEMORY.get(word)
-  if (mem) return mem
-
-  const { value } = await Preferences.get({ key: GLOSS_PREFIX + word })
-  if (value) {
-    GLOSS_MEMORY.set(word, value)
-    return value
-  }
+  const cached = await cachedGloss(word)
+  if (cached) return cached.gloss
 
   try {
     const url =
@@ -344,8 +369,7 @@ async function lookupOnline(word: string): Promise<string | null> {
     // 配额用尽或异常时，接口会在 translatedText 里返回提示语
     if (/MYMEMORY WARNING|NO QUERY SPECIFIED|QUERY LENGTH LIMIT/i.test(raw)) return null
 
-    GLOSS_MEMORY.set(word, raw)
-    void Preferences.set({ key: GLOSS_PREFIX + word, value: raw })
+    rememberGloss(word, raw, false)
     return raw
   } catch {
     return null
@@ -394,7 +418,8 @@ export async function lookupWords(
     const ai = await aiGlossBatch(missing)
     for (const [word, gloss] of ai) {
       result.set(word, gloss)
-      rememberGloss(word, gloss)
+      // 词表里批量补出来的 AI 释义也要留来源：稍后点这个词时才能继续标「AI 释义」
+      rememberGloss(word, gloss, true)
     }
 
     const stillMissing = missing.filter((word) => !result.has(word))
@@ -410,7 +435,7 @@ export async function lookupWords(
 
 export interface GlossResult {
   gloss: string | null
-  /** 这次释义是不是 AI 产生的（本地词典 / 缓存 / 在线兜底都是 false） */
+  /** 这次释义是不是 AI 产生的（本地词典 / MyMemory 是 false；命中 AI 缓存记的是 true） */
   ai: boolean
 }
 
@@ -420,30 +445,32 @@ export interface GlossResult {
  * 顺序：本地词典 → 永久缓存 → AI 释义 → MyMemory。
  * onLocal 在本地/缓存命中时先回调一次，让弹层立刻有内容——
  * AI 释义要走一次网络调用，等它再渲染会把瞬时查询拖成秒级。
+ * 回调连 `ai` 一起给，缓存里的 AI 释义才不会先按普通释义渲染一帧再补标签。
  */
 export async function lookupOneDetailed(
   text: string,
-  opts: { onLocal?: (gloss: string) => void } = {},
+  opts: { onLocal?: (gloss: string, ai: boolean) => void } = {},
 ): Promise<GlossResult> {
   const key = text.trim().toLowerCase()
   if (!key) return { gloss: null, ai: false }
 
   const local = await lookupLocal(key)
   if (local) {
-    opts.onLocal?.(local)
+    opts.onLocal?.(local, false)
     return { gloss: local, ai: false }
   }
 
+  // 命中缓存时按落盘时记下的来源返回，首次查询与二次查询表现一致
   const cached = await cachedGloss(key)
   if (cached) {
-    opts.onLocal?.(cached)
-    return { gloss: cached, ai: false }
+    opts.onLocal?.(cached.gloss, cached.ai)
+    return { gloss: cached.gloss, ai: cached.ai }
   }
 
   const ai = await aiGlossBatch([key])
   const aiGloss = ai.get(key)
   if (aiGloss) {
-    rememberGloss(key, aiGloss)
+    rememberGloss(key, aiGloss, true)
     return { gloss: aiGloss, ai: true }
   }
 

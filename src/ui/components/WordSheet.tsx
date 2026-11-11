@@ -88,10 +88,12 @@ export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
     setGloss(null)
     setAiGloss(false)
     void lookupOneDetailed(target, {
-      // 本地词典/缓存命中时先渲染——AI 释义要走一次网络调用，不该挡住瞬时查询
-      onLocal: (g) => {
+      // 本地词典/缓存命中时先渲染——AI 释义要走一次网络调用，不该挡住瞬时查询。
+      // 来源标记也一起给：缓存里的 AI 释义不该先按普通释义闪一帧
+      onLocal: (g, fromAi) => {
         if (!alive) return
         setGloss(g)
+        setAiGloss(fromAi)
         setLoading(false)
       },
     }).then((res) => {
