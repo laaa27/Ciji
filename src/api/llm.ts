@@ -128,7 +128,17 @@ async function post(
 /** 瞬时失败（空响应 / 429 / 5xx）的重试次数 */
 const MAX_TRANSIENT = 1
 const RETRY_DELAY_MS = 600
-const MAX_TOKENS_CAP = 16000
+/**
+ * 单次调用最多能要到多少输出额度。
+ *
+ * 抬到 32000 是因为：思考模式默认开，提示词变长后实测思考能吃掉 8000~30000 字，
+ * 8192 的额度会在正文开始前就被耗尽（finish=length、content 为空）。
+ * deepseek-flash 实测接受 max_tokens=32000（不会 400），所以留足余量；
+ * 服务端若真有更低的硬顶，400 会走 looksLikeBudgetCap 退回原值，不会卡死。
+ */
+const MAX_TOKENS_CAP = 32000
+/** 因为「额度被用尽」而加码重试的次数上限（每次翻倍） */
+const MAX_BUDGET_ESCALATIONS = 2
 
 /**
  * 按 profile 记住「协商过的参数」与「够用的输出预算」，只放内存。
@@ -226,11 +236,22 @@ export async function chatCompletion(
   let transient = 0
   let compatFix = 0
   let budgetFellBack = false
-  /** 被长度上限截断后已经翻倍重试过几次 */
-  let truncatedRetry = 0
+  /** 因为「额度被用尽」加码重试过几次（空正文与截断共用这个计数） */
+  let budgetEscalations = 0
   let lastError: LlmError | null = null
 
-  for (let guard = 0; guard < 6; guard += 1) {
+  /** 额度还够翻倍就加码；已经到顶返回 false，交给上层如实报错 */
+  const escalateBudget = (reason: ParsedReply): boolean => {
+    const starved = reason.truncated || reason.finishReason === 'length'
+    if (!starved || budgetEscalations >= MAX_BUDGET_ESCALATIONS) return false
+    const next = Math.min(Math.max((maxTokens ?? 2000) * 2, 8000), MAX_TOKENS_CAP)
+    if (next <= (maxTokens ?? 0)) return false
+    budgetEscalations += 1
+    maxTokens = next
+    return true
+  }
+
+  for (let guard = 0; guard < 8; guard += 1) {
     const res = await post(target, messages, { ...opts, maxTokens }, compat)
     lastRaw = res.raw
 
@@ -271,12 +292,14 @@ export async function chatCompletion(
     if (!reply.text.trim()) {
       lastError = new LlmError(describeEmpty(reply, res.payload), res.status)
 
+      // 额度被思维链吃光时先加码（max_tokens 只是上限，没用到不额外收费）；
+      // 加码到顶才走「瞬时失败」那次重试，最后才报错
+      if (escalateBudget(reply)) {
+        await sleep(RETRY_DELAY_MS)
+        continue
+      }
       if (transient < MAX_TRANSIENT) {
         transient += 1
-        // 额度被思维链吃光时，直接把上限撑大（max_tokens 只是上限，没用到不额外收费）
-        if (reply.truncated || reply.finishReason === 'length') {
-          maxTokens = Math.min(Math.max((maxTokens ?? 2000) * 2, 8000), MAX_TOKENS_CAP)
-        }
         await sleep(RETRY_DELAY_MS)
         continue
       }
@@ -286,15 +309,14 @@ export async function chatCompletion(
     if (reply.truncated) {
       // 截断说明额度被正文（推理模型还包括思考）吃光了。原先这里直接抛错，
       // 上层重试用的是同一个预算，于是同样的截断必然再发生一次——
-      // 考研档开思考时实测 3/3 全部失败。这里把预算翻倍再给一次机会。
-      if (truncatedRetry < 1 && (maxTokens ?? 2000) < MAX_TOKENS_CAP) {
-        truncatedRetry += 1
-        maxTokens = Math.min(Math.max((maxTokens ?? 2000) * 2, 8000), MAX_TOKENS_CAP)
+      // 考研档开思考时实测 3/3 全部失败。这里逐级加码，到顶才报错。
+      if (escalateBudget(reply)) {
         await sleep(RETRY_DELAY_MS)
         continue
       }
       throw new LlmError('输出被长度上限截断了，换短一点的词表或换支持更长输出的模型')
     }
+
 
     // 这次是靠加大预算才成的，记住它，下一轮直接用
     if (maxTokens && maxTokens > (baseTokens ?? 0)) {

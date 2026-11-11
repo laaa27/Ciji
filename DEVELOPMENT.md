@@ -704,7 +704,7 @@ done | sort -rn | head -5
 | 空态卡片复用 | `EmptyState` 已存在，但今日页/阅读页仍手写 | 顺手替换 |
 | 单元测试 | 无（只有 14 个 e2e 脚本） | 若引入 vitest，优先覆盖 `backup.splitCsv` / `parseImportText` / `lemmaCandidates` / `phraseVariants` / `isCovered` / `isNewerVersion` |
 | 生成文的句长分布仍偏平 | 提示词已按真题逐篇统计给出长句标尺，但 deepseek-flash 关思考时基本写不出 30 词以上的句子（实测长句 0~1 句，真题 3~5 句），句长标准差 3~5（真题 8~10）。**审计刻意不查这一项**（为它重生成是白烧额度），只在报告里记录 | 想真正解决要改 few-shot（把一整段真题式样例放进提示词）或换更强模型；`scripts/analyze-difficulty.py` 可直接验证 |
-| 思考模式与复杂提示词冲突 | `llm.ts` 的 `thinkingOpts` 默认开（reasoning low）。提示词变复杂后实测思考吃掉 8000~30000 字、`finish=length` 让正文为空或 JSON 截断，四级档连续 2 次失败 | 若要开思考，需要把 `MAX_TOKENS_CAP` 抬到 32000 并实测服务端是否接受；否则建议默认关 |
+| 思考模式与复杂提示词冲突 | `thinkingOpts` 默认开（reasoning low）。提示词变长后实测思考吃掉 8000~30000 字，正文会被挤断。2026-11-11 已把成文预算从 8192 提到 **16000**、`MAX_TOKENS_CAP` 提到 **32000**、截断时逐级加码两次；实测 cet4 一篇 `completion_tokens=15453`（贴着 16000）才写完 | 仍需观察：贴着上限说明随时可能溢出，若用户反馈仍有截断，优先建议改成默认关思考（关思考 10 秒一篇、稳定） |
 
 ---
 

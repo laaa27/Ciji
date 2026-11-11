@@ -77,6 +77,17 @@ const longSentences = () => {
   return out
 }
 
+/**
+ * 末尾被截断的样例：前面完全合格，只把最后一句的句号去掉。
+ * 这种残篇在真实生成里很常见（思考吃光额度，正文写一半就停），审计必须打回。
+ */
+const truncatedSentences = () => {
+  const out = longSentences()
+  const last = out[out.length - 1]
+  out[out.length - 1] = { ...last, en: last.en.replace(/\.$/, '') }
+  return out
+}
+
 let pass = 0
 let fail = 0
 const ok = (name, cond, extra) => {
@@ -97,7 +108,7 @@ const browser = await puppeteer.launch({
 
 /**
  * 跑一个场景。
- * @param plan (nth) => 'short' | 'long'   第 n 次「成文」请求返回什么
+ * @param plan (nth) => 'short' | 'long' | 'cut'   第 n 次「成文」请求返回什么
  */
 async function runScenario(name, plan) {
   console.log(`\n${name}`)
@@ -142,9 +153,14 @@ async function runScenario(name, plan) {
           {
             message: {
               content: JSON.stringify({
-                title: kind === 'long' ? 'AUDIT-LONG' : 'AUDIT-SHORT',
+                title: kind === 'long' ? 'AUDIT-LONG' : kind === 'cut' ? 'AUDIT-CUT' : 'AUDIT-SHORT',
                 titleZh: '审计样例',
-                sentences: kind === 'long' ? longSentences() : shortSentencesOf(),
+                sentences:
+                  kind === 'long'
+                    ? longSentences()
+                    : kind === 'cut'
+                      ? truncatedSentences()
+                      : shortSentencesOf(),
               }),
             },
             finish_reason: 'stop',
@@ -222,6 +238,17 @@ async function runScenario(name, plan) {
   )
   ok('标注里说清了是篇幅偏短', reason.includes('篇幅偏短'), reason)
   ok('文章仍然可读（有标题）', text.includes('AUDIT-SHORT'), text.slice(0, 80))
+  await page.close()
+}
+
+/* ── 场景 3：末句被截断（其余指标合格）→ 也要重生成 ── */
+{
+  const { page, text, articleCalls } = await runScenario('[3] 末句截断 → 自动重生成', (n) =>
+    n === 1 ? 'cut' : 'long',
+  )
+  ok('成文被请求了 2 次（截断也算硬伤）', articleCalls === 2, articleCalls)
+  ok('最终拿到完整的那篇', text.includes('AUDIT-LONG'), text.slice(0, 80))
+  ok('残篇没有被当成品交付', !text.includes('AUDIT-CUT'), text.slice(0, 80))
   await page.close()
 }
 

@@ -315,6 +315,13 @@ function auditArticle(
     problems.push(`有 ${longest} 词的长句（上限 ${spec.maxSentence}）`)
   }
 
+  // 末句没有收尾标点 = 输出被截断（实测思考吃光额度时就这样：正文写一半就停），
+  // 这种残篇不能当成品交付，必须重生成
+  const lastEn = a.sentences[a.sentences.length - 1]?.en.trim() ?? ''
+  if (lastEn && !/[.!?"'”’）)]$/.test(lastEn)) {
+    problems.push('结尾不完整（最后一句没有收尾标点，多半是输出被截断）')
+  }
+
   // 平均句长允许 ±2 词的浮动：卡死在区间边界会把合格文章也打回去重生成
   const avg = words / Math.max(1, lens.length)
   const [aMin, aMax] = spec.avgSentence
@@ -354,8 +361,9 @@ function thinkingOpts(): { reasoningEffort: 'low' } | { thinkingDisabled: true }
     ? { reasoningEffort: 'low' }
     : { thinkingDisabled: true }
 }
-/** 成文预算：推理模型会把额度分给思考，2600 根本不够（实测必被吃光） */
-const ARTICLE_MAX_TOKENS = 8192
+/** 成文预算：推理模型会把额度分给思考。16000 是实测能写完 400 词正文并留出思考余量的起点；
+ *  还不够时 llm.ts 会逐级加到 32000。 */
+const ARTICLE_MAX_TOKENS = 16000
 
 /**
  * 生成一篇文章：先列提纲，再按提纲成文。
