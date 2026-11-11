@@ -400,12 +400,12 @@ node tests/e2e/verify-reading-layout.mjs# 10 项：排版（句子连排、译�
 node tests/e2e/verify-kind-toggle.mjs   #  8 项：三类互斥 + 多选
 node tests/e2e/verify-glass.mjs         #  7 项：液态玻璃
 node tests/e2e/verify-read-restore.mjs  #  7 项：重启后回到原处
-node tests/e2e/verify-article-audit.mjs #  6 项：生成后审计与重生成
+node tests/e2e/verify-article-audit.mjs # 12 项：生成后审计（残篇 / 截断 / 句式模板化）与重生成
 node tests/e2e/verify-phrase-match.mjs  # 23 项：点词匹配固定搭配
 node tests/e2e/verify-gloss-source.mjs  # 24 项：AI 释义标注在缓存命中后不丢（含本地/MyMemory 不误标）
 ```
 
-合计 **286 项断言**。跑法约定：
+合计 **292 项断言**。跑法约定：
 
 - **从仓库根目录执行**（脚本用相对路径写截图，才会落在被 `/*.png` 忽略的位置）
 - 输出逐项 ✓ / ✗，**退出码非 0 即有失败**

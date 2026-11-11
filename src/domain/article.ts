@@ -277,6 +277,8 @@ const NOMINAL_SUFFIX = /(tion|sion|ment|ance|ence|ity|ness|ism|ship)$/i
 /** 真题名词化 2.1~3.5 / 百词、被动 5.8%~19.8%；超过说明写成了学术摘要而不是考试阅读 */
 const MAX_NOMINAL_PER_100 = 6
 const MAX_PASSIVE_RATIO = 22
+/** 「, which / , who」非限制性定语从句最多几句：真题四级一篇约 0.4 句、考研约 1.7 句 */
+const MAX_NONRESTRICTIVE = 3
 
 /**
  * 生成后审计：这一篇够不够得上它的档位。
@@ -344,11 +346,33 @@ function auditArticle(
     problems.push(`被动句过多（${passivePct.toFixed(0)}% 的句子，上限 ${MAX_PASSIVE_RATIO}%）`)
   }
 
+  // 用同一个模板反复凑长句：实测一篇四级稿 15 句里有 6 句是「, which …」，
+  // 真题四级 2.4% 的句子有这种结构（一篇约 0.4 句）。超过 3 处就是模板化，重写。
+  const nonRestrictive = a.sentences.filter((s) => /,\s+(which|who)\b/i.test(s.en)).length
+  if (nonRestrictive > MAX_NONRESTRICTIVE) {
+    problems.push(`「, which/who」用得太密（${nonRestrictive} 句，上限 ${MAX_NONRESTRICTIVE}）`)
+  }
+
   return problems
 }
 
 /** 最多生成几次：1 次初稿 + 1 次重生成 */
 const MAX_GENERATE_ATTEMPTS = 2
+
+/**
+ * 生成过程中对外汇报的「大致进度」。
+ * 只用来给用户一个"模型在忙什么"的交代，不追求精确——
+ * 每阶段真实耗时不稳（思考量随提示词波动），所以界面拿它做步骤指示而不是进度条。
+ */
+export type GenStage = 'outline' | 'draft' | 'revise' | 'save'
+
+export interface GenProgress {
+  stage: GenStage
+  /** 第几次成文（1 = 初稿，2 = 审计未过后的重写） */
+  attempt: number
+}
+
+export type GenProgressHandler = (p: GenProgress) => void
 
 /**
  * 按设置决定思考参数（设置 → 大模型 → 「文章生成 · 思考模式」）。
@@ -369,14 +393,21 @@ const ARTICLE_MAX_TOKENS = 16000
  * 生成一篇文章：先列提纲，再按提纲成文。
  * 两步走比一步直出更不容易写成词表拼接 —— 模型先被迫想清楚要论证什么。
  * 提纲失败会自动退回单步生成；成文格式解析失败会重试一次。
+ *
+ * onProgress 在每次换阶段时回调一次（提纲 → 成文 → 必要时重写），
+ * 让界面能说清"现在在干嘛"，而不是只有一个转圈。
  */
-export async function generateArticle(opts: GenerateOptions): Promise<Article> {
+export async function generateArticle(
+  opts: GenerateOptions,
+  onProgress?: GenProgressHandler,
+): Promise<Article> {
   if (opts.words.length === 0) throw new Error('没有可用的单词')
 
   // 记录用的是哪份配置、哪个模型：以后换了模型，旧文章的来源仍然查得到
   const profile = useLlm.getState().active()
 
   // 第一步：提纲
+  onProgress?.({ stage: 'outline', attempt: 1 })
   const outline = await buildOutline(opts.words, opts.level)
 
   const messages = buildArticleMessages(opts.words, opts.level, outline)
@@ -387,6 +418,8 @@ export async function generateArticle(opts: GenerateOptions): Promise<Article> {
 
   for (let attempt = 0; attempt < MAX_GENERATE_ATTEMPTS; attempt += 1) {
     if (attempt > 0) await sleep(400)
+
+    onProgress?.({ stage: attempt === 0 ? 'draft' : 'revise', attempt: attempt + 1 })
 
     try {
       const raw = await chatCompletion(messages, {

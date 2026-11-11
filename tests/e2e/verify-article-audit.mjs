@@ -78,6 +78,22 @@ const longSentences = () => {
 }
 
 /**
+ * 「, which」模板化样例：其余指标全部合格，只有 6 句共用同一种非限制性定语从句。
+ * 实测真实生成里出现过一篇 15 句有 6 句是 , which —— 这种"同一个模子刻的"要打回。
+ */
+const whichSentences = () => {
+  const out = longSentences()
+  let patched = 0
+  for (let i = 0; i < out.length && patched < 3; i += 1) {
+    if (out[i].en.includes(', which')) continue
+    if (out[i].en.split(/\s+/).length < 20) continue
+    out[i] = { ...out[i], en: out[i].en.replace(/\.$/, ', which matters a great deal.') }
+    patched += 1
+  }
+  return out
+}
+
+/**
  * 末尾被截断的样例：前面完全合格，只把最后一句的句号去掉。
  * 这种残篇在真实生成里很常见（思考吃光额度，正文写一半就停），审计必须打回。
  */
@@ -108,7 +124,7 @@ const browser = await puppeteer.launch({
 
 /**
  * 跑一个场景。
- * @param plan (nth) => 'short' | 'long' | 'cut'   第 n 次「成文」请求返回什么
+ * @param plan (nth) => 'short' | 'long' | 'cut' | 'which'   第 n 次「成文」请求返回什么
  */
 async function runScenario(name, plan) {
   console.log(`\n${name}`)
@@ -153,14 +169,23 @@ async function runScenario(name, plan) {
           {
             message: {
               content: JSON.stringify({
-                title: kind === 'long' ? 'AUDIT-LONG' : kind === 'cut' ? 'AUDIT-CUT' : 'AUDIT-SHORT',
+                title:
+                  kind === 'long'
+                    ? 'AUDIT-LONG'
+                    : kind === 'cut'
+                      ? 'AUDIT-CUT'
+                      : kind === 'which'
+                        ? 'AUDIT-WHICH'
+                        : 'AUDIT-SHORT',
                 titleZh: '审计样例',
                 sentences:
                   kind === 'long'
                     ? longSentences()
                     : kind === 'cut'
                       ? truncatedSentences()
-                      : shortSentencesOf(),
+                      : kind === 'which'
+                        ? whichSentences()
+                        : shortSentencesOf(),
               }),
             },
             finish_reason: 'stop',
@@ -249,6 +274,16 @@ async function runScenario(name, plan) {
   ok('成文被请求了 2 次（截断也算硬伤）', articleCalls === 2, articleCalls)
   ok('最终拿到完整的那篇', text.includes('AUDIT-LONG'), text.slice(0, 80))
   ok('残篇没有被当成品交付', !text.includes('AUDIT-CUT'), text.slice(0, 80))
+  await page.close()
+}
+
+/* ── 场景 4：, which 模板化（其余合格）→ 也要重生成 ── */
+{
+  const { page, text, articleCalls } = await runScenario('[4] 句式模板化 → 自动重生成', (n) =>
+    n === 1 ? 'which' : 'long',
+  )
+  ok('成文被请求了 2 次（句式重复也算硬伤）', articleCalls === 2, articleCalls)
+  ok('最终拿到句式有变化的那篇', text.includes('AUDIT-LONG'), text.slice(0, 80))
   await page.close()
 }
 

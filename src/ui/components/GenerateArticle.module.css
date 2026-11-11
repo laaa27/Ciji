@@ -389,3 +389,149 @@
 .clearBtn:active {
   opacity: 0.85;
 }
+
+/* ── 生成进度：三步 + 秒表 ──────────────────
+   只表示"走到哪一步"，不画百分比：每步真实耗时 20~90 秒都在变，进度条只会骗人 */
+.progress {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--rule);
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.2s ease;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--rule-strong);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.step[data-done='true'] {
+  color: var(--ink-2);
+}
+
+.step[data-done='true'] .dot {
+  background: var(--ink-3);
+}
+
+.step[data-on='true'] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.step[data-on='true'] .dot {
+  background: var(--accent);
+  animation: stepBreathe 1.1s ease-in-out infinite;
+}
+
+@keyframes stepBreathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.7);
+    opacity: 0.45;
+  }
+}
+
+.progressLine {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+.waited {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 生成进度：三步 + 秒表 ──────────────────
+   只表示"走到哪一步"，不画百分比：每步真实耗时 20~90 秒都在变，进度条只会骗人 */
+.progress {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--rule);
+}
+
+.steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color 0.2s ease;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--rule-strong);
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+
+.step[data-done='true'] {
+  color: var(--ink-2);
+}
+
+.step[data-done='true'] .dot {
+  background: var(--ink-3);
+}
+
+.step[data-on='true'] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.step[data-on='true'] .dot {
+  background: var(--accent);
+  animation: stepBreathe 1.1s ease-in-out infinite;
+}
+
+@keyframes stepBreathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.7);
+    opacity: 0.45;
+  }
+}
+
+.progressLine {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--ink-2);
+}
+
+.waited {
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}

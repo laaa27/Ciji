@@ -11,6 +11,7 @@ import {
   KIND_LABEL,
   WORD_LIMITS,
   type ArticleLevel,
+  type GenProgress,
   type WordCandidate,
   type WordKind,
 } from '@/domain/article'
@@ -47,6 +48,8 @@ type Props = {
   initialLevel: ArticleLevel
   initialLimit: number
   busy: boolean
+  /** 生成阶段，busy 时用来交代「模型现在在干嘛」 */
+  stage: GenProgress | null
   error: string | null
   onBack: () => void
   onGenerate: (req: GenerateRequest) => Promise<void>
@@ -55,6 +58,31 @@ type Props = {
 }
 
 const KINDS: WordKind[] = ['forget', 'vague', 'new']
+
+/**
+ * 三步进度：只表示"走到哪一步"，不画百分比。
+ * 每一步的真实耗时随思考量波动（20~90 秒都见过），画进度条只会骗人。
+ */
+const STEPS: { key: 'outline' | 'draft' | 'save'; label: string }[] = [
+  { key: 'outline', label: '列提纲' },
+  { key: 'draft', label: '写正文' },
+  { key: 'save', label: '存文章' },
+]
+
+/** 阶段 → 一句人话 */
+function stageLine(stage: GenProgress | null): string {
+  if (!stage) return '正在连接模型…'
+  switch (stage.stage) {
+    case 'outline':
+      return '在读这些词，先想清楚这篇要论证什么'
+    case 'draft':
+      return '按提纲写正文，逐句把目标词放进论证里'
+    case 'revise':
+      return '上一稿没过检查（篇幅 / 缺词 / 句式），正在重写'
+    case 'save':
+      return '写完了，正在存进文章库'
+  }
+}
 
 const KIND_COLOR: Record<WordKind, string> = {
   forget: 'var(--state-forget)',
@@ -68,6 +96,7 @@ export default function GenerateArticle({
   initialLevel,
   initialLimit,
   busy,
+  stage,
   error,
   onBack,
   onGenerate,
@@ -96,6 +125,21 @@ export default function GenerateArticle({
   const [confirmClear, setConfirmClear] = useState(false)
   const [clearMsg, setClearMsg] = useState<string | null>(null)
   const [reloadTick, setReloadTick] = useState(0)
+
+  /** 生成期间的秒表：只让用户知道"还在动"，不做预估 */
+  const [waited, setWaited] = useState(0)
+  useEffect(() => {
+    if (!busy) {
+      setWaited(0)
+      return
+    }
+    const t0 = Date.now()
+    const id = setInterval(() => setWaited(Math.floor((Date.now() - t0) / 1000)), 1000)
+    return () => clearInterval(id)
+  }, [busy])
+
+  const activeStep = stage?.stage === 'save' ? 2 : stage?.stage === 'outline' ? 0 : 1
+  const revising = stage?.stage === 'revise'
 
   async function handleClearCoverage() {
     if (!confirmClear) {
@@ -426,7 +470,27 @@ export default function GenerateArticle({
         {busy ? '生成中…' : `用 ${Math.min(chosen.length, limit)} 个词生成`}
       </button>
 
-      {busy && <p className={`${styles.hint} loading-pulse`}>先列提纲，再成文，推理模型通常 40~90 秒。</p>}
+      {busy && (
+        <div className={styles.progress} role="status" aria-live="polite">
+          <div className={styles.steps}>
+            {STEPS.map((s, i) => (
+              <span
+                key={s.key}
+                className={styles.step}
+                data-on={i === activeStep}
+                data-done={i < activeStep}
+              >
+                <span className={styles.dot} aria-hidden="true" />
+                {revising && i === 1 ? '重写正文' : s.label}
+              </span>
+            ))}
+          </div>
+          <p className={styles.progressLine}>
+            {stageLine(stage)}
+            <span className={styles.waited}> · 已等 {waited} 秒</span>
+          </p>
+        </div>
+      )}
     </div>
   )
 }

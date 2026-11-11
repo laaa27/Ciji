@@ -19,6 +19,7 @@ import {
   LEVEL_LABEL,
   type Article,
   type ArticleSentence,
+  type GenProgress,
 } from '@/domain/article'
 import { dateKey, monthDay } from '@/lib/date'
 import { restoreScroll } from '@/lib/scroll'
@@ -120,6 +121,8 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     saveShowZh(next)
   }
   const [busy, setBusy] = useState(false)
+  /** 生成阶段（提纲 / 成文 / 重写 / 保存），给生成页那个"现在在干嘛"用 */
+  const [genStage, setGenStage] = useState<GenProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [missing, setMissing] = useState<string[]>([])
   const [sheetWord, setSheetWord] = useState<string | null>(null)
@@ -248,14 +251,19 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     setBusy(true)
     setError(null)
     setMissing([])
+    setGenStage(null)
 
     try {
-      const draft = await generateArticle({
-        words: req.words,
-        kinds: req.kinds,
-        level: req.level,
-        date: req.date,
-      })
+      const draft = await generateArticle(
+        {
+          words: req.words,
+          kinds: req.kinds,
+          level: req.level,
+          date: req.date,
+        },
+        setGenStage,
+      )
+      setGenStage({ stage: 'save', attempt: 1 })
       const saved = await saveArticle(draft)
       // 生成成功了，选词草稿就没用了
       clearGenDraft()
@@ -273,6 +281,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       setError(e instanceof Error ? e.message : '生成失败，请重试')
     } finally {
       setBusy(false)
+      setGenStage(null)
     }
   }
 
@@ -388,6 +397,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
           initialLevel={level}
           initialLimit={wordLimit}
           busy={busy}
+          stage={genStage}
           error={error}
           onBack={sub.close}
           onGenerate={handleGenerate}
