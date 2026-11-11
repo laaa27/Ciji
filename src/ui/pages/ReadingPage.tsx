@@ -13,6 +13,7 @@ import { lemmaCandidates } from '@/data/dict'
 import { lookupKnownPhrases } from '@/domain/memo'
 import { findPhraseAround, phraseCandidates, phraseVariants, type PhraseHit } from '@/domain/phrase'
 import {
+  articleToText,
   generateArticle,
   missingWords,
   wordCount,
@@ -22,6 +23,7 @@ import {
   type ArticleSentence,
   type GenProgress,
 } from '@/domain/article'
+import { copyText } from '@/lib/clipboard'
 import { dateKey, monthDay } from '@/lib/date'
 import { restoreScroll } from '@/lib/scroll'
 import { wordPattern } from '@/lib/text'
@@ -237,6 +239,14 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
 
   function changeWordLimit(next: number) {
     usePrefs.getState().set('readingLimit', next)
+  }
+
+  /** 复制全文：打开译文时按「一句原文、一句译文」逐句交替 */
+  async function copyAll() {
+    if (!article) return
+    const text = articleToText(article, { withZh: showZh, perPara: SENTENCES_PER_PARA })
+    const ok = await copyText(text)
+    useToast.getState().show(ok ? '已复制全文' : '复制失败，可长按文章手动选择')
   }
 
   async function handleGenerate(req: GenerateRequest) {
@@ -537,7 +547,21 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       {hasArticle && article && (
         <>
           <article className={styles.article}>
-            <h2 className={styles.articleTitle}>{article.title}</h2>
+            <div className={styles.titleRow}>
+              <h2 className={styles.articleTitle}>{article.title}</h2>
+              <button
+                type="button"
+                className={styles.copyBtn}
+                onClick={() => void copyAll()}
+                aria-label="复制全文"
+                title={showZh ? '复制全文（含译文，逐句交替）' : '复制全文'}
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+                  <rect x="5.5" y="5.5" width="8" height="9" rx="1.2" fill="none" stroke="currentColor" strokeWidth="1.2" />
+                  <path d="M10.5 5.5V3.7c0-.66-.54-1.2-1.2-1.2H3.7c-.66 0-1.2.54-1.2 1.2v7.1c0 .66.54 1.2 1.2 1.2h1.8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
             {showZh && article.titleZh && (
               <p className={styles.titleZh}>{article.titleZh}</p>
             )}

@@ -370,6 +370,12 @@ export default function GenerateArticle({
             </button>
           ))}
         </div>
+        {/* 说明写在难度下面而不是弹窗里：调难度的人一定会看到 */}
+        <p className={styles.hint}>
+          生成文的结构已尽量参照真题数据（篇幅、句长、文体分布），但这个功能适合用来
+          <strong> 巩固单词、练长难句 </strong>
+          ，不要当作模考卷或真题替代品使用。
+        </p>
       </section>
 
       <section className={styles.field}>

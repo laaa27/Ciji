@@ -70,6 +70,8 @@ const browser = await puppeteer.launch({
 })
 const page = await browser.newPage()
 await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 2 })
+// 复制按钮要读剪贴板验证，headless 下需要显式授权
+await page.browserContext().overridePermissions(APP, ['clipboard-read', 'clipboard-write'])
 
 const errors = []
 page.on('pageerror', (e) => errors.push(e.message))
@@ -443,6 +445,39 @@ const y2 = await page.evaluate(() => {
   return Math.round(s?.scrollTop ?? -1)
 })
 ok('滚动位置恢复', Math.abs(y2 - y1) <= 2, `${y1} → ${y2}`)
+
+console.log('\n[8.5] 复制全文（打开译文时逐句交替）')
+{
+  const hasBtn = await page.evaluate(() => Boolean(document.querySelector('[aria-label="复制全文"]')))
+  ok('标题右侧有复制按钮', hasBtn)
+
+  await page.evaluate(() => document.querySelector('[aria-label="复制全文"]')?.click())
+  await t(400)
+  const toastText = await page.evaluate(
+    () => document.querySelector('[role="status"]')?.textContent?.trim() ?? '',
+  )
+  ok('复制后弹提示', toastText.includes('已复制全文'), toastText)
+
+  const withZh = await page.evaluate(() => navigator.clipboard.readText())
+  ok('剪贴板开头是标题', withZh.startsWith('The Weight of Habit 1'), withZh.slice(0, 40))
+  ok(
+    '逐句交替：英文行后紧跟译文行',
+    /mentions [a-z]+[^\n]*\n第 1 句用平静的方式提到了/.test(withZh),
+    withZh.slice(0, 160),
+  )
+
+  // 关掉译文再复制一次：不该再带中文
+  await clickText('译文')
+  await t(300)
+  await page.evaluate(() => document.querySelector('[aria-label="复制全文"]')?.click())
+  await t(400)
+  const withoutZh = await page.evaluate(() => navigator.clipboard.readText())
+  ok('关掉译文后不带译文', !withoutZh.includes('第 1 句'), withoutZh.slice(0, 120))
+  // Windows 剪贴板会把 LF 规范成 CRLF，断言前先统一换行
+  const plain = withoutZh.replace(/\r\n/g, '\n')
+  ok('关掉译文后仍是分段正文', plain.split('\n\n').length >= 3,
+     'blocks=' + plain.split('\n\n').length + ' len=' + plain.length)
+}
 
 console.log('\n[9] 顶部工具条吸顶')
 await scrollTo(700)
