@@ -8,7 +8,9 @@ import {
   buildArticleMessages,
   buildOutlineMessages,
   LEVEL_SPEC,
+  pickGenre,
   type ArticleLevel,
+  type Genre,
   type Outline,
 } from '@/domain/prompts'
 
@@ -18,8 +20,8 @@ export type ArticleMode = 'weak' | 'new' | 'all'
  * 难度类型、标签、提示词全部住在 `domain/prompts.ts` —— 那边零依赖，
  * `scripts/gen-article.mjs` 能在 node 里用同一份文本做对比实验。
  */
-export type { ArticleLevel, Outline } from '@/domain/prompts'
-export { LEVEL_LABEL } from '@/domain/prompts'
+export type { ArticleLevel, Genre, Outline } from '@/domain/prompts'
+export { LEVEL_LABEL, GENRE_LABEL, pickGenre } from '@/domain/prompts'
 
 /** 新生成时可选的难度（雅思用不上，从选项里去掉） */
 export const LEVELS: ArticleLevel[] = ['cet4', 'cet6', 'kaoyan']
@@ -60,6 +62,8 @@ export interface Article {
   kinds?: WordKind[]
   mode: ArticleMode
   level: ArticleLevel
+  /** 文体（老文章没有这个字段，界面按没有处理） */
+  genre?: Genre
   model: string
   createdAt: string
   /**
@@ -149,9 +153,13 @@ export function trimSelection(
 
 /* ── 第一步：先列提纲 ─────────────────────── */
 
-async function buildOutline(words: string[], level: ArticleLevel): Promise<Outline | null> {
+async function buildOutline(
+  words: string[],
+  level: ArticleLevel,
+  genre: Genre,
+): Promise<Outline | null> {
   try {
-    const raw = await chatCompletion(buildOutlineMessages(words, level), {
+    const raw = await chatCompletion(buildOutlineMessages(words, level, genre), {
       temperature: 0.9,
       maxTokens: 3000,
       ...thinkingOpts(),
@@ -261,6 +269,8 @@ export interface GenerateOptions {
   kinds: WordKind[]
   level: ArticleLevel
   date: string
+  /** 指定文体；不传就按该档的配额抽签（界面上没有文体开关） */
+  genre?: Genre
 }
 
 /** kinds → 旧的 mode 字段，保证老代码/老数据一条线 */
@@ -279,6 +289,10 @@ const MAX_NOMINAL_PER_100 = 6
 const MAX_PASSIVE_RATIO = 22
 /** 「, which / , who」非限制性定语从句最多几句：真题四级一篇约 0.4 句、考研约 1.7 句 */
 const MAX_NONRESTRICTIVE = 3
+/** 主张表述：议论文靠它立论，说明文里出现就是跑偏 */
+const CLAIM_WORDS = /\b(should|must|ought to|need to|had better)\b/gi
+/** 说明文允许的「应该」处数（留给引述他人观点的余地） */
+const MAX_EXPOSITORY_CLAIMS = 2
 
 /**
  * 生成后审计：这一篇够不够得上它的档位。
@@ -295,6 +309,7 @@ const MAX_NONRESTRICTIVE = 3
 function auditArticle(
   a: Pick<Article, 'sentences' | 'targetWords'>,
   level: ArticleLevel,
+  genre: Genre,
 ): string[] {
   const spec = LEVEL_SPEC[level]
   const problems: string[] = []
@@ -324,10 +339,12 @@ function auditArticle(
     problems.push('结尾不完整（最后一句没有收尾标点，多半是输出被截断）')
   }
 
-  // 平均句长允许 ±2 词的浮动：卡死在区间边界会把合格文章也打回去重生成
+  // 平均句长允许浮动：卡死在区间边界会把合格文章打回去重生成。
+  // 说明文要解释机制和成因，实测句长天然高一截（21.5~25.2 vs 规格 18~21），所以多放 1 词。
   const avg = words / Math.max(1, lens.length)
   const [aMin, aMax] = spec.avgSentence
-  if (avg < aMin - 2 || avg > aMax + 2) {
+  const avgSlack = genre === 'expository' ? 3 : 2
+  if (avg < aMin - 2 || avg > aMax + avgSlack) {
     problems.push(`平均句长 ${avg.toFixed(1)} 词（目标 ${aMin}~${aMax}）`)
   }
 
@@ -351,6 +368,16 @@ function auditArticle(
   const nonRestrictive = a.sentences.filter((s) => /,\s+(which|who)\b/i.test(s.en)).length
   if (nonRestrictive > MAX_NONRESTRICTIVE) {
     problems.push(`「, which/who」用得太密（${nonRestrictive} 句，上限 ${MAX_NONRESTRICTIVE}）`)
+  }
+
+  // 文体一致性。提示词里已经交代了文体，但模型很容易滑回"给建议"的老路：
+  // 说明文写成提案（should 满天飞）、议论文写成纯描述（一个主张都没有），都要打回。
+  const claims = (a.sentences.map((s) => s.en).join(' ').match(CLAIM_WORDS) ?? []).length
+  if (genre === 'expository' && claims > MAX_EXPOSITORY_CLAIMS) {
+    problems.push(`说明文里出现了 ${claims} 处「应该/必须」，写成了建议文（上限 ${MAX_EXPOSITORY_CLAIMS}）`)
+  }
+  if (genre === 'argument' && claims === 0) {
+    problems.push('议论文里没有任何主张表述（should / must），写成了纯描述')
   }
 
   return problems
@@ -406,11 +433,14 @@ export async function generateArticle(
   // 记录用的是哪份配置、哪个模型：以后换了模型，旧文章的来源仍然查得到
   const profile = useLlm.getState().active()
 
+  // 文体按档位配额抽（四级以说明文为主）：同一个词表连生成几篇，不会篇篇都是"应该怎么做"
+  const genre = opts.genre ?? pickGenre(opts.level)
+
   // 第一步：提纲
   onProgress?.({ stage: 'outline', attempt: 1 })
-  const outline = await buildOutline(opts.words, opts.level)
+  const outline = await buildOutline(opts.words, opts.level, genre)
 
-  const messages = buildArticleMessages(opts.words, opts.level, outline)
+  const messages = buildArticleMessages(opts.words, opts.level, outline, genre)
 
   let lastError: unknown = null
   /** 有硬伤但勉强能用的一篇：重生成也不合格时交它，别让用户白等 */
@@ -439,11 +469,12 @@ export async function generateArticle(
         kinds: opts.kinds,
         mode: modeOf(opts.kinds),
         level: opts.level,
+        genre,
         model: profile ? `${profile.name} / ${profile.model}` : 'unknown',
         createdAt: new Date().toISOString(),
       }
 
-      const problems = auditArticle(article, opts.level)
+      const problems = auditArticle(article, opts.level, genre)
       if (problems.length === 0) return article
 
       if (!best || problems.length < best.problems.length) best = { article, problems }

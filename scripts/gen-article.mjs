@@ -32,6 +32,8 @@ import {
   buildOutlineMessages,
   LEVEL_SPEC,
   PROMPT_VERSION,
+  GENRE_LABEL,
+  pickGenre,
 } from '../src/domain/prompts.ts'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -75,6 +77,8 @@ function loadConfig() {
     thinking: has('thinking') ? arg('thinking') : file.thinking || 'default',
   }
 }
+/** 文体：不指定就按该档配额抽签 */
+const genreArg = arg('genre')
 const wordsArg = arg('words')
 const wordsFile = arg('words-file')
 const runs = Number(arg('runs', '1'))
@@ -283,16 +287,17 @@ function printCorpus() {
 /** 单篇生成：提纲 → 成文（和 app 的 generateArticle 同流程） */
 async function generateOnce(lv, idx) {
   const t0 = Date.now()
+  const genre = genreArg === 'expository' || genreArg === 'argument' ? genreArg : pickGenre(lv)
   let outline = null
   try {
-    const r = await chatWithBudget(buildOutlineMessages(words, lv), 0.9, [1200, 3000], `[${lv} #${idx}] 提纲`)
+    const r = await chatWithBudget(buildOutlineMessages(words, lv, genre), 0.9, [1200, 3000], `[${lv} #${idx}] 提纲`)
     const o = parseLoose(r.content)
     outline = o && o.topic ? { topic: String(o.topic), paragraphs: o.paragraphs ?? [] } : null
   } catch (e) {
     console.log(`  [${lv} #${idx}] 提纲失败，退回单步：${String(e.message).slice(0, 90)}`)
   }
 
-  const msgs = buildArticleMessages(words, lv, outline)
+  const msgs = buildArticleMessages(words, lv, outline, genre)
 
   const r = await chatWithBudget(msgs, temp, [2600, 5200, 8192], `[${lv} #${idx}] 成文`)
   const parsed = parseLoose(r.content)
@@ -305,6 +310,7 @@ async function generateOnce(lv, idx) {
 
   return {
     level: lv,
+    genre,
     ms: Date.now() - t0,
     title: parsed.title ?? '',
     metrics: m,
@@ -336,7 +342,7 @@ async function runLevel(lv, n) {
     rows.push(r)
     const m = r.metrics
     console.log(
-      `  [${lv} #${i}] 词数 ${m.words}（${spec.words.join('~')}）` +
+      `  [${lv} #${i}] ${GENRE_LABEL[r.genre]} · 词数 ${m.words}（${spec.words.join('~')}）` +
         ` · avg ${m.avg}（${spec.avgSentence.join('~')}，真题 ${stats.meanAvg}）` +
         ` · 最长 ${m.max}（≤${spec.maxSentence}）` +
         ` · >30词 ${m.over30}%` +
@@ -456,11 +462,11 @@ if (has('models')) {
   printCorpus()
 } else if (has('dry-run')) {
   console.log(`\n===== 提纲阶段提示词（${level}）=====\n`)
-  for (const m of buildOutlineMessages(words.length ? words : ['example'], level)) {
+  for (const m of buildOutlineMessages(words.length ? words : ['example'], level, pickGenre(level))) {
     console.log(`[${m.role}]\n${m.content}\n`)
   }
   console.log(`\n===== 成文阶段提示词（${level}）=====\n`)
-  for (const m of buildArticleMessages(words.length ? words : ['example'], level, null)) {
+  for (const m of buildArticleMessages(words.length ? words : ['example'], level, null, pickGenre(level))) {
     console.log(`[${m.role}]\n${m.content}\n`)
   }
 } else {

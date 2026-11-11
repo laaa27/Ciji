@@ -184,10 +184,12 @@ page.on('request', (req) => {
               `and few readers ever notice how much this small habit costs them over the years.`,
             zh: `第 ${i + 1} 句用平静的方式提到了 ${TODAY_WORDS[i % TODAY_WORDS.length]}。`,
           }))
-          // 词形还原用：复数与 -ing
+          // 词形还原用：复数与 -ing。
+          // 这里的 should 是给文体审计用的：说明文容忍 ≤2 处、议论文要求 ≥1 处，
+          // 全篇正好 1 处 → 抽到哪种文体都能过，断言不会因为随机文体而飘
           sentences.push({
-            en: 'Shipments and studying keep the argument moving.',
-            zh: '出货与研究让论证继续推进。',
+            en: 'Shipments and studying keep the argument moving, and schools should study the habit too.',
+            zh: '出货与研究让论证继续推进，学校也该研究这个习惯。',
           })
           return {
             choices: [

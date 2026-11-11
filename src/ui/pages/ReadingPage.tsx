@@ -17,6 +17,7 @@ import {
   missingWords,
   wordCount,
   LEVEL_LABEL,
+  GENRE_LABEL,
   type Article,
   type ArticleSentence,
   type GenProgress,
@@ -543,6 +544,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
 
             <div className={styles.meta}>
               {monthDay(article.date)} · {wordCount(article)} 词 · {LEVEL_LABEL[article.level]}
+              {article.genre ? ` · ${GENRE_LABEL[article.genre]}` : ''}
               {/* 生成后审计没过：不挡阅读，只如实说一句（具体原因在 title 里） */}
               {article.shortfall && (
                 <span className={styles.shortfall} title={article.shortfall}>

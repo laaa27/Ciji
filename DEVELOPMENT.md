@@ -154,7 +154,7 @@ ui  →  store  →  domain  →  data  →  api
 | --- | --- |
 | `collect.ts` | 采集今日快照：进度 + 词表 + 逐词反馈，归成三类 |
 | `article.ts` | 生成流水线：提纲 → 成文 → 审计 → 重生成；候选词与词覆盖校验 |
-| `domain/prompts.ts` | **零依赖**提示词模块，含 `LEVEL_SPEC` 难度规格（✏️ 2026-11 加 `longFrom` / `longExample`：长句门槛与长句标尺）、`MAX_TARGET_WORDS` / `WORD_LIMITS` |
+| `domain/prompts.ts` | **零依赖**提示词模块，含 `LEVEL_SPEC` 难度规格（✏️ 2026-11 加 `longFrom` / `longExample`：长句门槛与长句标尺）、✏️ 文体层 `GENRE_MIX` / `pickGenre` / `GENRE_SPEC`（说明文 / 议论文）、`MAX_TARGET_WORDS` / `WORD_LIMITS` |
 | `phrase.ts` | 点词时在上下文里找固定搭配（±5 词窗口 + 变形还原） |
 | `memo.ts` | 墨墨学习状态查询、加词、提前复习 |
 | `wordforms.ts` | 同族变形（原形 + 词典里真实存在的其他形式） |
@@ -704,6 +704,7 @@ done | sort -rn | head -5
 | 空态卡片复用 | `EmptyState` 已存在，但今日页/阅读页仍手写 | 顺手替换 |
 | 单元测试 | 无（只有 14 个 e2e 脚本） | 若引入 vitest，优先覆盖 `backup.splitCsv` / `parseImportText` / `lemmaCandidates` / `phraseVariants` / `isCovered` / `isNewerVersion` |
 | 生成文的句长分布仍偏平 | 提示词已按真题逐篇统计给出长句标尺，但 deepseek-flash 关思考时基本写不出 30 词以上的句子（实测长句 0~1 句，真题 3~5 句），句长标准差 3~5（真题 8~10）。**审计刻意不查这一项**（为它重生成是白烧额度），只在报告里记录 | 想真正解决要改 few-shot（把一整段真题式样例放进提示词）或换更强模型；`scripts/analyze-difficulty.py` 可直接验证 |
+| 文体配比未经逐篇标注 | 四级 3:1、六级 2:1、考研 1:1 是按真题阅读的直观构成定的，没有逐篇打标统计。抽签结果会体现在阅读页 meta 行的「说明文 / 议论文」上，跑几十篇就能看出比例偏没偏 | 想校准就给 `scripts/corpus/` 每篇补一个文体标签，再统计 |
 | 思考模式与复杂提示词冲突 | `thinkingOpts` 默认开（reasoning low）。提示词变长后实测思考吃掉 8000~30000 字，正文会被挤断。2026-11-11 已把成文预算从 8192 提到 **16000**、`MAX_TOKENS_CAP` 提到 **32000**、截断时逐级加码两次；实测 cet4 一篇 `completion_tokens=15453`（贴着 16000）才写完 | 仍需观察：贴着上限说明随时可能溢出，若用户反馈仍有截断，优先建议改成默认关思考（关思考 10 秒一篇、稳定） |
 
 ---
