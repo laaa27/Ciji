@@ -272,12 +272,23 @@ function modeOf(kinds: WordKind[]): ArticleMode {
   return 'all'
 }
 
+/** 名词化后缀：与 scripts/analyze-difficulty.py 的口径一致，方便两边数字对得上 */
+const NOMINAL_SUFFIX = /(tion|sion|ment|ance|ence|ity|ness|ism|ship)$/i
+/** 真题名词化 2.1~3.5 / 百词、被动 5.8%~19.8%；超过说明写成了学术摘要而不是考试阅读 */
+const MAX_NOMINAL_PER_100 = 6
+const MAX_PASSIVE_RATIO = 22
+
 /**
  * 生成后审计：这一篇够不够得上它的档位。
  *
  * 实测（deepseek-flash）合格率只有四成左右：篇幅经常只有目标的六成，
  * 偶尔还会塌成一百多词的残篇、目标词只用到三分之一。光靠提示词压不住，
  * 所以在代码侧再拦一道，不合格就重新生成。
+ *
+ * 2026-11 补的两条，对应「四级偏简单 / 六级考研偏难」这两个真实偏差
+ * （实测数据见 `词迹-生成难度偏差分析.md`）：
+ * - 平均句长要落在区间内：原来只查最长句上限，四级写成 13.8 词/句（真题 19.4）也不报
+ * - 名词化与被动占比：写成「允许/适度」时模型会当目标追，实测翻 2~3 倍
  */
 function auditArticle(
   a: Pick<Article, 'sentences' | 'targetWords'>,
@@ -298,9 +309,32 @@ function auditArticle(
     problems.push(`缺 ${missing.length} 个目标词：${head}${missing.length > 5 ? '…' : ''}`)
   }
 
-  const longest = a.sentences.reduce((max, s) => Math.max(max, countWords(s.en)), 0)
+  const lens = a.sentences.map((s) => countWords(s.en))
+  const longest = lens.reduce((max, l) => Math.max(max, l), 0)
   if (longest > spec.maxSentence) {
     problems.push(`有 ${longest} 词的长句（上限 ${spec.maxSentence}）`)
+  }
+
+  // 平均句长允许 ±2 词的浮动：卡死在区间边界会把合格文章也打回去重生成
+  const avg = words / Math.max(1, lens.length)
+  const [aMin, aMax] = spec.avgSentence
+  if (avg < aMin - 2 || avg > aMax + 2) {
+    problems.push(`平均句长 ${avg.toFixed(1)} 词（目标 ${aMin}~${aMax}）`)
+  }
+
+  const tokens = a.sentences.map((s) => s.en).join(' ').match(/[A-Za-z][A-Za-z'-]*/g) ?? []
+  const nominal = tokens.filter((w) => w.length > 5 && NOMINAL_SUFFIX.test(w)).length
+  const nominalPct = (100 * nominal) / Math.max(1, tokens.length)
+  if (nominalPct > MAX_NOMINAL_PER_100) {
+    problems.push(`名词化过密（每百词 ${nominalPct.toFixed(1)} 个，上限 ${MAX_NOMINAL_PER_100}）`)
+  }
+
+  const passive = a.sentences.filter((s) =>
+    /\b(is|are|was|were|be|been|being)\s+([a-z]+ed|[a-z]+en)\b/i.test(s.en),
+  ).length
+  const passivePct = (100 * passive) / Math.max(1, lens.length)
+  if (passivePct > MAX_PASSIVE_RATIO) {
+    problems.push(`被动句过多（${passivePct.toFixed(0)}% 的句子，上限 ${MAX_PASSIVE_RATIO}%）`)
   }
 
   return problems
@@ -340,7 +374,7 @@ export async function generateArticle(opts: GenerateOptions): Promise<Article> {
   const messages = buildArticleMessages(opts.words, opts.level, outline)
 
   let lastError: unknown = null
-  /** 审计没过但勉强能用的一篇：重生成也不合格时交它，别让用户白等 */
+  /** 有硬伤但勉强能用的一篇：重生成也不合格时交它，别让用户白等 */
   let best: { article: Article; problems: string[] } | null = null
 
   for (let attempt = 0; attempt < MAX_GENERATE_ATTEMPTS; attempt += 1) {
@@ -377,7 +411,7 @@ export async function generateArticle(opts: GenerateOptions): Promise<Article> {
     }
   }
 
-  // 两次都没达标：交出问题最少的那篇，并如实标注，而不是假装成功
+  // 两次都有硬伤：交出问题最少的那篇，并如实标注，而不是假装成功
   if (best) return { ...best.article, shortfall: best.problems.join('；') }
 
   throw lastError instanceof Error ? lastError : new Error('生成失败')

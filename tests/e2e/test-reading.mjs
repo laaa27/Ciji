@@ -176,8 +176,12 @@ page.on('request', (req) => {
         }
       : (() => {
           articleNo += 1
+          // 句长按考研档的审计要求写（平均 23~26 词）：写成 12 词的短句会被审计判不合格、
+          // 触发重生成，标题序号就不是 2 而是 3 了
           const sentences = Array.from({ length: 42 }, (_, i) => ({
-            en: `Sentence ${i + 1} mentions ${TODAY_WORDS[i % TODAY_WORDS.length]} in a calm, deliberate way.`,
+            en:
+              `Sentence ${i + 1} mentions ${TODAY_WORDS[i % TODAY_WORDS.length]} in a calm, deliberate way, ` +
+              `and few readers ever notice how much this small habit costs them over the years.`,
             zh: `第 ${i + 1} 句用平静的方式提到了 ${TODAY_WORDS[i % TODAY_WORDS.length]}。`,
           }))
           // 词形还原用：复数与 -ing

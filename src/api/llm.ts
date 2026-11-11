@@ -226,6 +226,8 @@ export async function chatCompletion(
   let transient = 0
   let compatFix = 0
   let budgetFellBack = false
+  /** 被长度上限截断后已经翻倍重试过几次 */
+  let truncatedRetry = 0
   let lastError: LlmError | null = null
 
   for (let guard = 0; guard < 6; guard += 1) {
@@ -282,6 +284,15 @@ export async function chatCompletion(
     }
 
     if (reply.truncated) {
+      // 截断说明额度被正文（推理模型还包括思考）吃光了。原先这里直接抛错，
+      // 上层重试用的是同一个预算，于是同样的截断必然再发生一次——
+      // 考研档开思考时实测 3/3 全部失败。这里把预算翻倍再给一次机会。
+      if (truncatedRetry < 1 && (maxTokens ?? 2000) < MAX_TOKENS_CAP) {
+        truncatedRetry += 1
+        maxTokens = Math.min(Math.max((maxTokens ?? 2000) * 2, 8000), MAX_TOKENS_CAP)
+        await sleep(RETRY_DELAY_MS)
+        continue
+      }
       throw new LlmError('输出被长度上限截断了，换短一点的词表或换支持更长输出的模型')
     }
 

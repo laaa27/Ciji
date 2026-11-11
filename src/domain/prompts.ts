@@ -16,15 +16,18 @@ export type ArticleLevel = 'cet4' | 'cet6' | 'kaoyan' | 'ielts'
 /**
  * 一档难度的**可量化规格**。
  *
- * 数字来自 8 篇 2023 真题的实测（四级 2 篇 / 六级 2 篇 / 英语一 2 篇 / 英语二 2 篇，
- * 明细见 `词迹-自定义提示词-可行性分析.md` 的测量表）。三条经验：
+ * 数字来自 2023 年四六级与考研英语二阅读真题的实测（四级 5 篇 / 六级 6 篇 / 英语二 5 篇，
+ * 逐篇指标见 `词迹-生成难度偏差分析.md`）。四条经验：
  *
- * 1. **平均句长不能当唯一判据**：英语一有一篇平均只有 16.2 词（大量短句罗列），
- *    比英语二还短。真题的真实形状是「短句 + 少量极长句」的混合，
- *    所以这里同时约束 `avgSentence`（下限）、`veryLong`（≥40 词的句子至少几句）
- *    和 `shortSents`（≤12 词的句子至少几句）——只压平均句长会把文章写得均匀而假。
- * 2. 篇幅只能用来区分「四级 vs 六级+」：四级 345 词，六级 449 词，考研 395~412 词。
- * 3. 名词化、被动、从属连词密度在不同级别之间互相重叠，区分度低，不作为硬指标。
+ * 1. **平均句长不能当唯一判据**，真题的真实形状是「短句 + 中句 + 少量长句」的三段式：
+ *    四级每篇约 18 句 = 5 句短句（≤12 词）+ 3 句 ≥30 词 + 其余中句，句长标准差 8~10。
+ *    只压平均句长，模型会把所有句子写成同一个长度（实测标准差只有 2.4，0 句超过 21 词），
+ *    读起来平得不像真题——所以 `shortSents` / `veryLong` / `longFrom` 三个数字必须一起给。
+ * 2. 篇幅区分「四级 vs 六级+」：四级 345 词，六级 447 词，考研 407 词。
+ * 3. **名词化与被动在各档之间几乎没有差别**（真题 2.1~3.5/百词、被动 5.8%~19.8%），
+ *    所以它们是 `forbid` 里的限额，不随档位升级——一旦写成「允许/适度」，
+ *    模型会当成目标去追，实测密度翻 2~3 倍，这是「六级考研读起来偏难」的主因。
+ * 4. 真题是**信息型说明文**（有年代、有例子、有对比），不是抽象说理文；提示词必须要求写事实。
  */
 export interface LevelSpec {
   /** 难度定位（界面上那句人话） */
@@ -35,7 +38,9 @@ export interface LevelSpec {
   avgSentence: [number, number]
   /** 单句词数上限 */
   maxSentence: number
-  /** 至少几句要超过 40 词（考研的「长难句」靠这个落地） */
+  /** 长句门槛：单句多少词算「长句」 */
+  longFrom: number
+  /** 至少几句要超过 longFrom（长句尾巴，四级也要有） */
   veryLong: number
   /** 至少几句要不超过 12 词（真题里短句很多，全写长句反而不像） */
   shortSents: number
@@ -45,47 +50,77 @@ export interface LevelSpec {
   syntax: string
   /** 该档明确禁止的结构 */
   forbid: string
+  /**
+   * 长句示例（照这个密度写，不是照抄内容）。
+   * 实测只描述结构（「主干 + which 从句 + 分词短语」）时，模型一句 30 词以上都写不出来；
+   * 给一条现成的长句当标尺，比再写三条形容词有效。
+   */
+  longExample: string
 }
 
 export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
   cet4: {
     label: '大学英语四级：词句平实，少用复杂从句',
     words: [300, 360],
-    avgSentence: [15, 21],
+    avgSentence: [18, 21],
     maxSentence: 45,
-    veryLong: 0,
-    shortSents: 2,
+    longFrom: 30,
+    veryLong: 3,
+    shortSents: 5,
     paragraphs: [5, 5],
-    syntax: '以简单句和并列句为主；从句最多一层（一个定语从句或一个状语从句），不叠加',
-    forbid: '禁止倒装、独立主格、虚拟语气、多层嵌套从句；单句不得超过 45 词，也不许一句话连挂三个以上介词短语',
+    syntax:
+      '以简单句和并列句为主；从句最多一层（一个定语从句或一个状语从句），不叠加；' +
+      '可以有被动语态和 there be 句式（真题里这两种很常见）；' +
+      '但每篇必须有几句 30 词以上的长句——真题每篇约 3 句，靠「主干 + 一个定语从句 + 一个状语短语」搭出来，不要通篇 15 词的小短句',
+    forbid:
+      '禁止倒装、独立主格、虚拟语气、多层嵌套从句；单句不得超过 45 词，也不许一句话连挂三个以上介词短语；' +
+      '禁止把所有句子写成同一个长度（15~20 词一路到底）',
+    longExample:
+      'The habit of quitting early, which many students develop in their first year of college, ' +
+      'often survives into graduate study, quietly shaping daily choices long after the original fear has faded away.',
   },
   cet6: {
     label: '大学英语六级：有一定句式变化，允许抽象表达',
     words: [400, 460],
-    avgSentence: [17, 22],
+    avgSentence: [18, 22],
     maxSentence: 42,
-    veryLong: 1,
-    shortSents: 3,
+    longFrom: 30,
+    veryLong: 2,
+    shortSents: 4,
     paragraphs: [4, 4],
-    syntax: '允许两层结构（定语从句 + 状语从句，或分词短语作状语）；可使用抽象名词与名词化表达',
-    forbid: '禁止通篇短句；单句不得超过 42 词；避免口语化缩略（gonna / kinda / 大量缩写）',
+    syntax:
+      '允许两层结构（定语从句 + 状语从句，或分词短语作状语）；可以出现抽象名词，' +
+      '但名词化表达每百词不超过 4 次，不要通篇抽象名词',
+    forbid:
+      '禁止通篇短句；单句不得超过 42 词；被动语态不超过 15% 的句子；' +
+      '避免口语化缩略（gonna / kinda / 大量缩写）',
+    longExample:
+      'The habit of quitting early, which many students develop in their first year of college, ' +
+      'often survives into graduate study, quietly shaping daily choices long after the original fear has faded away.',
   },
   /**
-   * 考研：以**英语二**的实测为准（2023 英语二 Text 1/Text 2、2022 英语二 Text 1，共 3 篇）。
+   * 考研：以**英语二**的实测为准（2023 英语二 Text 1/Text 2 等，共 5 篇）。
    * 之所以不再分英一/英二：实测两档在句法指标上分不开（avg 23.6 vs 24.1，p90 都是 39），
    * 差别在词汇难度与话题抽象度，而这两项提示词约束不住。
    */
   kaoyan: {
     label: '考研英语：长句为主、从句嵌套，但结构要清楚',
     words: [380, 440],
-    avgSentence: [22, 28],
+    avgSentence: [23, 26],
     maxSentence: 48,
-    veryLong: 1,
+    longFrom: 35,
+    veryLong: 3,
     shortSents: 2,
     paragraphs: [4, 4],
     syntax:
-      '以「长句但结构清楚」为主：允许一层定语从句 + 一层状语从句、非谓语短语作后置定语，少用插入语和倒装',
-    forbid: '禁止三层以上嵌套、禁止连续插入语；单句不得超过 48 词；禁止口语化与简单句堆砌',
+      '以「长句但结构清楚」为主：允许一层定语从句 + 一层状语从句、非谓语短语作后置定语；' +
+      '至少 1 处非限制性定语从句（, which …）或破折号补充说明；名词化每百词不超过 4 次',
+    forbid:
+      '禁止三层以上嵌套、禁止连续插入语；单句不得超过 48 词；被动语态不超过 15% 的句子；' +
+      '禁止通篇长句——每 5 句至少留 1 句不超过 15 词用来换气',
+    longExample:
+      'The habit of quitting early, which many students develop during their first year on campus, ' +
+      'often survives into graduate study and their later careers, quietly shaping daily choices long after the fear that first produced it has faded away.',
   },
   // 新生成已不可选（LEVELS 里没有它），保留只为老文章能显示档位
   ielts: {
@@ -93,11 +128,15 @@ export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
     words: [320, 400],
     avgSentence: [20, 26],
     maxSentence: 40,
-    veryLong: 1,
+    longFrom: 35,
+    veryLong: 2,
     shortSents: 2,
     paragraphs: [4, 4],
     syntax: '学术语域：名词化表达、客观陈述、被动语态适度使用',
     forbid: '禁止口语化与情绪化表达',
+    longExample:
+      'The habit of quitting early, which many students develop during their first year on campus, ' +
+      'often survives into graduate study and their later careers, quietly shaping daily choices long after the fear that first produced it has faded away.',
   },
 }
 
@@ -133,7 +172,7 @@ export interface Outline {
 }
 
 /** 提示词版本：出问题时先看这个，确认是不是提示词改动引起的 */
-export const PROMPT_VERSION = 'v5-2026-11-09-grounded'
+export const PROMPT_VERSION = 'v6-2026-11-11-distribution'
 
 /** 把规格渲染成人能读的几条硬指标，两个阶段共用 */
 function specLines(spec: LevelSpec, detailed: boolean): string[] {
@@ -141,39 +180,36 @@ function specLines(spec: LevelSpec, detailed: boolean): string[] {
   const [aMin, aMax] = spec.avgSentence
   const [pMin, pMax] = spec.paragraphs
 
-  // 关键：给「总词数 + 平均句长」模型做不到（它没法边写边统计）。
-  // 实测发现它会把 400~460 词写成 230 词。改成「几段 × 每段几句 × 每段多少词」——
-  // 这些是**可数的**，写的时候能对上。
   const pMid = Math.round((pMin + pMax) / 2)
   const wPerMin = Math.round(wMin / pMid)
   const wPerMax = Math.round(wMax / pMid)
-  // 段数固定后，每段词数区间与合计一定自洽；留区间时只可能是段数变了，这里不再允许
   const paraText = pMin === pMax ? `${pMid}` : `${pMin}~${pMax}`
+
+  // 篇幅靠「每段几句 × 每段多少词」压住——v5 提示词就是靠这一行把篇幅写够的；
+  // 只给全篇总词数时模型经常只写到六成（实测 cet4 242 / 300）。
+  // 长句只给「标尺示例」（detailed 里那行），不写数字配额：写了配额它会为了凑数把中句拉长，
+  // 平均句长反而失控（实测考研档冲到 29 词/句、短句归零）。
   const aMid = (aMin + aMax) / 2
   const sPerMin = Math.max(3, Math.floor(wPerMin / aMid))
   const sPerMax = Math.max(sPerMin + 1, Math.ceil(wPerMax / aMid))
 
   const lines = [
-    `- 分段：共 ${paraText} 段，每段 ${sPerMin}~${sPerMax} 句，每段 ${wPerMin}~${wPerMax} 词（合计 ${wMin}~${wMax} 词）`,
-    `- 平均句长：${aMin}~${aMax} 词/句，单句不超过 ${spec.maxSentence} 词`,
+    `- 分段：共 ${paraText} 段，每段 ${sPerMin}~${sPerMax} 句、${wPerMin}~${wPerMax} 词` +
+      `（合计 ${wMin}~${wMax} 词，写不够就逐段补论据）`,
+    `- 平均句长 ${aMin}~${aMax} 词/句，单句不超过 ${spec.maxSentence} 词`,
   ]
 
   if (detailed) {
-    const mix: string[] = []
     if (spec.veryLong > 0) {
-      mix.push(
-        `要有 ${spec.veryLong} 句长句（40 词以上）。写法例如「主干 + which 引导的非限制性定语从句 + 分词短语作状语」，` +
-          `或「主干 + 插入语 + while 引导的让步状语」——只给数量模型写不出来，必须往这两种结构上靠`,
+      lines.push(
+        `- 那几句长句要真的带结构，不是把中句硬拉长：用「主干 + which 引导的非限制性定语从句 + 分词短语作状语」，` +
+          `或「主干 + 插入语 + while 引导的让步状语」`,
+        `- 长句标尺（照这个长度和密度写，不要照抄内容）：「${spec.longExample}」`,
       )
     }
-    if (spec.shortSents > 0) {
-      // 实测：把短句写成硬配额，模型会优先凑短句，把整篇平均句长拖垮（四级掉到 12 词/句）
-      mix.push(`另外建议有 ${spec.shortSents} 句短句（12 词以内）用来换气，但不要为了凑短句把整篇写碎`)
-    }
-    if (mix.length > 0) lines.push(`- 句子长度要有落差：${mix.join('；')}`)
-
     lines.push(`- 句法：${spec.syntax}`)
-    lines.push(`- 禁止：${spec.forbid}`)
+    // forbid 里本来就以「禁止」打头，这里再挂一次标签会读成「禁止：禁止倒装」
+    lines.push(`- 禁止：${spec.forbid.replace(/^禁止/, '')}`)
   } else {
     lines.push(`- 句法：${spec.syntax}`)
   }
@@ -244,7 +280,7 @@ export function buildArticleMessages(
     `【要求】`,
     `1. 难度：${spec.label}`,
     ...specLines(spec, true).map((l) => `   ${l}`),
-    `2. 严格按上面的「段 × 句 × 每段词数」写。少于 ${Math.max(0, wMin - 20)} 词视为不合格，必须逐段补到够`,
+    `2. 严格按上面的「分段 + 句子配比」写。少于 ${Math.max(0, wMin - 20)} 词视为不合格，必须逐段补到够`,
     outline
       ? `3. 严格按提纲展开，段落顺序和论点不要改；提纲里的「承接」必须落实为真实的过渡句`
       : `3. 段落之间用递进/转折/因果连接，不允许并列罗列`,
@@ -254,8 +290,10 @@ export function buildArticleMessages(
     `- 禁止逐词造句再拼接：每个段落必须围绕该段的中心论点展开，段内的句子要互相支撑`,
     `- 代词必须有明确的指代对象；However / Therefore 这类衔接词必须存在真实的逻辑关系，不是装饰`,
     `- 自查标准：把目标单词全部拿掉，剩下的文字仍然是一篇逻辑通顺的文章——达不到就重写`,
-    `- 禁止编造具体事实：不要虚构时间、机构名、人名、统计数字。只有常识性事实可以写。` +
-      `需要举例时用「多项研究」「若干城市」「一些政策制定者」这类概括说法`,
+    `- 要写事实，不要通篇抽象判断：至少给出 1 处具体场景（谁在什么场合做什么）、1 处年代或地域范围、` +
+      `1 处对比（过去/现在、城市/乡村、A 地与 B 地）。考试阅读是信息型说明文，不是散文`,
+    `- 但不许编造：具体统计数字、机构名、人名、研究结论都不要虚构。需要举例时用「一些城市」「多项调查」` +
+      `这类概括说法——注意概括说法不能顶替全部论据，事实该占的篇幅还得占`,
     `- 每个目标词都要落在论证里：它必须出现在支撑该段论点的句子中。` +
       `若某个词与主题天然无关，就用一个顺势带过的从句处理，不要为它单独造比喻或场景`,
     ``,

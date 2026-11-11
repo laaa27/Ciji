@@ -154,7 +154,7 @@ ui  →  store  →  domain  →  data  →  api
 | --- | --- |
 | `collect.ts` | 采集今日快照：进度 + 词表 + 逐词反馈，归成三类 |
 | `article.ts` | 生成流水线：提纲 → 成文 → 审计 → 重生成；候选词与词覆盖校验 |
-| `prompts.ts` | **零依赖**提示词模块，含 `LEVEL_SPEC` 难度规格、`MAX_TARGET_WORDS` / `WORD_LIMITS`（✏️ 后两者从 `article.ts` 下沉至此） |
+| `domain/prompts.ts` | **零依赖**提示词模块，含 `LEVEL_SPEC` 难度规格（✏️ 2026-11 加 `longFrom` / `longExample`：长句门槛与长句标尺）、`MAX_TARGET_WORDS` / `WORD_LIMITS` |
 | `phrase.ts` | 点词时在上下文里找固定搭配（±5 词窗口 + 变形还原） |
 | `memo.ts` | 墨墨学习状态查询、加词、提前复习 |
 | `wordforms.ts` | 同族变形（原形 + 词典里真实存在的其他形式） |
@@ -702,7 +702,9 @@ done | sort -rn | head -5
 | `data/dict.ts` 职责过重 | 同时做数据访问与查词编排，460 行 | 若要单测查词逻辑，先拆成 `data/dict` + `domain/lookup` |
 | `domain/article.ts` 依赖 store | 读全局模型配置，导致它不能在 node 里直接跑 | 想用脚本做生成对比实验前，先改成依赖注入 |
 | 空态卡片复用 | `EmptyState` 已存在，但今日页/阅读页仍手写 | 顺手替换 |
-| 单元测试 | 无（只有 13 个 e2e 脚本） | 若引入 vitest，优先覆盖 `backup.splitCsv` / `parseImportText` / `lemmaCandidates` / `phraseVariants` / `isCovered` / `isNewerVersion` |
+| 单元测试 | 无（只有 14 个 e2e 脚本） | 若引入 vitest，优先覆盖 `backup.splitCsv` / `parseImportText` / `lemmaCandidates` / `phraseVariants` / `isCovered` / `isNewerVersion` |
+| 生成文的句长分布仍偏平 | 提示词已按真题逐篇统计给出长句标尺，但 deepseek-flash 关思考时基本写不出 30 词以上的句子（实测长句 0~1 句，真题 3~5 句），句长标准差 3~5（真题 8~10）。**审计刻意不查这一项**（为它重生成是白烧额度），只在报告里记录 | 想真正解决要改 few-shot（把一整段真题式样例放进提示词）或换更强模型；`scripts/analyze-difficulty.py` 可直接验证 |
+| 思考模式与复杂提示词冲突 | `llm.ts` 的 `thinkingOpts` 默认开（reasoning low）。提示词变复杂后实测思考吃掉 8000~30000 字、`finish=length` 让正文为空或 JSON 截断，四级档连续 2 次失败 | 若要开思考，需要把 `MAX_TOKENS_CAP` 抬到 32000 并实测服务端是否接受；否则建议默认关 |
 
 ---
 

@@ -49,19 +49,30 @@ const SNAPSHOT = {
   studiedCount: 12,
 }
 
-const shortSentences = () => [
+/**
+ * 合格的成文样例：要能过 auditArticle 的全部检查（考研档）。
+ * 按真题的「句子配比」造——2 句短句 + 3 句长句 + 12 句中句，约 410 词。
+ * 全篇同一长度的句子在 2026-11 的审计里会被判「句子长度太均匀」，这里刻意做长短交错。
+ */
+// 注意避开 -tion/-sion/-ment 这类名词化词：审计对名词化密度有上限（每百词 6 个）
+const midSentence = (w) =>
+  `Many readers still doubt the ${w} claim, although the proof behind it has grown much stronger ` +
+  `over the past decade and in the years that followed.`
+const longSentence = (w) =>
+  `Researchers keep returning to the ${w} question, and their conclusions, which once looked settled, ` +
+  `remain open to careful debate among those who follow the field closely and who read every new study with deep suspicion.`
+const shortSentencesOf = () => [
   { en: `We should abandon the ${WORDS[0]} habit now.`, zh: '我们应该立刻放弃这个习惯。' },
-  { en: `That is a ${WORDS[1]} question for all of us.`, zh: '那对我们所有人都是个问题。' },
+  { en: `That is a ${WORDS[1]} question.`, zh: '那是个值得追问的问题。' },
 ]
 
 const longSentences = () => {
-  const out = []
-  for (let i = 0; i < 40; i += 1) {
-    const w = WORDS[i % WORDS.length]
-    out.push({
-      en: `Researchers keep returning to the ${w} question, and their conclusions, which once looked settled, remain open to careful debate among those who follow the field closely.`,
-      zh: `研究者不断回到 ${w} 这个问题上，而他们的结论——曾经看似已有定论——在密切关注该领域的人中间仍然值得仔细讨论。`,
-    })
+  const out = shortSentencesOf()
+  for (let i = 0; i < 3; i += 1) {
+    out.push({ en: longSentence(WORDS[i + 2]), zh: `研究者反复回到 ${WORDS[i + 2]} 这个问题上。` })
+  }
+  for (let i = 0; i < 12; i += 1) {
+    out.push({ en: midSentence(WORDS[(i + 4) % WORDS.length]), zh: '很多读者仍然质疑这个说法。' })
   }
   return out
 }
@@ -133,7 +144,7 @@ async function runScenario(name, plan) {
               content: JSON.stringify({
                 title: kind === 'long' ? 'AUDIT-LONG' : 'AUDIT-SHORT',
                 titleZh: '审计样例',
-                sentences: kind === 'long' ? longSentences() : shortSentences(),
+                sentences: kind === 'long' ? longSentences() : shortSentencesOf(),
               }),
             },
             finish_reason: 'stop',
@@ -197,7 +208,7 @@ async function runScenario(name, plan) {
   )
   ok('成文被请求了 2 次（触发重生成）', articleCalls === 2, articleCalls)
   ok('最终拿到的是长的那篇', text.includes('AUDIT-LONG'), text.slice(0, 80))
-  ok('没有标「篇幅偏短」', !text.includes('篇幅偏短'))
+  ok('合格的那篇没有标注', !text.includes('未完全达标'), text.slice(0, 80))
   await page.close()
 }
 
@@ -205,7 +216,11 @@ async function runScenario(name, plan) {
 {
   const { page, text, articleCalls } = await runScenario('[2] 两次都残篇 → 交出并标注', () => 'short')
   ok('成文被请求了 2 次（用尽重试）', articleCalls === 2, articleCalls)
-  ok('阅读页标了「篇幅偏短」', text.includes('篇幅偏短'), text.slice(0, 80))
+  ok('阅读页标了「未完全达标」', text.includes('未完全达标'), text.slice(0, 80))
+  const reason = await page.evaluate(
+    () => document.querySelector('[class*="shortfall"]')?.getAttribute('title') ?? '',
+  )
+  ok('标注里说清了是篇幅偏短', reason.includes('篇幅偏短'), reason)
   ok('文章仍然可读（有标题）', text.includes('AUDIT-SHORT'), text.slice(0, 80))
   await page.close()
 }
