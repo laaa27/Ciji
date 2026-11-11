@@ -424,6 +424,7 @@ node tests/e2e/verify-gloss-source.mjs  # 24 项：AI 释义标注在缓存命�
 | 脚本 | 用途 |
 | --- | --- |
 | `gen-article.mjs` | 生成文章并与真题语料对比（`--measure` / `--dry-run` / `--models` / `--runs`）。依赖同目录 `corpus/` 与 `llm.config.json`，所以不随测试脚本迁走 |
+| `analyze-difficulty.py` | 🆕 五维句法对比（长短句分布 / 简单句 / 嵌套 / 特殊句式 / 修饰复杂化），读 `gen-article` 产出的 json 与 `corpus/` 真题，纯规则判定、零依赖。改提示词前后各跑一次看 delta |
 | `seed.mjs` | 造数据：往 localStorage 预置 30 天快照 / 文章，配合截图 |
 | `shot.mjs` | 万能截图：`node scripts/shot.mjs [url] [out.png] [tab]` |
 | `sync_assets.py` | 同步资源到 Android 工程 |
