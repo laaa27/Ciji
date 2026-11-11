@@ -315,7 +315,9 @@ function auditArticle(
   const problems: string[] = []
 
   const words = wordCount(a)
-  const floor = Math.round(spec.words[0] * 0.9)
+  // 0.85 折：实测 0.9 折把「差 2~9 词」的文章也打回去重写（333/340 vs 下限 342），
+  // 而真塌篇（79/126/129 词）照样拦得住。重写率从 58% 降到 ~25%，省下的是一整轮生成。
+  const floor = Math.round(spec.words[0] * 0.85)
   if (words < floor) {
     problems.push(`篇幅偏短（${words} 词，目标 ${spec.words[0]}~${spec.words[1]}）`)
   }
@@ -339,13 +341,13 @@ function auditArticle(
     problems.push('结尾不完整（最后一句没有收尾标点，多半是输出被截断）')
   }
 
-  // 平均句长允许浮动：卡死在区间边界会把合格文章打回去重生成。
-  // 说明文要解释机制和成因，实测句长天然高一截（21.5~25.2 vs 规格 18~21），所以多放 1 词。
+  // 平均句长只卡下限：句子写得比目标短才是问题（四级会写成 13 词/句那样过于简单）。
+  // 上界不判不合格——实测模型经常写到 24~30 词（目标 18~26），这是"偏长但可读"，
+  // 为它重生成一整轮不值当（12 篇实测里 3 篇被这条打回，重写后也没更好）。
   const avg = words / Math.max(1, lens.length)
-  const [aMin, aMax] = spec.avgSentence
-  const avgSlack = genre === 'expository' ? 3 : 2
-  if (avg < aMin - 2 || avg > aMax + avgSlack) {
-    problems.push(`平均句长 ${avg.toFixed(1)} 词（目标 ${aMin}~${aMax}）`)
+  const [aMin] = spec.avgSentence
+  if (avg < aMin - 2) {
+    problems.push(`平均句长 ${avg.toFixed(1)} 词（目标 ${spec.avgSentence[0]}~${spec.avgSentence[1]}）`)
   }
 
   const tokens = a.sentences.map((s) => s.en).join(' ').match(/[A-Za-z][A-Za-z'-]*/g) ?? []
@@ -359,8 +361,11 @@ function auditArticle(
     /\b(is|are|was|were|be|been|being)\s+([a-z]+ed|[a-z]+en)\b/i.test(s.en),
   ).length
   const passivePct = (100 * passive) / Math.max(1, lens.length)
-  if (passivePct > MAX_PASSIVE_RATIO) {
-    problems.push(`被动句过多（${passivePct.toFixed(0)}% 的句子，上限 ${MAX_PASSIVE_RATIO}%）`)
+  // 说明文天然被动多（定义句、状态陈述），实测单篇能到 27~31%；议论文则很少超过 10%。
+  // 真题四级整体 19.8%，所以 22% 对说明文偏紧，按 30% 卡。
+  const maxPassive = genre === 'expository' ? 30 : MAX_PASSIVE_RATIO
+  if (passivePct > maxPassive) {
+    problems.push(`被动句过多（${passivePct.toFixed(0)}% 的句子，上限 ${maxPassive}%）`)
   }
 
   // 用同一个模板反复凑长句：实测一篇四级稿 15 句里有 6 句是「, which …」，

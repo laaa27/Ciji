@@ -372,9 +372,7 @@ export default function GenerateArticle({
         </div>
         {/* 说明写在难度下面而不是弹窗里：调难度的人一定会看到 */}
         <p className={styles.hint}>
-          生成文的结构已尽量参照真题数据（篇幅、句长、文体分布），但这个功能适合用来
-          <strong> 巩固单词、练长难句 </strong>
-          ，不要当作模考卷或真题替代品使用。
+          尽管生成文的结构已尽量参照真题数据（篇幅、句长、文体分布），但这个功能仅适合用来巩固单词、练习长难句分析，不建议当作真题替代品使用。
         </p>
       </section>
 
@@ -401,6 +399,10 @@ export default function GenerateArticle({
             选了 {chosen.length} 个，超过上限 {limit}。按「忘记 → 模糊 → 新学」的顺序取前 {limit} 个。
           </p>
         )}
+        {/* 词密度是真问题：340 词塞 15 个生僻词，平均每 22 词一个，比真题密得多，容易写成硬凑 */}
+        <p className={styles.hint}>
+          选得越多，文章越容易为了塞词而生硬。一篇文章里 10~15 个词已经偏密了。
+        </p>
       </section>
 
       {loading && <p className={`${styles.hint} loading-pulse`}>正在读取这天的单词…</p>}
