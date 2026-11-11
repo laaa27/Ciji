@@ -576,6 +576,24 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
                   · 未完全达标
                 </span>
               )}
+              {/*
+                缓存命中率：只在真的命中了才显示，老文章与不报用量的网关都不占位。
+                它不看结果、只看请求结构 —— 换成另一批词表生成，这个数字应该基本不掉；
+                掉了就说明提示词里又有什么动态内容插到了静态要求前面。
+              */}
+              {article.usage && article.usage.cached > 0 && (
+                <span
+                  title={
+                    `输入 ${article.usage.prompt} / 输出 ${article.usage.completion} token，` +
+                    `其中 ${article.usage.cached} 命中提示词缓存；` +
+                    `${article.usage.calls} 次调用、${article.usage.requests} 次请求` +
+                    (article.usage.requests > article.usage.calls ? '（有重试，钱重付过一次）' : '')
+                  }
+                >
+                  {' '}
+                  · 缓存 {Math.round((100 * article.usage.cached) / article.usage.prompt)}%
+                </span>
+              )}
             </div>
 
             <div className={styles.body}>

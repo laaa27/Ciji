@@ -1,4 +1,4 @@
-import { chatCompletion } from '@/api/llm'
+import { chatCompletion, takeLastLlmUsage } from '@/api/llm'
 import { useLlm } from '@/store/llm'
 import { lemmaCandidates } from '@/data/dict'
 import { sleep } from '@/lib/async'
@@ -48,6 +48,27 @@ export interface ArticleSentence {
   zh: string
 }
 
+/**
+ * 这一篇实际花了多少 token。
+ *
+ * 为什么要存下来而不是只打日志：提示词结构一旦把静态部分前置，缓存命中会从 0 变成大头，
+ * 而这个变化**只体现在 `cached` 上**——生成结果看不出来，速度也只快一点点。
+ * 不落库就只能靠翻服务商后台对账，等于没法验证。
+ *
+ * `requests` 比 `calls` 大是可诊断的信号：说明中间撞过 400 协商或截断加码，
+ * 那一刻整轮请求是重发的，钱也重付了一次。
+ */
+export interface ArticleUsage {
+  prompt: number
+  completion: number
+  /** 输入里命中提示词缓存的前缀 token */
+  cached: number
+  /** 逻辑调用次数（提纲 1 + 成文 1~2） */
+  calls: number
+  /** 实际 HTTP 请求数 */
+  requests: number
+}
+
 export interface Article {
   /** 存库后才有，形如 2026-11-07#2 */
   id?: string
@@ -66,6 +87,8 @@ export interface Article {
   genre?: Genre
   model: string
   createdAt: string
+  /** 本篇的 token 用量（老文章没有这个字段，界面按没有处理） */
+  usage?: ArticleUsage
   /**
    * 生成后校验没通过时记下来（篇幅偏短 / 缺词 / 超长句）。
    * 有值不代表文章不能用，只代表它没完全达到该档位的规格，界面据此轻提示。
@@ -441,9 +464,29 @@ export async function generateArticle(
   // 文体按档位配额抽（四级以说明文为主）：同一个词表连生成几篇，不会篇篇都是"应该怎么做"
   const genre = opts.genre ?? pickGenre(opts.level)
 
+  /** 本篇累计用量；服务端不报 usage 的网关会让 calls 保持 0，最后就不写这个字段 */
+  const usage: ArticleUsage = { prompt: 0, completion: 0, cached: 0, calls: 0, requests: 0 }
+
+  /**
+   * 把上一次调用的用量并进来。
+   *
+   * 放在「调用之后、判断成败之前」：提纲 JSON 解析失败时 token 照样花掉了，
+   * 这时候不该因为没有提纲就把这次开销从账上抹掉。
+   */
+  const trackUsage = () => {
+    const u = takeLastLlmUsage()
+    if (!u) return
+    usage.prompt += u.prompt
+    usage.completion += u.completion
+    usage.cached += u.cached
+    usage.calls += 1
+    usage.requests += u.requests
+  }
+
   // 第一步：提纲
   onProgress?.({ stage: 'outline', attempt: 1 })
   const outline = await buildOutline(opts.words, opts.level, genre)
+  trackUsage()
 
   const messages = buildArticleMessages(opts.words, opts.level, outline, genre)
 
@@ -462,6 +505,7 @@ export async function generateArticle(
         maxTokens: ARTICLE_MAX_TOKENS,
         ...thinkingOpts(),
       })
+      trackUsage()
 
       const { title, titleZh, sentences } = validate(parseLoose(raw))
 
@@ -477,6 +521,7 @@ export async function generateArticle(
         genre,
         model: profile ? `${profile.name} / ${profile.model}` : 'unknown',
         createdAt: new Date().toISOString(),
+        usage: usage.calls > 0 ? { ...usage } : undefined,
       }
 
       const problems = auditArticle(article, opts.level, genre)

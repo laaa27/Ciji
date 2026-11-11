@@ -6,6 +6,7 @@ import {
   PROTOCOLS,
   type BodyCompat,
   type ChatMessage,
+  type LlmUsage,
   type ParsedReply,
   type RequestOptions,
 } from '@/api/protocols'
@@ -37,6 +38,30 @@ let lastRaw: string | null = null
 
 export function getLastLlmResponse(): string | null {
   return lastRaw
+}
+
+/**
+ * 一次逻辑调用的用量。`requests` 是实际发出的 HTTP 请求数——
+ * 它比"一次调用"大，只可能是参数协商（400）、瞬时失败重试或截断加码，
+ * 也就是说这条路悄悄多付了一整轮钱。这个数字比耗时更能说明重试有没有在乱花钱。
+ */
+export interface CallUsage extends LlmUsage {
+  requests: number
+}
+
+let lastUsage: CallUsage | null = null
+
+/**
+ * 取走上一次调用的用量，并把槽位清空。
+ *
+ * 为什么是「读走即清」而不是纯读：调用方都是累加场景（一篇文章 = 提纲 + 成文 1~2 次），
+ * 纯读会让「本次调用失败了」的分支把上一份用量重复计一次，
+ * 也会让拿不到用量的网关把旧数字一直粘在新记录上。
+ */
+export function takeLastLlmUsage(): CallUsage | null {
+  const u = lastUsage
+  lastUsage = null
+  return u
 }
 
 /** 开发期用的转发入口（见 vite.config.ts 的 llmProxy 插件） */
@@ -218,6 +243,9 @@ export async function chatCompletion(
   const target = profile ?? useLlm.getState().active()
   if (!target) throw new LlmError('还没有添加大模型，去设置里加一个')
 
+  // 每次调用都从干净状态开始：失败路径不清会把上一次的用量算到这一次头上
+  lastUsage = null
+
   const codec = PROTOCOLS[target.protocol]
   const cached = compatCache.get(target.id)
   let compat: BodyCompat = { ...(cached ?? {}) }
@@ -288,6 +316,8 @@ export async function chatCompletion(
     }
 
     const reply = codec.parse(res.payload)
+    // guard + 1 = 到这一步为止已经发出去的请求数（重试与协商都算在内）
+    lastUsage = reply.usage ? { ...reply.usage, requests: guard + 1 } : null
 
     if (!reply.text.trim()) {
       lastError = new LlmError(describeEmpty(reply, res.payload), res.status)

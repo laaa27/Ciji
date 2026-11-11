@@ -72,6 +72,25 @@ export interface ProtocolCodec {
   parse: (payload: unknown) => ParsedReply
 }
 
+/**
+ * 一次调用的 token 用量。
+ *
+ * 三家的字段名各不相同（OpenAI 的 prompt_tokens / Anthropic 的 input_tokens /
+ * DeepSeek 另加 prompt_cache_hit_tokens），统一成这三个数后上层才不用分协议判断。
+ *
+ * `cached` 是**输入里走了提示词缓存的那部分**，它只可能来自前缀完全一致的重发。
+ * 它不是给用户看的性能指标，而是验证「提示词里静态部分有没有排在动态内容前面」的唯一证据：
+ * 换成另一批词表再请求，命中量应该基本不变；如果归零，说明变量又跑到前缀里去了。
+ */
+export interface LlmUsage {
+  /** 输入 token（含命中缓存的部分） */
+  prompt: number
+  /** 输出 token；推理模型的思考也计在这里 */
+  completion: number
+  /** 输入中命中提示词缓存的前缀 token；服务端不报就是 0 */
+  cached: number
+}
+
 export interface ParsedReply {
   text: string
   /** 正常结束 / 被长度截断 / 其他 */
@@ -82,6 +101,13 @@ export interface ParsedReply {
    * 正文为空时用它来判断「是模型没说话，还是预算全花在思考上了」。
    */
   reasoning?: string
+  /** 服务端没报用量（部分网关会省略 usage 字段）时为空 */
+  usage?: LlmUsage
+}
+
+/** 宽松取数：用量字段可能缺失、可能是字符串，缺就当 0，不让统计把解析搞崩 */
+function num(v: unknown): number {
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0
 }
 
 const VERSION_TAIL = /\/v\d+[a-z0-9.]*$/i
@@ -128,6 +154,14 @@ const openai: ProtocolCodec = {
         message?: { content?: unknown; reasoning_content?: string }
         finish_reason?: string
       }[]
+      usage?: {
+        prompt_tokens?: number
+        completion_tokens?: number
+        /** OpenAI 官方字段 */
+        prompt_tokens_details?: { cached_tokens?: number }
+        /** DeepSeek 字段：命中缓存的前缀 token */
+        prompt_cache_hit_tokens?: number
+      }
     }
     const choice = data?.choices?.[0]
     const raw = choice?.message?.content
@@ -142,11 +176,20 @@ const openai: ProtocolCodec = {
               .join('')
           : ''
 
+    const u = data?.usage
+
     return {
       text,
       truncated: choice?.finish_reason === 'length',
       finishReason: choice?.finish_reason,
       reasoning: typeof reasoning === 'string' && reasoning.trim() ? reasoning : undefined,
+      usage: u
+        ? {
+            prompt: num(u.prompt_tokens),
+            completion: num(u.completion_tokens),
+            cached: num(u.prompt_tokens_details?.cached_tokens ?? u.prompt_cache_hit_tokens),
+          }
+        : undefined,
     }
   },
 }
@@ -196,6 +239,14 @@ const anthropic: ProtocolCodec = {
     const data = payload as {
       content?: { type?: string; text?: string; thinking?: string }[]
       stop_reason?: string
+      usage?: {
+        input_tokens?: number
+        output_tokens?: number
+        /** 命中缓存的前缀 token */
+        cache_read_input_tokens?: number
+        /** 本次写入缓存的 token（开启 cache_control 后才会有） */
+        cache_creation_input_tokens?: number
+      }
     }
     const blocks = data?.content ?? []
     const text = blocks
@@ -206,12 +257,25 @@ const anthropic: ProtocolCodec = {
       .filter((b) => b.type === 'thinking')
       .map((b) => b.thinking ?? '')
       .join('')
+    const u = data?.usage
 
     return {
       text,
       truncated: data?.stop_reason === 'max_tokens',
       finishReason: data?.stop_reason,
       reasoning: reasoning.trim() ? reasoning : undefined,
+      usage: u
+        ? {
+            // Anthropic 的 input_tokens 不含缓存读写那两截，三者相加才是真实输入量；
+            // 直接拿 input_tokens 当输入会把命中率算成 0，看不出缓存有没有生效
+            prompt:
+              num(u.input_tokens) +
+              num(u.cache_read_input_tokens) +
+              num(u.cache_creation_input_tokens),
+            completion: num(u.output_tokens),
+            cached: num(u.cache_read_input_tokens),
+          }
+        : undefined,
     }
   },
 }

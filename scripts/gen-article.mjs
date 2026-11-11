@@ -223,6 +223,39 @@ async function chat(messages, opts) {
 }
 
 /**
+ * 用量统计。口径与 app 的 `ArticleUsage` 一致：calls 是逻辑调用次数、requests 是实际请求数，
+ * 两者不相等就说明中途撞过空正文/截断加码，那次是整轮重发的。
+ *
+ * 记这个是为了验证「提示词结构」而不是性能：静态要求前置后，换成另一批词表再跑，
+ * 命中量应该基本不变；归零就说明变量又跑到前缀里去了。
+ */
+function emptyUsage() {
+  return { prompt: 0, completion: 0, cached: 0, calls: 0, requests: 0 }
+}
+
+/** 单次 HTTP 请求的用量（三家字段名不同，这里统一认） */
+function addAttempt(acc, u) {
+  if (!u) return
+  acc.prompt += u.prompt_tokens ?? u.input_tokens ?? 0
+  acc.completion += u.completion_tokens ?? u.output_tokens ?? 0
+  acc.cached +=
+    u.prompt_tokens_details?.cached_tokens ??
+    u.prompt_cache_hit_tokens ??
+    u.cache_read_input_tokens ??
+    0
+  acc.requests += 1
+}
+
+function mergeUsage(into, from) {
+  if (!from) return
+  into.prompt += from.prompt
+  into.completion += from.completion
+  into.cached += from.cached
+  into.requests += from.requests
+  into.calls += 1
+}
+
+/**
  * 阶梯加预算调用。
  *
  * 推理模型（如 deepseek-flash）会先花几百到上千 token 思考，`max_tokens` 是**含思考**的总额度，
@@ -231,9 +264,12 @@ async function chat(messages, opts) {
  */
 async function chatWithBudget(messages, temperature, budgets, label) {
   let last = null
+  // 加码重试的那几次也花掉了 token，必须一起记，否则脚本比 app 少算一头
+  const usage = emptyUsage()
   for (const b of budgets) {
     const r = await chat(messages, { temperature, maxTokens: b })
-    if (r.content.trim()) return r
+    addAttempt(usage, r.usage)
+    if (r.content.trim()) return { ...r, usageTotal: usage }
     console.log(
       `    ${label} 空正文（finish=${r.finish}，思考 ${String(r.reasoning).length} 字），预算 ${b} → 加倍重试`,
     )
@@ -288,9 +324,11 @@ function printCorpus() {
 async function generateOnce(lv, idx) {
   const t0 = Date.now()
   const genre = genreArg === 'expository' || genreArg === 'argument' ? genreArg : pickGenre(lv)
+  const usage = emptyUsage()
   let outline = null
   try {
     const r = await chatWithBudget(buildOutlineMessages(words, lv, genre), 0.9, [1200, 3000], `[${lv} #${idx}] 提纲`)
+    mergeUsage(usage, r.usageTotal)
     const o = parseLoose(r.content)
     outline = o && o.topic ? { topic: String(o.topic), paragraphs: o.paragraphs ?? [] } : null
   } catch (e) {
@@ -300,6 +338,7 @@ async function generateOnce(lv, idx) {
   const msgs = buildArticleMessages(words, lv, outline, genre)
 
   const r = await chatWithBudget(msgs, temp, [2600, 5200, 8192], `[${lv} #${idx}] 成文`)
+  mergeUsage(usage, r.usageTotal)
   const parsed = parseLoose(r.content)
 
   const en = (parsed.sentences ?? []).map((s) => String(s.en ?? '')).filter(Boolean)
@@ -320,6 +359,7 @@ async function generateOnce(lv, idx) {
     total: words.length,
     missing: words.filter((w) => !covered.includes(w)),
     sentences: en,
+    usage,
   }
 }
 
@@ -385,9 +425,30 @@ async function runLevel(lv, n) {
   console.log(`  ≤12 词句数 ${sum.short}（规格 ≥${spec.shortSents}）${verdict(sum.short >= spec.shortSents)}`)
   console.log(`  目标词覆盖 ${sum.cover}/${words.length}`)
   if (failed > 0) console.log(`  ⚠ ${failed} 篇失败（计入分母外）`)
+
+  // 命中率是这套脚本新增的对照项：提示词结构一变，第一处能看出来的就是它
+  const usageSum = rows.reduce(
+    (a, r) => ({
+      prompt: a.prompt + (r.usage?.prompt ?? 0),
+      completion: a.completion + (r.usage?.completion ?? 0),
+      cached: a.cached + (r.usage?.cached ?? 0),
+      calls: a.calls + (r.usage?.calls ?? 0),
+      requests: a.requests + (r.usage?.requests ?? 0),
+    }),
+    emptyUsage(),
+  )
+  if (usageSum.prompt > 0) {
+    const hit = Math.round((100 * usageSum.cached) / usageSum.prompt)
+    console.log(
+      `  用量 输入 ${usageSum.prompt}（命中 ${usageSum.cached}，${hit}%）` +
+        ` · 输出 ${usageSum.completion}` +
+        ` · 调用 ${usageSum.calls} / 请求 ${usageSum.requests}` +
+        (usageSum.requests > usageSum.calls ? '（有重试）' : ''),
+    )
+  }
   console.log('')
 
-  return { level: lv, runs: rows, failed, summary: sum, corpusMeanAvg: stats.meanAvg, spec, thinking: loadConfig().thinking }
+  return { level: lv, runs: rows, failed, summary: sum, usage: usageSum, corpusMeanAvg: stats.meanAvg, spec, thinking: loadConfig().thinking }
 }
 
 async function generate() {
