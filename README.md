@@ -2,17 +2,18 @@
 
 **把每天遗忘和模糊的单词，自动写成一篇文章。**
 
-在阅读中重新遇见它们，巩固单词记忆；文章按考研/四六级难度生成，长难句密集，也可以直接当作阅读理解与长难句分析的练习材料。
+每个目标词都会出现在正文里（漏词会被自动拦下重写），不是挨个造句再拼起来——读起来是一篇有完整结构的小短文。
+篇幅与句长按四六级 / 考研真题的统计设定，可以作为长难句分析的阅读材料，但它不是真题的替代品。
 
 基于墨墨背单词开放 API 的 Android 应用，数据只存在本机。
 
 <p align="center">
-  <img src="screenshots/today.jpg" width="16%" alt="今日" />
-  <img src="screenshots/history.jpg" width="16%" alt="历史" />
-  <img src="screenshots/reading.jpg" width="16%" alt="阅读" />
-  <img src="screenshots/generate.jpg" width="16%" alt="生成文章" />
-  <img src="screenshots/stats.jpg" width="16%" alt="统计" />
-  <img src="screenshots/settings.jpg" width="16%" alt="设置" />
+  <img src="screenshots/today.jpg?v=0237" width="16%" alt="今日" />
+  <img src="screenshots/history.jpg?v=0237" width="16%" alt="历史" />
+  <img src="screenshots/reading.jpg?v=0237" width="16%" alt="阅读" />
+  <img src="screenshots/generate.jpg?v=0237" width="16%" alt="生成文章" />
+  <img src="screenshots/stats.jpg?v=0237" width="16%" alt="统计" />
+  <img src="screenshots/settings.jpg?v=0237" width="16%" alt="设置" />
 </p>
 
 ---
