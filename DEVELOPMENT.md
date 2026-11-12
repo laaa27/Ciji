@@ -567,6 +567,7 @@ grep -o '0\.[0-9]*\.[0-9]*' android/app/src/main/assets/public/assets/index-*.js
 | dev server 报 `xxx is not defined` | 长驻 vite 进程跨分支切换后 HMR 模块缓存错乱 | 重启 dev server |
 | `--strictPort` 下 5199 起不来 | 端口被占 | `netstat -ano \| grep 5199` 找 PID 杀掉 |
 | Gradle 找不到 JDK / toolchain 报错 | 用户全局 gradle.properties 缺路径 | 按 1.2 写 `org.gradle.java.home` 与 `installations.paths`（21 + 17 都要） |
+| 换了 README 截图但页面还是旧的 | 图片路径没变（`screenshots/today.jpg`），浏览器与 GitHub 的 camo CDN 都按 URL 缓存 | 给 `<img src>` 加版本参数 `?v=0237`，或在 GitHub 上强制刷新（Ctrl+Shift+R）。**先确认远程确实是新的**：比对 `git hash-object screenshots/x.jpg` 与 `gh api .../contents/screenshots/x.jpg --jq .sha` |
 
 ### 8.3 装包与真机
 
