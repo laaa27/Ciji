@@ -537,6 +537,7 @@ grep -o '0\.[0-9]*\.[0-9]*' android/app/src/main/assets/public/assets/index-*.js
 ### 7.5 出包前检查清单
 
 - [ ] 版本号三处同步，`versionCode` 已 +1
+- [ ] `CHANGELOG.md` 补上本版条目（2026-11-12 前它落后过 7 个版本，因为发布时只写了 RELEASE-NOTES）
 - [ ] `npm run build` 通过（含类型检查）
 - [ ] `test-reading` + 相关脚本全绿
 - [ ] 改过原生代码的话，`cap sync` 后完整重新 `assembleRelease`
