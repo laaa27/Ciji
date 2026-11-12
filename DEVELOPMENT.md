@@ -526,7 +526,12 @@ grep -o '0\.[0-9]*\.[0-9]*' android/app/src/main/assets/public/assets/index-*.js
 
 - tag 用 `v0.23.0` 形式（`normalizeVersion` 会去掉 `v` 前缀）
 - Release 正文会原样显示在更新弹层里，写成给用户看的更新日志
-- 上传 `app-release.apk` 作为资产
+- 上传 `app-release.apk` 作为资产，**文件名必须纯 ASCII**
+  （用 `ciji-v0.23.7.apk`，别用中文名——`gh release upload` 遇到 `词迹-v0.23.7.apk`
+  会传成 `-v0.23.7.apk`，中文被吞掉。已实测踩过）
+- 每轮发布前先 `git checkout master && git merge --ff-only <工作分支>` 再 push：
+  长期在 `refactor/...` 这类分支上开发时，`git push origin master` 推的是**本地 master**，
+  会静默地什么也没推（提示 `Everything up-to-date`），远程停在旧提交上
 - 发错了要**撤下资产并修正正文**，不要只改 tag——已装机用户已经拿到链接
 
 ### 7.5 出包前检查清单
