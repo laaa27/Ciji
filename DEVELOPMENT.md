@@ -382,6 +382,9 @@ curl -s http://localhost:5199/ | grep script
 # 引用 /src/main.tsx          → dev
 ```
 
+另外：**dev server 下数不清请求次数**——Vite 的自动重载会让页面加载两次，请求计数凭空翻倍。
+要断言"只发了一次"，必须跑生产构建（preview）下的产物。
+
 **用 preview 时不 build 就跑测试，等于在验证上一版代码。** 这个坑真实发生过：一轮 262 断言全绿，
 但完全没覆盖新改动，白跑还差点误判回归。
 
@@ -568,6 +571,7 @@ grep -o '0\.[0-9]*\.[0-9]*' android/app/src/main/assets/public/assets/index-*.js
 | dev server 报 `xxx is not defined` | 长驻 vite 进程跨分支切换后 HMR 模块缓存错乱 | 重启 dev server |
 | `--strictPort` 下 5199 起不来 | 端口被占 | `netstat -ano \| grep 5199` 找 PID 杀掉 |
 | Gradle 找不到 JDK / toolchain 报错 | 用户全局 gradle.properties 缺路径 | 按 1.2 写 `org.gradle.java.home` 与 `installations.paths`（21 + 17 都要） |
+| `npm run build \| tail` 之后装上去白屏 | 管道吞掉了退出码：构建其实失败了、`dist/` 被清空，但管道返回 0，`cap sync` 把空 dist 同步进安卓工程 | 构建输出别直接接管道，重定向后看 `$?`；装包前校验 `android/app/src/main/assets/public/assets/*.js` 数量，必要时 `unzip -p` 确认 APK 里确实含新逻辑 |
 | 换了 README 截图但页面还是旧的 | 图片路径没变（`screenshots/today.jpg`），浏览器与 GitHub 的 camo CDN 都按 URL 缓存 | 给 `<img src>` 加版本参数 `?v=0237`，或在 GitHub 上强制刷新（Ctrl+Shift+R）。**先确认远程确实是新的**：比对 `git hash-object screenshots/x.jpg` 与 `gh api .../contents/screenshots/x.jpg --jq .sha` |
 
 ### 8.3 装包与真机
@@ -678,12 +682,14 @@ done | sort -rn | head -5
 
 ### 9.7 验证纪律（这次真实踩过的）
 
-三条，都是血换来的：
+四条，都是血换来的：
 
 1. **先确认测试测的是哪份代码**。`vite preview` 服务的是 `dist/`，改完源码不 build 就是在验证上一版（见 5.1）
 2. **「全绿」不等于「覆盖了新代码」**。断言通过只能说明旧行为没坏
 3. **偶发失败先做对照实验，别急着归因给自己**。把改动 stash 掉、在基线跑同样的次数，比较失败率。
    `test-resilience` 那个 flaky 就是这么定性为「既有问题」的——否则会花几个小时去修一个自己没引入的 bug
+4. **单篇 / 单次结论不可用**。同一天为此翻车两次：「考研 avg 29.4」是单篇极端值；
+   「关思考更快」忽略了 50% 的塌陷率。至少 5 篇以上再下结论，并且看分布不看均值。
 
 ### 9.8 加完功能的自查（5 条）
 
