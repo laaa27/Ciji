@@ -4,14 +4,16 @@ import { chatCompletion } from '@/api/llm'
 import { useLlm } from '@/store/llm'
 
 /**
- * 查词：本地词典优先，查不到再走在线翻译。
+ * 查词：一条固定的四级链，批量与单条共用同一套顺序（没有开关）。
  *
- * 三层：
  * 1. 本地 ECDICT 分片（按首字母懒加载）—— 快、离线、覆盖单词
  * 2. 词形还原 —— went → go，studies → study，解决变形词
- * 3. 在线兜底（MyMemory，免费无 key）—— 解决短语和生僻词
+ * 3. 永久缓存 —— AI 与 MyMemory 查过的词只请求一次
+ * 4. AI 释义（用户自己配的模型）→ MyMemory（免费、无 key）兜底
  *
- * 在线结果（AI 与 MyMemory）会写进 Preferences 永久缓存，同一个词只请求一次。
+ * 两个在线层各有额度上限，但**不再静默丢词**：轮不上的词会通过
+ * `lookupWords` 的 `skipped` 交回调用方（导出几千词时才会发生）。
+ *
  * 缓存里除释义本身还存了**来源**：AI 释义要在界面标「AI 释义」，只存文字的话
  * 第二次查（命中缓存）就再也判断不出来了。
  * 墨墨自己的 Vocabulary 接口不含释义（只有 id + spelling），所以释义必须外部解决。
@@ -32,19 +34,43 @@ const SHARD_INFLIGHT = new Map<string, Promise<Record<string, string>>>()
 const GLOSS_MEMORY = new Map<string, GlossEntry>()
 
 const GLOSS_PREFIX = 'gloss:'
-const ONLINE_FLAG = 'online_lookup'
-
-/** 一次查词最多在线补这么多个，避免耗尽免费配额 */
-const MAX_ONLINE_PER_CALL = 20
-/** 在线请求并发上限 */
-const ONLINE_CONCURRENCY = 3
 
 /**
- * 一次 AI 释义最多问多少个词。
+ * 内存里最多留多少条释义。
+ * 真正的持久层是 Preferences，这里只是热缓存；没有上限的话长期运行会一直涨。
+ * Map 的迭代顺序就是插入顺序，所以淘汰最旧的一条即可（命中时不重排，够用）。
+ */
+const GLOSS_MEMORY_MAX = 2000
+
+/** 加载失败时用的空表。同一个分片失败一次就记住，别每次查都重发一个 404 请求 */
+const EMPTY_SHARD: Record<string, string> = {}
+
+/** 一次批量补查最多交给 MyMemory 多少个词（免费接口有条数配额，不无限打） */
+const ONLINE_MAX_WORDS = 60
+/** MyMemory 请求并发上限 */
+const ONLINE_CONCURRENCY = 3
+/**
+ * MyMemory 单次请求的超时。
+ *
+ * 实测这个免费接口很不稳定：同一台机器上时而 0.6 秒、时而 13 秒（并发 3 时更久）。
+ * 没有超时的话，一批词能把刷新拖住一两分钟，而且请求会一直挂着。
+ * 超时就当"这个词没查到"，界面显示空白，用户点开时还能再试一次。
+ */
+const ONLINE_TIMEOUT_MS = 10000
+
+/**
+ * 一次 AI 释义请求最多带多少个词。
  * 批量场景（今日页/历史页词表）缺的词合并成一个请求，
  * 不是逐词发——一次调用的等待时间和 20 次是一样的。
  */
 export const AI_GLOSS_BATCH_CAP = 20
+
+/**
+ * 一次批量补查最多交给 AI 多少个词（按 `AI_GLOSS_BATCH_CAP` 分批循环）。
+ * 上限存在是为了别在一次刷新里把用户的模型额度刷光；超出的部分交给 MyMemory，
+ * 再超出（`ONLINE_MAX_WORDS`）就**如实报给调用方**，不再静默丢掉。
+ */
+const AI_BATCH_MAX_WORDS = 60
 
 /**
  * AI 释义的系统提示。要点：
@@ -120,7 +146,7 @@ async function cachedGloss(word: string): Promise<GlossEntry | null> {
   if (!value) return null
 
   const entry = parseGlossEntry(value)
-  GLOSS_MEMORY.set(word, entry)
+  keepInMemory(word, entry)
   return entry
 }
 
@@ -142,32 +168,28 @@ function parseGlossEntry(raw: string): GlossEntry {
   return { gloss: raw, ai: false }
 }
 
-/** 写释义缓存：同一个词这辈子只问一次模型，来源标记跟着释义一起落盘 */
+/** 往热缓存里放一条，超过上限就淘汰最旧的一条（持久层是 Preferences，不影响落盘） */
+function keepInMemory(word: string, entry: GlossEntry): void {
+  GLOSS_MEMORY.delete(word)
+  GLOSS_MEMORY.set(word, entry)
+  while (GLOSS_MEMORY.size > GLOSS_MEMORY_MAX) {
+    const oldest = GLOSS_MEMORY.keys().next().value
+    if (oldest === undefined) break
+    GLOSS_MEMORY.delete(oldest)
+  }
+}
+
+/**
+ * 写释义缓存：同一个词这辈子只问一次模型，来源标记跟着释义一起落盘。
+ *
+ * `Preferences.set` 必须接住失败：Web 端 localStorage 有 5 MB 配额，溢出会 reject；
+ * 不接就是一条 unhandled rejection，界面上完全看不出来（内存里还有，下次冷启动就没了）。
+ * 写不进去只降级成「本次会话有效」，不影响这一次显示。
+ */
 function rememberGloss(word: string, gloss: string, ai: boolean): void {
   const entry: GlossEntry = { gloss, ai }
-  GLOSS_MEMORY.set(word, entry)
-  void Preferences.set({ key: GLOSS_PREFIX + word, value: JSON.stringify(entry) })
-}
-
-let onlineEnabled = true
-
-export function setOnlineLookup(enabled: boolean) {
-  onlineEnabled = enabled
-}
-
-export function isOnlineLookupEnabled() {
-  return onlineEnabled
-}
-
-/** 启动时读取设置 */
-export async function loadLookupSettings(): Promise<void> {
-  const { value } = await Preferences.get({ key: ONLINE_FLAG })
-  onlineEnabled = value !== 'false'
-}
-
-export async function saveOnlineLookup(enabled: boolean): Promise<void> {
-  onlineEnabled = enabled
-  await Preferences.set({ key: ONLINE_FLAG, value: enabled ? 'true' : 'false' })
+  keepInMemory(word, entry)
+  void Preferences.set({ key: GLOSS_PREFIX + word, value: JSON.stringify(entry) }).catch(() => {})
 }
 
 function shardKey(word: string): string {
@@ -185,12 +207,17 @@ async function loadShard(key: string): Promise<Record<string, string>> {
   const task = (async () => {
     try {
       const res = await fetch(`dict/${key}.json`)
-      if (!res.ok) return {}
+      // 404 是稳定事实（没有 other.json 这个分片），记下来免得每次查都重发；
+      // 网络抖动属于临时故障，不缓存，下次还能重试
+      if (!res.ok) {
+        SHARD_CACHE.set(key, EMPTY_SHARD)
+        return EMPTY_SHARD
+      }
       const data = (await res.json()) as Record<string, string>
       SHARD_CACHE.set(key, data)
       return data
     } catch {
-      return {}
+      return EMPTY_SHARD
     } finally {
       SHARD_INFLIGHT.delete(key)
     }
@@ -223,7 +250,7 @@ const IRREGULAR: Record<string, string> = {
   forgotten: 'forget', forgot: 'forget', hidden: 'hide', hid: 'hide',
   eaten: 'eat', ate: 'eat', fallen: 'fall', fell: 'fall', drawn: 'draw', drew: 'draw',
   grown: 'grow', grew: 'grow', flown: 'fly', flew: 'fly', worn: 'wear', wore: 'wear',
-  torn: 'tear', tore: 'tear', begun: 'begin', began: 'begin', become: 'become',
+  torn: 'tear', tore: 'tear', begun: 'begin', began: 'begin',
   became: 'become', ran: 'run', rose: 'rise', arisen: 'arise', arose: 'arise',
   drunk: 'drink', drank: 'drink', sung: 'sing', sang: 'sing', swum: 'swim', swam: 'swim',
   woken: 'wake', woke: 'wake', frozen: 'freeze', froze: 'freeze', stolen: 'steal', stole: 'steal',
@@ -365,6 +392,28 @@ export async function dictHas(word: string): Promise<boolean> {
   return Boolean(shard[key])
 }
 
+/**
+ * 把一批词涉及的分片并行预热。
+ *
+ * 分片是懒加载的，逐个查会让每个字母的 fetch 串起来排队（26 个字母最坏 26 次串行 IO）；
+ * 先并行拉一遍，后面查表就只剩内存操作。
+ */
+async function warmShards(words: string[]): Promise<void> {
+  const keys = new Set<string>()
+  for (const w of words) for (const cand of lemmaCandidates(w)) keys.add(shardKey(cand))
+  await Promise.all([...keys].map((k) => loadShard(k)))
+}
+
+/** 同步查表版：调用前必须先 `warmShards`，否则会漏掉还没加载的分片 */
+function lookupLocalSync(word: string): string | null {
+  for (const cand of lemmaCandidates(word)) {
+    const hit = SHARD_CACHE.get(shardKey(cand))?.[cand]
+    if (hit) return hit
+  }
+  return null
+}
+
+/** 单个词查本地词典（点词用）。分片按候选顺序加载，通常同一片 */
 async function lookupLocal(word: string): Promise<string | null> {
   for (const cand of lemmaCandidates(word)) {
     const shard = await loadShard(shardKey(cand))
@@ -392,17 +441,18 @@ async function mapLimit<T>(
   await Promise.all(workers)
 }
 
-/** MyMemory：免费、无需 key、带 CORS 头 */
+/** MyMemory：免费、无需 key、带 CORS 头。
+ *  缓存检查放在批量调度的入口处（lookupWords / lookupOneDetailed），
+ *  这里只负责发请求，避免同一段逻辑在两处各写一遍。 */
 async function lookupOnline(word: string): Promise<string | null> {
-  const cached = await cachedGloss(word)
-  if (cached) return cached.gloss
-
+  const abort = new AbortController()
+  const timer = setTimeout(() => abort.abort(), ONLINE_TIMEOUT_MS)
   try {
     const url =
       'https://api.mymemory.translated.net/get?q=' +
       encodeURIComponent(word) +
       '&langpair=en|zh-CN'
-    const res = await fetch(url)
+    const res = await fetch(url, { signal: abort.signal })
     if (!res.ok) return null
 
     const json = (await res.json()) as {
@@ -419,64 +469,109 @@ async function lookupOnline(word: string): Promise<string | null> {
     return raw
   } catch {
     return null
+  } finally {
+    clearTimeout(timer)
   }
 }
 
 export interface LookupOptions {
-  /** 是否允许联网兜底，默认跟随设置 */
-  online?: boolean
   /**
-   * 本地结果先回调一次。
+   * 本地/缓存结果先回调一次。
    * 界面拿到就能立刻渲染，不必等在线请求 —— 否则几个短语会把整页释义拖住好几秒。
    */
   onLocal?: (found: Map<string, string>) => void
+  /**
+   * 是否允许联网兜底，默认允许。
+   *
+   * 这不是用户开关（设置里已经没有那一项了），是**调用方按任务形态**决定的：
+   * 导出几千个词的场景关掉它——MyMemory 实测单次 0.6~13 秒，几千词能拖到几十分钟，
+   * 而导出本身只是要一份带释义的清单，本地词库 + 缓存已经够用。
+   */
+  allowOnline?: boolean
+}
+
+export interface BatchLookupResult {
+  /** 拼写（小写） → 释义 */
+  glosses: Map<string, string>
+  /**
+   * 超出单次补查上限、**根本没去查**的词。
+   *
+   * 和「查了但没查到」必须分开：前者是本可以查到的，只是这次没轮上（导出几千词时会发生），
+   * 后者是词典/接口里真没有。以前两者混在一起、而且超限的词直接从返回值里消失，
+   * 调用方连"少查了"都无从知晓。
+   */
+  skipped: string[]
 }
 
 /**
- * 批量查词，返回 拼写（小写） → 释义。
- * 查不到的不会出现在结果里，界面据此显示占位而不是空白。
+ * 批量查词。四层顺序固定（没有开关）：本地词典 → 永久缓存 → AI 释义 → MyMemory。
  *
- * 三层顺序：本地词典 → AI 释义（缺词合并一次调用，结果永久缓存）→ MyMemory。
- * AI 挂了静默落到 MyMemory，不会让批量查询变红字。
+ * 两个额度是硬上限，但**不再静默**：
+ * - AI 最多 `AI_BATCH_MAX_WORDS` 个，按 `AI_GLOSS_BATCH_CAP` 分批循环（以前只发一批就丢）
+ * - MyMemory 最多 `ONLINE_MAX_WORDS` 个
+ * - 两者都轮不上的词进 `skipped`，交调用方如实提示
+ *
+ * 缓存检查放在 AI 之前：以前批量路径不读缓存，每次刷新/导出都把同一批词重新发给模型，
+ * 既花钱又白占额度。
  */
 export async function lookupWords(
   spellings: string[],
   opts: LookupOptions = {},
-): Promise<Map<string, string>> {
-  const result = new Map<string, string>()
-  if (spellings.length === 0) return result
+): Promise<BatchLookupResult> {
+  const glosses = new Map<string, string>()
+  if (spellings.length === 0) return { glosses, skipped: [] }
 
   const unique = [...new Set(spellings.map((s) => s.trim().toLowerCase()))].filter(Boolean)
-  const missing: string[] = []
 
+  // ① 本地词典：先并行预热分片，再同步查表（避免逐词 await 把 fetch 串起来）
+  await warmShards(unique)
+  const missing: string[] = []
   for (const word of unique) {
-    const gloss = await lookupLocal(word)
-    if (gloss) result.set(word, gloss)
+    const gloss = lookupLocalSync(word)
+    if (gloss) glosses.set(word, gloss)
     else missing.push(word)
   }
 
   // 本地能查到的先交出去
-  opts.onLocal?.(new Map(result))
+  opts.onLocal?.(new Map(glosses))
 
-  const allowOnline = opts.online ?? onlineEnabled
-  if (allowOnline && missing.length > 0) {
-    // AI 层：本地没有的词交给释义模型（没配模型/调用失败都是空 Map，无缝落到下一层）
-    const ai = await aiGlossBatch(missing)
+  // ② 永久缓存：查过 AI / MyMemory 的词直接拿结果，不再发请求
+  const toQuery: string[] = []
+  for (const word of missing) {
+    const cached = await cachedGloss(word)
+    if (cached) glosses.set(word, cached.gloss)
+    else toQuery.push(word)
+  }
+
+  if (toQuery.length === 0) return { glosses, skipped: [] }
+
+  // ③ AI 释义：分批循环，而不是发一批就收工
+  const aiWords = toQuery.slice(0, AI_BATCH_MAX_WORDS)
+  for (let i = 0; i < aiWords.length; i += AI_GLOSS_BATCH_CAP) {
+    const chunk = aiWords.slice(i, i + AI_GLOSS_BATCH_CAP)
+    const ai = await aiGlossBatch(chunk)
     for (const [word, gloss] of ai) {
-      result.set(word, gloss)
+      glosses.set(word, gloss)
       // 词表里批量补出来的 AI 释义也要留来源：稍后点这个词时才能继续标「AI 释义」
       rememberGloss(word, gloss, true)
     }
-
-    const stillMissing = missing.filter((word) => !result.has(word))
-    const batch = stillMissing.slice(0, MAX_ONLINE_PER_CALL)
-    await mapLimit(batch, ONLINE_CONCURRENCY, async (word) => {
-      const gloss = await lookupOnline(word)
-      if (gloss) result.set(word, gloss)
-    })
   }
 
-  return result
+  const afterAi = toQuery.filter((word) => !glosses.has(word))
+  if (opts.allowOnline === false) {
+    // 调用方明确不要联网（导出）：剩下的词就是没释义，也不算"没轮上"
+    return { glosses, skipped: [] }
+  }
+
+  // ④ MyMemory 兜底（并发 3，单请求有超时）
+  const onlineWords = afterAi.slice(0, ONLINE_MAX_WORDS)
+  await mapLimit(onlineWords, ONLINE_CONCURRENCY, async (word) => {
+    const gloss = await lookupOnline(word)
+    if (gloss) glosses.set(word, gloss)
+  })
+
+  const skipped = afterAi.slice(ONLINE_MAX_WORDS)
+  return { glosses, skipped }
 }
 
 export interface GlossResult {
@@ -488,7 +583,9 @@ export interface GlossResult {
 /**
  * 单条查词（阅读页点词用），带来源标记和本地先行回调。
  *
- * 顺序：本地词典 → 永久缓存 → AI 释义 → MyMemory。
+ * 顺序与批量完全一致：本地词典 → 永久缓存 → AI 释义 → MyMemory。
+ * （以前单条路径不看「联网补查」开关、批量路径看，同一个开关两种行为；
+ * 现在开关已删除，两条路径共用同一条链，不会再漂移。）
  * onLocal 在本地/缓存命中时先回调一次，让弹层立刻有内容——
  * AI 释义要走一次网络调用，等它再渲染会把瞬时查询拖成秒级。
  * 回调连 `ai` 一起给，缓存里的 AI 释义才不会先按普通释义渲染一帧再补标签。
@@ -520,10 +617,8 @@ export async function lookupOneDetailed(
     return { gloss: aiGloss, ai: true }
   }
 
-  if (onlineEnabled) {
-    const online = await lookupOnline(key)
-    if (online) return { gloss: online, ai: false }
-  }
+  const online = await lookupOnline(key)
+  if (online) return { gloss: online, ai: false }
   return { gloss: null, ai: false }
 }
 

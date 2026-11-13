@@ -3,7 +3,6 @@ import { useSession } from '@/store/session'
 import { useSubView } from '../hooks/useSubView'
 import ModelProfiles from '../components/ModelProfiles'
 import MemoAccount from '../components/settings/MemoAccount'
-import LookupPrefs from '../components/settings/LookupPrefs'
 import AppearancePrefs from '../components/settings/AppearancePrefs'
 import DataPrefs from '../components/settings/DataPrefs'
 import AboutPanel from '../components/settings/AboutPanel'
@@ -21,7 +20,7 @@ import styles from './SettingsPage.module.css'
  * 返回时主视图从左边回来一点（back-in），安卓返回键先退设置层级再考虑退出 App。
  */
 
-type SubPage = 'memo' | 'models' | 'lookup' | 'appearance' | 'data' | 'about'
+type SubPage = 'memo' | 'models' | 'appearance' | 'data' | 'about'
 
 const CATEGORIES: { id: SubPage; title: string; desc: string }[] = [
   {
@@ -33,11 +32,6 @@ const CATEGORIES: { id: SubPage; title: string; desc: string }[] = [
     id: 'models',
     title: '大模型',
     desc: '生成文章与查词释义用的模型，可存多份配置，思考模式分开开关',
-  },
-  {
-    id: 'lookup',
-    title: '查词与释义',
-    desc: '本地词库 → AI 释义 → 联网补查，三层查询的优先级与开关',
   },
   {
     id: 'appearance',
@@ -109,7 +103,6 @@ export default function SettingsPage() {
               <ModelProfiles />
             </section>
           )}
-          {nav.view === 'lookup' && <LookupPrefs />}
           {nav.view === 'appearance' && <AppearancePrefs />}
           {nav.view === 'data' && <DataPrefs />}
           {nav.view === 'about' && <AboutPanel />}

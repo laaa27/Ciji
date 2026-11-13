@@ -60,20 +60,26 @@ const ARTICLE = {
   createdAt: new Date().toISOString(),
 }
 
-/** 每天 12 个「忘记」词：把统计页的「反复忘记」列表撑高，这是复现的前提 */
+/**
+ * 每天 12 个词，用来撑高统计页的「反复忘记」列表（复现前提）。
+ * **必须是本地词典里真有的词**：造词会触发 MyMemory 兜底，而这个免费接口实测
+ * 单次要 0.6~13 秒，会让 networkidle 一直等不到（本脚本踩过）。
+ */
+const REAL_WORDS = [
+  'file', 'site', 'sites', 'filing', 'pharaoh', 'abandon',
+  'box', 'watch', 'dish', 'note', 'leaf', 'budget',
+]
+
 function makeDay(dateKey) {
-  const words = []
-  for (let i = 0; i < 12; i += 1) {
-    words.push({
-      vocId: `f${i}`,
-      spelling: `stubborn${i}`,
-      groups: ['forget'],
-      isNew: false,
-      firstResponse: 'FORGET',
-      isFinished: true,
-      order: i,
-    })
-  }
+  const words = REAL_WORDS.map((spelling, i) => ({
+    vocId: `f${i}`,
+    spelling,
+    groups: ['forget'],
+    isNew: false,
+    firstResponse: 'FORGET',
+    isFinished: true,
+    order: i,
+  }))
   return {
     date: dateKey,
     finished: 12,

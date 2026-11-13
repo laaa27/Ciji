@@ -73,7 +73,11 @@ export async function collectGlosses(days: TodaySnapshot[]): Promise<Map<string,
   for (const day of days) {
     for (const w of day.words) spellings.add(w.spelling)
   }
-  return lookupWords([...spellings])
+  // 导出动辄几千个词，联网补查一律关掉：MyMemory 实测单次 0.6~13 秒，
+  // 边导边等能把一次导出拖到几十分钟。本地词库 + 缓存查不到的词就留空
+  // （导出的词条本身是完整的，只是那几行没有释义）。
+  const { glosses } = await lookupWords([...spellings], { allowOnline: false })
+  return glosses
 }
 
 /**

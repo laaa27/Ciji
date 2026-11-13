@@ -40,7 +40,9 @@ function DayItem({
       if (!alive) return
       setGlosses((prev) => ({ ...prev, ...Object.fromEntries(m) }))
     }
-    void lookupWords(day.words.map((w) => w.spelling), { onLocal: merge }).then(merge)
+    void lookupWords(day.words.map((w) => w.spelling), { onLocal: merge }).then((res) =>
+      merge(res.glosses),
+    )
     return () => {
       alive = false
     }

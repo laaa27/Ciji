@@ -120,7 +120,7 @@ ui  →  store  →  domain  →  data  →  api
 | 位置 | 情况 | 影响 |
 | --- | --- | --- |
 | `domain/article.ts` → `store/llm` + `api/llm` | domain 读全局模型配置来生成 | 它不能像 `prompts.ts` 那样在 node 里直接跑 |
-| `data/dict.ts` → `api/llm` + `store/llm` | 它其实是**查词服务**，含三级回退编排，不只是数据访问 | `data` 层最重的一块；想单测它要 stub 半个应用 |
+| `data/dict.ts` → `api/llm` + `store/llm` | 它其实是**查词服务**，含四级链编排，不只是数据访问 | `data` 层最重的一块；想单测它要 stub 半个应用 |
 | `store/ui.ts` → `ui/components/TabBar` | 只引类型 `TabKey` | 类型放错层，应下沉到 `lib`，暂无实际危害 |
 
 另：`src/App.tsx` / `src/main.tsx` 是**组合根**，引用所有层是正常的，不算违规。
@@ -145,7 +145,7 @@ ui  →  store  →  domain  →  data  →  api
 | `store.ts` | 每日快照 `day:YYYY-MM-DD`，含旧数据兼容 |
 | `article.ts` | 文章全文 + 元信息索引，列表页只读索引 |
 | `reading.ts` | 每日阅读秒数 |
-| `dict.ts` | 词典分片 + 词形还原 + 三级查词回退（本地 → AI 释义 → MyMemory） |
+| `dict.ts` | 词典分片 + 词形还原 + 四级查词链（本地 → 永久缓存 → AI 释义 → MyMemory）；批量返回 `{ glosses, skipped }`，超限的词必须报出来 |
 | `keys.ts` | 🆕 偏好类存储键的唯一出处 |
 
 #### domain 层
@@ -209,7 +209,7 @@ hooks：
 | `ModelProfiles.tsx` | 多份模型配置的增删改切换与连通性测试 |
 | `UpdateSheet.tsx` | 更新提示弹层 |
 | `EmptyState.tsx` | 空态（今日页/阅读页仍有手写副本，见第 10 章） |
-| `settings/*.tsx` | 设置二级面板：墨墨账号 / 查词 / 外观 / 数据 / 关于 |
+| `settings/*.tsx` | 设置二级面板：墨墨账号 / 外观 / 数据 / 关于（查词开关已删，见 10 章） |
 
 工具：
 
@@ -259,7 +259,8 @@ WordSheet → lookupOneDetailed：本地词典 → 永久缓存 → AI 释义 �
 | `day:YYYY-MM-DD` | 每日学习快照 | `data/store.ts` |
 | `article:<id>` / `article_index` | 文章全文 / 元信息索引 | `data/article.ts` |
 | `reading:YYYY-MM-DD` | 每日阅读秒数 | `data/reading.ts` |
-| `gloss:<word>` | 永久释义缓存，值是 `{ gloss, ai }` 的 JSON（`ai` 决定界面标不标「AI 释义」；修复前写入的纯文本条目按非 AI 读） | `data/dict.ts` |
+| `gloss:<word>` | 永久释义缓存，值是 `{ gloss, ai }` 的 JSON（`ai` 决定界面标不标「AI 释义」；修复前写入的纯文本条目按非 AI 读）。**没有清理入口、没有落盘上限**；写失败只降级成「本次会话有效」（Web 端 localStorage 有 5 MB 配额） | `data/dict.ts` |
+| `online_lookup` | 已废弃（0.23.18 删掉「联网补查」开关后不再读写）。老用户设备上仍留着这个键，无害 | 无 |
 | `reading_font_size` / `reading_word_limit` / `reading_level` | 阅读偏好 | 🆕 `data/keys.ts` → `store/prefs.ts` |
 | `today_show_gloss` / `history_show_gloss` | 释义展开总闸 | 🆕 同上 |
 | `theme` / `theme_boot` | 主题 + 启动镜像 | `store/theme.ts` |
@@ -389,7 +390,7 @@ curl -s http://localhost:5199/ | grep script
 **用 preview 时不 build 就跑测试，等于在验证上一版代码。** 这个坑真实发生过：一轮 262 断言全绿，
 但完全没覆盖新改动，白跑还差点误判回归。
 
-### 5.2 验证脚本（18 个，`tests/e2e/`）
+### 5.2 验证脚本（19 个，`tests/e2e/`）
 
 ```bash
 # 前置：5199 上有服务；本机装了 Chrome
@@ -411,6 +412,7 @@ node tests/e2e/verify-word-forms.mjs    # 54 项：变形回归表（必须有/�
 node tests/e2e/verify-stats-parity.mjs  # 10 项：今日页三组与统计页摘要、反复忘记口径一致
 node tests/e2e/verify-scroll-lock.mjs   # 13 项：弹层打开期间背景不滚、底栏那一带也不滚
 node tests/e2e/verify-read-tab-return.mjs # 12 项：切栏目回来阅读位置不丢（要**先预热统计页**才复现得出）
+node tests/e2e/verify-lookup-batch.mjs   # 13 项：批量补查不丢词、走缓存、超限如实报出（**必须跑 dev server**）
 ```
 
 合计 **300+ 项断言**（各脚本标题里的数字是当时统计，后续新增断言没有逐条回填）。
@@ -750,7 +752,8 @@ done | sort -rn | head -5
 | token 用量靠模块级单例传递 | `api/llm.ts` 的 `takeLastLlmUsage()` 是「读走即清」的模块状态，`domain/article.ts` 在每次 `await` 之后同步取走。生成进行中若另一条链路（点词查释义）也发起调用，理论上会把用量串到这篇文章上。目前靠「生成与查词不会真的重叠」兜着 | 真出现串账就把 `usage` 改成 `chatCompletion` 的返回值（要动 6 处调用方），别在单例上打补丁 |
 | ~~提示词缓存命中率低~~ **已实测否决（2026-11-11）**：30 篇配对 A/B 打过一轮，**不做**。命中率 0%→55%（不是 83%——静态前缀按「档位 × 文体」裂成 6 个变体，每个首次必冷启），但审计一次通过 11/15→8/15，重排净多 3 篇重写。缓存省 833 输入 token/篇，重写多花约 8000 输出 token/篇，**净亏 5~6 倍** | 数据见工作区 `词迹-LLM缓存重排-AB实验结果.md` 与 `ab-reorder-result.json`；分析见 `词迹-LLM缓存命中优化-可行性分析.md` | **不要再重做这条路**，除非满足其一：① 思考模式改默认关闭（输出降到 ~1200，输入占比升到 60%，缓存价值变成 25~35%）；② 换到有写入费的厂商（Anthropic）不划算，别碰；③ 审计通过率先提到 ≥14/15——真杠杆在重写率，不在缓存 |
 | 单次生成的 token 用量已可观测 | 2026-11-11 起 `Article.usage` 记 `prompt / completion / cached / calls / requests`，阅读页 meta 行显示「缓存 N%」，`scripts/gen-article.mjs` 也落盘。**`requests > calls` 就说明撞过 400 协商或截断加码，那一刻整轮请求是重发的** | 想省钱先看这个数，不要拍脑袋 |
-| 单元测试 | 无（只有 14 个 e2e 脚本） | 若引入 vitest，优先覆盖 `backup.splitCsv` / `parseImportText` / `lemmaCandidates` / `phraseVariants` / `isCovered` / `isNewerVersion` |
+| **释义缓存的容量治理**（0.23.18 只做了内存上限 2000 条） | 落盘层（Preferences / localStorage）没有上限也没有清理入口：`clearAll()` 只删 `day:*`，gloss 只能靠卸载 App 清。安卓端是单文件 SharedPreferences，`listDays()` 走 `keys()` → `getAll()` 会把整个文件反序列化，缓存越大每次解析越慢；Web 端 localStorage 5 MB 是真上限（写失败已改成静默降级） | 要动就三件事一起做：① 给落盘加软上限（3000 条，按写入顺序淘汰）；② 把 `listDays()` 从 `keys()` 改成单独存一个日期索引键；③ 设置 → 数据 里加「清空释义缓存」。**别只做 ①**，否则慢的根因还在 |
+| 单元测试 | 无（只有 18 个 e2e 脚本） | 若引入 vitest，优先覆盖 `backup.splitCsv` / `parseImportText` / `lemmaCandidates` / `phraseVariants` / `isCovered` / `isNewerVersion` |
 | 生成文的句长分布仍偏平 | 提示词已按真题逐篇统计给出长句标尺，但 deepseek-flash 关思考时基本写不出 30 词以上的句子（实测长句 0~1 句，真题 3~5 句），句长标准差 3~5（真题 8~10）。**审计刻意不查这一项**（为它重生成是白烧额度），只在报告里记录 | 想真正解决要改 few-shot（把一整段真题式样例放进提示词）或换更强模型；`scripts/analyze-difficulty.py` 可直接验证 |
 | ~~审计重写率偏高~~ **已修（2026-11-11）**：篇幅 floor 0.9→0.85、平均句长只卡下限、说明文被动上限 30%。同一批 12 篇配对复算 58%→33%、83%→67%，剩下的全是真短篇与塌篇 | 12 篇实测：真塌篇 3 篇（79/126/129 词，只有目标的 1/4）、擦线篇幅 2 篇（333/340，下限 342，差 2~9 词）、平均句长超上限 3 篇（24.3/28.5/30.3）、被动 1 篇。根因是**两层容差叠加**：目标区间已是「真题均值 ±1.5」，审计再叠 ±2/+3 与 0.9 折硬边界，必然一半落在边外 | 建议：篇幅 floor 0.9→0.85；平均句长只卡下限、上界只标注不重写。按此复算重写率 58%→25% 且只拦真塌篇。**用户 2026-11-11 决定「先记下，以后再解决」** |
 | **打回的主因已经换人了：现在是「缺 1 个词」** | 30 篇 A/B 的副产品统计：11 次打回里 **8 次是「缺 1 词」**（占 73%），其余是 avg 偏低 1 次、被动超标 1 次、名词化超标 1 次。缺词是零容忍判定的，而 15 个词塞进 330 词（每 22 词一个）本来就比真题密 | 想让重写率真正降下来，先动这条：`missing.length` 从「>0 就打回」改成「≥2 才打回、缺 1 个只标注」，或把词表密度降下来。**这条比缓存值钱 6 倍**（实测算过账）。改完用 `scripts/gen-article.mjs --runs 10` 复算打回率 |

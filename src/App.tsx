@@ -9,7 +9,6 @@ import HistoryPage from './ui/pages/HistoryPage'
 import ReadingPage from './ui/pages/ReadingPage'
 import StatsPage from './ui/pages/StatsPage'
 import SettingsPage from './ui/pages/SettingsPage'
-import { loadLookupSettings } from '@/data/dict'
 import { restoreScroll } from '@/lib/scroll'
 import { useLlm } from '@/store/llm'
 import { useSession } from '@/store/session'
@@ -67,7 +66,6 @@ export default function App() {
   useEffect(() => {
     void load()
     void loadLlm()
-    void loadLookupSettings()
     void loadTheme()
     void loadGlass()
     void loadPrefs()

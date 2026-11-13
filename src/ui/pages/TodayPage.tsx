@@ -35,6 +35,8 @@ export default function TodayPage({ onGoSettings }: Props) {
   const today = dateKey()
 
   const [glosses, setGlosses] = useState<Record<string, string>>({})
+  /** 超出单次补查上限、这次没查到的词数（导出几千词时才会出现，如实报出来） */
+  const [notLookedUp, setNotLookedUp] = useState(0)
   /** 释义展开：总闸 + 单个词的临时覆盖（默认收起——先回想再核对，才符合记忆的顺序） */
   const gloss = useGlossToggle('glossToday')
 
@@ -54,7 +56,11 @@ export default function TodayPage({ onGoSettings }: Props) {
       if (!alive) return
       setGlosses((prev) => ({ ...prev, ...Object.fromEntries(m) }))
     }
-    void lookupWords(snapshot.words.map((w) => w.spelling), { onLocal: merge }).then(merge)
+    void lookupWords(snapshot.words.map((w) => w.spelling), { onLocal: merge }).then((res) => {
+      if (!alive) return
+      merge(res.glosses)
+      setNotLookedUp(res.skipped.length)
+    })
     return () => {
       alive = false
     }
@@ -163,6 +169,7 @@ export default function TodayPage({ onGoSettings }: Props) {
         <p className={styles.diag}>
           接口返回 {snapshot.rawCount} 条 · 进入记录 {snapshot.words.length} 个 · 其中新学{' '}
           {groups[0].items.length} 个
+          {notLookedUp > 0 && ` · ${notLookedUp} 个词超出单次补查上限，点开再查`}
         </p>
       )}
 
