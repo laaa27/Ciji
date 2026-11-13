@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react'
 
-import { lookupOneDetailed } from '@/domain/lookup'
 import { addToPlan, advanceWord, lookupMemoState, type MemoState } from '@/domain/memo'
 import type { PhraseHit } from '@/domain/phrase'
 import { inflectionFamily } from '@/domain/wordforms'
 import { RESPONSE_LABEL } from '@/domain/collect'
 import { dateKey, diffDays, monthDay } from '@/lib/date'
 import { useSession } from '@/store/session'
+import { useGlossSource } from '../hooks/useGlossSource'
 import { useScrollLock } from '../hooks/useScrollLock'
 import styles from './WordSheet.module.css'
 
@@ -58,10 +58,23 @@ export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
   const [view, setView] = useState<'phrase' | 'word'>(phrase ? 'phrase' : 'word')
   const target = view === 'phrase' && phrase ? phrase.text : word
 
-  const [gloss, setGloss] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
-  /** 这条释义是不是 AI 给的（本地词典/缓存/在线兜底都是 false） */
-  const [aiGloss, setAiGloss] = useState(false)
+  /** 主释义 + 备选释义（AI / 自定义）全在这个 hook 里，见 useGlossSource */
+  const source = useGlossSource(target)
+
+  const custom = source.alt.custom
+  const altAi = source.alt.ai
+  /**
+   * 主释义查不到时用自定义释义兜底：这类词点开本来是空白，
+   * 而用户明明已经给它写过释义，没有理由不显示。
+   */
+  const usingCustomAsMain = !source.gloss && Boolean(custom)
+  const mainText = source.gloss ?? (usingCustomAsMain ? custom : null)
+  const mainTag = usingCustomAsMain ? '自定义' : source.ai ? 'AI 释义' : ''
+  /** 自定义已有内容且与主释义不同，才单独占一行（相同就没必要读两遍） */
+  const customRow = custom && custom !== mainText ? custom : ''
+  /** 自定义释义的编辑态：只在点「自定义」时打开 */
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState('')
   /** 关闭时先播出场动画，播完再真正卸载 */
   const [closing, setClosing] = useState(false)
 
@@ -78,6 +91,9 @@ export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
 
   useEffect(() => {
     setView(phrase ? 'phrase' : 'word')
+    // 换词就收起编辑框，别让上一篇的草稿留在这里
+    setEditing(false)
+    setDraft('')
   }, [phrase, word])
 
   function requestClose() {
@@ -85,31 +101,6 @@ export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
     setClosing(true)
     setTimeout(onClose, 180)
   }
-
-  useEffect(() => {
-    let alive = true
-    setLoading(true)
-    setGloss(null)
-    setAiGloss(false)
-    void lookupOneDetailed(target, {
-      // 本地词典/缓存命中时先渲染——AI 释义要走一次网络调用，不该挡住瞬时查询。
-      // 来源标记也一起给：缓存里的 AI 释义不该先按普通释义闪一帧
-      onLocal: (g, fromAi) => {
-        if (!alive) return
-        setGloss(g)
-        setAiGloss(fromAi)
-        setLoading(false)
-      },
-    }).then((res) => {
-      if (!alive) return
-      setGloss(res.gloss)
-      setAiGloss(res.ai)
-      setLoading(false)
-    })
-    return () => {
-      alive = false
-    }
-  }, [target])
 
   // 释义先出，墨墨状态后补：网络慢不该挡住看释义
   useEffect(() => {
@@ -146,13 +137,13 @@ export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
           : target
 
     let alive = true
-    void inflectionFamily(base, gloss, [target]).then((list) => {
+    void inflectionFamily(base, mainText, [target]).then((list) => {
       if (alive) setForms(list)
     })
     return () => {
       alive = false
     }
-  }, [memo, gloss, view, target])
+  }, [memo, mainText, view, target])
 
   async function handleAdvance() {
     setAdvancing(true)
@@ -162,6 +153,12 @@ export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
     setNotice({ ok: res.ok, text: res.message })
 
     if (res.ok) setMemo(await lookupMemoState(target))
+  }
+
+  async function handleSaveCustom() {
+    await source.saveCustom(draft)
+    setEditing(false)
+    setDraft('')
   }
 
   async function handleAdd() {
@@ -228,15 +225,154 @@ export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
         )}
 
         <p className={styles.gloss}>
-          {loading ? (
+          {source.loading ? (
             '查询中…'
           ) : (
             <>
-              {gloss || '没有查到这个词的释义'}
-              {aiGloss && gloss && <span className={styles.aiTag}>AI 释义</span>}
+              {mainText || '没有查到这个词的释义'}
+              {mainTag && (
+                <span className={styles.aiTag} data-testid="main-tag">
+                  {mainTag}
+                </span>
+              )}
             </>
           )}
         </p>
+
+        {/*
+          主释义永远在上面；AI 与自定义各占一行，**有内容才出现**。
+          主释义本身就是 AI 给的时候（本地没收录、由 AI 兜底），不再单独占一行 ——
+          那会和上面一字不差。
+        */}
+        {!source.loading && (
+          <>
+            {altAi && (
+              <div className={styles.altRow}>
+                <span className={styles.altLabel}>AI 释义</span>
+                <span className={styles.altText} data-testid="alt-ai">
+                  {altAi}
+                </span>
+                <span className={styles.altActions}>
+                  <button
+                    type="button"
+                    className={styles.altAction}
+                    onClick={() => void source.requestAi()}
+                    disabled={source.aiBusy}
+                  >
+                    {source.aiBusy ? '生成中…' : '重新生成'}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.altAction}
+                    data-testid="drop-ai"
+                    onClick={() => void source.dropAi()}
+                  >
+                    删除
+                  </button>
+                </span>
+              </div>
+            )}
+
+            {customRow && !editing && (
+              <div className={styles.altRow}>
+                <span className={styles.altLabel}>自定义</span>
+                <span className={styles.altText} data-testid="alt-custom">
+                  {customRow}
+                </span>
+                <span className={styles.altActions}>
+                  <button
+                    type="button"
+                    className={styles.altAction}
+                    data-testid="edit-custom"
+                    onClick={() => {
+                      setDraft(customRow)
+                      setEditing(true)
+                    }}
+                  >
+                    编辑
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.altAction}
+                    data-testid="drop-custom"
+                    onClick={() => void source.dropCustom()}
+                  >
+                    删除
+                  </button>
+                </span>
+              </div>
+            )}
+
+            {editing && (
+              <div className={styles.editor}>
+                <textarea
+                  className={styles.editorInput}
+                  data-testid="custom-input"
+                  value={draft}
+                  rows={2}
+                  maxLength={200}
+                  placeholder="写下你自己对这一条的理解"
+                  onChange={(e) => setDraft(e.target.value)}
+                />
+                <div className={styles.editorActions}>
+                  <button
+                    type="button"
+                    className={styles.altAction}
+                    onClick={() => {
+                      setEditing(false)
+                      setDraft('')
+                    }}
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.altAction}
+                    data-testid="save-custom"
+                    onClick={() => void handleSaveCustom()}
+                  >
+                    保存
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 某一项还没有内容时，给一个入口；两项都齐了就不占位置 */}
+            {!editing && (!altAi || !customRow) && (
+              <div className={styles.entryRow}>
+                {!altAi && (
+                  <button
+                    type="button"
+                    className={styles.entryBtn}
+                    data-testid="ask-ai"
+                    onClick={() => void source.requestAi()}
+                    disabled={source.aiBusy || !source.hasModel}
+                  >
+                    {source.aiBusy ? '生成中…' : source.ai ? '重新生成 AI 释义' : 'AI 释义'}
+                  </button>
+                )}
+                {!customRow && (
+                  <button
+                    type="button"
+                    className={styles.entryBtn}
+                    data-testid="add-custom"
+                    onClick={() => {
+                      setDraft(custom ?? '')
+                      setEditing(true)
+                    }}
+                  >
+                    {custom ? '编辑释义' : '自定义释义'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {source.aiNotice && <p className={styles.altNotice}>{source.aiNotice}</p>}
+            {!source.hasModel && !altAi && (
+              <p className={styles.altNotice}>AI 释义要先用设置里配置的大模型</p>
+            )}
+          </>
+        )}
 
         {view === 'word' && forms.length > 1 && (
           <div className={styles.forms}>

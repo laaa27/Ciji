@@ -145,7 +145,8 @@ ui  →  store  →  domain  →  data  →  api
 | `store.ts` | 每日快照 `day:YYYY-MM-DD`，含旧数据兼容 |
 | `article.ts` | 文章全文 + 元信息索引，列表页只读索引 |
 | `reading.ts` | 每日阅读秒数 |
-| `dict.ts` | 词典分片 + 词形还原 + 四级查词链（本地 → 永久缓存 → AI 释义 → MyMemory）；批量返回 `{ glosses, skipped }`，超限的词必须报出来 |
+| `dict.ts` | 本地 ECDICT 分片：懒加载、并行预热、`dictHas`/`lookupLocal`。只管"本地有没有"，不编排 |
+| `gloss.ts` | 🆕 释义缓存：主释义 `gloss:<词>` + 备选释义 `gloss_alt:<词>`（AI 版 / 用户自填），内存上限 2000 条 |
 | `keys.ts` | 🆕 偏好类存储键的唯一出处 |
 
 #### domain 层
@@ -154,6 +155,7 @@ ui  →  store  →  domain  →  data  →  api
 | --- | --- |
 | `collect.ts` | 采集今日快照：进度 + 词表 + 逐词反馈，归成三类；✏️ 新增 `groupCounts()` —— 三组计数的唯一出口 |
 | `article.ts` | 生成流水线：提纲 → 成文 → 审计 → 重生成；候选词与词覆盖校验 |
+| `lookup.ts` | 🆕 查词编排：四级链（本地 → 缓存 → AI → MyMemory）、两级额度、`requestAiGloss`；批量返回 `{ glosses, skipped }`，超限的词必须报出来。模型配置由 `main.tsx` 注入 |
 | `domain/prompts.ts` | **零依赖**提示词模块，含 `LEVEL_SPEC` 难度规格（✏️ 2026-11 加 `longFrom` / `longExample`：长句门槛与长句标尺）、✏️ 文体层 `GENRE_MIX` / `pickGenre` / `GENRE_SPEC`（说明文 / 议论文）、`MAX_TARGET_WORDS` / `WORD_LIMITS` |
 | `phrase.ts` | 点词时在上下文里找固定搭配（±5 词窗口 + 变形还原） |
 | `memo.ts` | 墨墨学习状态查询、加词、提前复习；✏️ 查询按「原词 → 还原候选」的顺序挑（`exact` 标记命中是原词还是原形） |
@@ -196,6 +198,7 @@ hooks：
 | `useReadingClock.ts` | 🆕 阅读计时：1s 走秒 + 15s 批量落盘 + 切后台不计时 |
 | `useGlossToggle.ts` | 🆕 释义展开：全局总闸（持久化）+ 单词临时覆盖（不落盘） |
 | `useScrollLock.ts` | 🆕 弹层打开时锁住 `.body` 的滚动（只改 overflowY，不动 scrollTop） |
+| `useGlossSource.ts` | 🆕 词卡的释义来源：主释义 + 备选（AI / 自定义）、AI 请求、自定义编辑 |
 | `useScrollStuck.ts` | 吸顶检测（单个 / 分组） |
 
 组件：
@@ -216,6 +219,7 @@ hooks：
 | 文件 | 职责 |
 | --- | --- |
 | `lib/date.ts` | 日期键、月日、星期、时长差 |
+| `lib/lemma.ts` | 🆕 词形还原（纯字符串规则，零依赖）；**顺序即可信度**，原词永远第一 |
 | `lib/text.ts` | 🆕 英文分词与词数统计（统一口径，替代原先 4 份副本） |
 | `lib/scroll.ts` | 🆕 滚动位置恢复（60ms 首试 / 120ms 重试 / <2px 算到位 / 最多 6 次） |
 | `lib/async.ts` | 🆕 `sleep`（原先 3 份副本） |
@@ -260,6 +264,7 @@ WordSheet → lookupOneDetailed：本地词典 → 永久缓存 → AI 释义 �
 | `article:<id>` / `article_index` | 文章全文 / 元信息索引 | `data/article.ts` |
 | `reading:YYYY-MM-DD` | 每日阅读秒数 | `data/reading.ts` |
 | `gloss:<word>` | 永久释义缓存，值是 `{ gloss, ai }` 的 JSON（`ai` 决定界面标不标「AI 释义」；修复前写入的纯文本条目按非 AI 读）。**没有清理入口、没有落盘上限**；写失败只降级成「本次会话有效」（Web 端 localStorage 有 5 MB 配额） | `data/dict.ts` |
+| `gloss_alt:<word>` | 备选释义，值是 `{ ai?, custom? }` 的 JSON。**只影响词卡**，词表/导出仍用主释义 | `data/gloss.ts` |
 | `online_lookup` | 已废弃（0.23.18 删掉「联网补查」开关后不再读写）。老用户设备上仍留着这个键，无害 | 无 |
 | `reading_font_size` / `reading_word_limit` / `reading_level` | 阅读偏好 | 🆕 `data/keys.ts` → `store/prefs.ts` |
 | `today_show_gloss` / `history_show_gloss` | 释义展开总闸 | 🆕 同上 |
@@ -390,7 +395,7 @@ curl -s http://localhost:5199/ | grep script
 **用 preview 时不 build 就跑测试，等于在验证上一版代码。** 这个坑真实发生过：一轮 262 断言全绿，
 但完全没覆盖新改动，白跑还差点误判回归。
 
-### 5.2 验证脚本（19 个，`tests/e2e/`）
+### 5.2 验证脚本（20 个，`tests/e2e/`）
 
 ```bash
 # 前置：5199 上有服务；本机装了 Chrome
@@ -413,6 +418,7 @@ node tests/e2e/verify-stats-parity.mjs  # 10 项：今日页三组与统计页�
 node tests/e2e/verify-scroll-lock.mjs   # 13 项：弹层打开期间背景不滚、底栏那一带也不滚
 node tests/e2e/verify-read-tab-return.mjs # 12 项：切栏目回来阅读位置不丢（要**先预热统计页**才复现得出）
 node tests/e2e/verify-lookup-batch.mjs   # 13 项：批量补查不丢词、走缓存、超限如实报出（**必须跑 dev server**）
+node tests/e2e/verify-gloss-override.mjs  # 33 项：AI 释义 / 自定义释义与主释义并存、持久化、兜底
 ```
 
 合计 **300+ 项断言**（各脚本标题里的数字是当时统计，后续新增断言没有逐条回填）。
@@ -654,9 +660,9 @@ grep -o '0\.[0-9]*\.[0-9]*' android/app/src/main/assets/public/assets/index-*.js
 
 | 指标 | 绿 | 黄 | 红 | 当前最差 |
 | --- | --- | --- | --- | --- |
-| 单文件行数（逻辑文件） | ≤ 300 | 301–500 | > 500 | `backup.ts` 466、`dict.ts` 460（黄） |
+| 单文件行数（逻辑文件） | ≤ 300 | 301–500 | > 500 | `backup.ts` 466（黄）；`dict.ts` 曾 714 行，0.23.19 已拆成 dict/gloss/lookup/lemma 四块 |
 | 单组件行数（含 JSX） | ≤ 300 | 301–450 | > 450 | `ReadingPage` 610（页面特例，见下） |
-| 单组件 `useState` | ≤ 6 | 7–12 | ≥ 13 | **`GenerateArticle` 14、`WordSheet` 13（红）** |
+| 单组件 `useState` | ≤ 6 | 7–12 | ≥ 13 | **`GenerateArticle` 14（红）**；`WordSheet` 13 → 12（释义搬进 `useGlossSource` 后降为黄） |
 | 单组件 `useEffect` | ≤ 4 | 5–6 | ≥ 7 | `ReadingPage` 4（刚从 8 降下来） |
 | 单函数行数 | ≤ 40 | 41–60 | > 60 | `chatCompletion` 95（红，暂不动） |
 | 单函数分支数 | ≤ 8 | 9–12 | > 12 | `lemmaCandidates` 17（查表型，豁免） |
@@ -741,12 +747,11 @@ done | sort -rn | head -5
 
 | 项 | 现状 | 建议时机 |
 | --- | --- | --- |
-| `GenerateArticle` / `WordSheet` 的 state 密度 | 14 / 13 个 `useState`，已越过 9.4 的红线（比重构后的 `ReadingPage` 12 个还多）。前者是选词表单（日期/类型/难度/上限/草稿恢复/已用词…），后者是词卡（释义/短语视图/墨墨状态/加词确认…） | 下次改这两个文件时，按「表单状态收 reducer」「词卡数据获取抽 hook」分块搬，别一次重写 |
+| `GenerateArticle` 的 state 密度 | 14 个 `useState`，仍越过 9.4 的红线（选词表单：日期/类型/难度/上限/草稿恢复/已用词…）。`WordSheet` 已于 0.23.19 把释义部分搬进 `useGlossSource`，从 13 降到 12 | 下次改 GenerateArticle 时按「表单状态收 reducer」搬，别一次重写 |
 | `ConfirmButton` 统一二次确认 | 三处各写一遍（WordSheet / GenerateArticle / ArticleLibrary），行为还不一致 | 下次加危险操作时顺手统一 |
 | `chatCompletion` 状态机化 | 95 行 / 14 分支 / 3 套重试交织，目前正确但改动易回归 | 有单测兜底后再动 |
 | CSS 基础控件组件化 | `.primary` 在 14 个 module.css 里各写一遍 | 逐次改到时再抽，别一次性重构 |
 | `test-resilience` 剩余 flaky | 连续跑多用例时偶发，已降到约 1/4 | 单独立项排查 |
-| `data/dict.ts` 职责过重 | 同时做数据访问与查词编排，460 行 | 若要单测查词逻辑，先拆成 `data/dict` + `domain/lookup` |
 | `domain/article.ts` 依赖 store | 读全局模型配置，导致它不能在 node 里直接跑 | 想用脚本做生成对比实验前，先改成依赖注入 |
 | 空态卡片复用 | `EmptyState` 已存在，但今日页/阅读页仍手写 | 顺手替换 |
 | token 用量靠模块级单例传递 | `api/llm.ts` 的 `takeLastLlmUsage()` 是「读走即清」的模块状态，`domain/article.ts` 在每次 `await` 之后同步取走。生成进行中若另一条链路（点词查释义）也发起调用，理论上会把用量串到这篇文章上。目前靠「生成与查词不会真的重叠」兜着 | 真出现串账就把 `usage` 改成 `chatCompletion` 的返回值（要动 6 处调用方），别在单例上打补丁 |

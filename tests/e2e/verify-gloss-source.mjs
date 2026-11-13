@@ -164,6 +164,10 @@ const clickWord = async (text) => {
   return hit
 }
 
+/** 主释义旁的来源标记（'AI 释义' 现在也是入口按钮的文案，只能按 testid 判） */
+const mainTag = () =>
+  page.evaluate(() => document.querySelector('[data-testid="main-tag"]')?.textContent?.trim() ?? '')
+
 const sheetText = () =>
   page.evaluate(() => {
     const dlg = document.querySelector('[role="dialog"]')
@@ -193,7 +197,7 @@ console.log('\n[1] 首次查询：本地没有 → AI 释义')
 ok('点到了 zorbix', await clickWord('zorbix'))
 let text = await sheetText()
 ok('弹层有 AI 给的释义', text.includes(AI_GLOSS), text.slice(0, 80))
-ok('标了「AI 释义」', text.includes('AI 释义'), text.slice(0, 80))
+ok('标了「AI 释义」', (await mainTag()) === 'AI 释义', await mainTag())
 let cache = await cacheOf('zorbix')
 ok('缓存里存了释义 + 来源', cache?.gloss === AI_GLOSS && cache?.ai === true, JSON.stringify(cache))
 const llmAfterFirst = llmCalls
@@ -204,7 +208,7 @@ await closeSheet()
 ok('点到了 zorbix', await clickWord('zorbix'))
 text = await sheetText()
 ok('释义仍是 AI 那条', text.includes(AI_GLOSS), text.slice(0, 80))
-ok('「AI 释义」还在', text.includes('AI 释义'), text.slice(0, 80))
+ok('「AI 释义」还在', (await mainTag()) === 'AI 释义', await mainTag())
 ok('没有重复调模型', llmCalls === llmAfterFirst, `${llmAfterFirst} → ${llmCalls}`)
 
 console.log('\n[3] 重载页面后再点（Preferences 缓存命中，缺陷现场）')
@@ -214,7 +218,7 @@ await openReading()
 ok('点到了 zorbix', await clickWord('zorbix'))
 text = await sheetText()
 ok('释义从本地读出来了', text.includes(AI_GLOSS), text.slice(0, 80))
-ok('「AI 释义」没有丢', text.includes('AI 释义'), text.slice(0, 80))
+ok('「AI 释义」没有丢', (await mainTag()) === 'AI 释义', await mainTag())
 ok('依旧没有重复调模型', llmCalls === llmAfterFirst, `${llmAfterFirst} → ${llmCalls}`)
 
 console.log('\n[4] 本地词典命中的词：不标 AI')
@@ -222,7 +226,7 @@ await closeSheet()
 ok('点到了 deliberate', await clickWord('deliberate'))
 text = await sheetText()
 ok('本地词典有释义', text.length > 'deliberate 关闭'.length, text.slice(0, 80))
-ok('没有「AI 释义」标记', !text.includes('AI 释义'), text.slice(0, 80))
+ok('没有「AI 释义」标记', (await mainTag()) === '', await mainTag())
 ok('也没有写进释义缓存', (await cacheOf('deliberate')) === null, JSON.stringify(await cacheOf('deliberate')))
 
 console.log('\n[5] AI 没给结果的词 → MyMemory 兜底，同样不标 AI')
@@ -230,7 +234,7 @@ await closeSheet()
 ok('点到了 blorft', await clickWord('blorft'))
 text = await sheetText()
 ok('拿到 MyMemory 的释义', text.includes(ONLINE_GLOSS), text.slice(0, 80))
-ok('没有「AI 释义」标记', !text.includes('AI 释义'), text.slice(0, 80))
+ok('没有「AI 释义」标记', (await mainTag()) === '', await mainTag())
 cache = await cacheOf('blorft')
 ok('缓存记的是非 AI 来源', cache?.gloss === ONLINE_GLOSS && cache?.ai === false, JSON.stringify(cache))
 
@@ -239,7 +243,7 @@ await closeSheet()
 ok('点到了 quibblesome', await clickWord('quibblesome'))
 text = await sheetText()
 ok('旧条目的释义照常显示', text.includes(LEGACY_GLOSS), text.slice(0, 80))
-ok('不冒充 AI 释义', !text.includes('AI 释义'), text.slice(0, 80))
+ok('不冒充 AI 释义', (await mainTag()) === '', await mainTag())
 
 await browser.close()
 console.log(`\n结果：${pass} 过，${fail} 挂`)
