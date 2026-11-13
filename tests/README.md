@@ -49,6 +49,7 @@ node tests/e2e/verify-phrase-match.mjs
 |---|---|
 | `verify-kind-toggle.mjs` | 生成页「三类互斥」+ 类型取消 + 多选（8 断言） |
 | `verify-phrase-match.mjs` | 点词自动匹配固定搭配、变形还原（23 断言） |
+| `verify-read-tab-return.mjs` | 切栏目回来阅读位置不丢（12 断言，**必须先预热统计页**才复现得出） |
 
 理由：这两处对应 `domain/article.wordCandidates` 与 `domain/phrase.phraseVariants`，
 逻辑密集且没有手点路径能覆盖边界。特别是哪天要动 `api/llm.chatCompletion`

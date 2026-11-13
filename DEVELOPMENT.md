@@ -389,7 +389,7 @@ curl -s http://localhost:5199/ | grep script
 **用 preview 时不 build 就跑测试，等于在验证上一版代码。** 这个坑真实发生过：一轮 262 断言全绿，
 但完全没覆盖新改动，白跑还差点误判回归。
 
-### 5.2 验证脚本（17 个，`tests/e2e/`）
+### 5.2 验证脚本（18 个，`tests/e2e/`）
 
 ```bash
 # 前置：5199 上有服务；本机装了 Chrome
@@ -410,6 +410,7 @@ node tests/e2e/verify-gloss-source.mjs  # 24 项：AI 释义标注在缓存命�
 node tests/e2e/verify-word-forms.mjs    # 14 项：所有格词形还原 / 覆盖判定 / 分词口径（**必须跑 dev server**，直接 import 源码）
 node tests/e2e/verify-stats-parity.mjs  # 10 项：今日页三组与统计页摘要、反复忘记口径一致
 node tests/e2e/verify-scroll-lock.mjs   # 13 项：弹层打开期间背景不滚、底栏那一带也不滚
+node tests/e2e/verify-read-tab-return.mjs # 12 项：切栏目回来阅读位置不丢（要**先预热统计页**才复现得出）
 ```
 
 合计 **300+ 项断言**（各脚本标题里的数字是当时统计，后续新增断言没有逐条回填）。
@@ -596,6 +597,7 @@ grep -o '0\.[0-9]*\.[0-9]*' android/app/src/main/assets/public/assets/index-*.js
 | 「已是最新仍提示更新」 | APK 内嵌旧版本号 | 见 7.3 |
 | 首帧闪一下浅色再变深 | 主题靠 Preferences 异步读，等它回来才上色 | 已有 localStorage 镜像，若仍闪检查 `theme_boot` 键是否被清 |
 | 阅读位置重启后错位 | 译文开关与位置必须一起恢复（译文开不开高度差很大） | 检查 `cjt.showzh` 与 `cjt.read.*` 是否都在 |
+| 切到「统计」再回「阅读」，位置被改掉 | 落盘阅读位置时读了被夹过的 `scrollTop`：cleanup 跑在提交之后，目标栏目内容已就位、阅读页已 `display:none`，浏览器把 scrollTop 夹进新容器的可滚范围。统计页高到能夹出非零值（2400→517），其余栏目夹成 0 被 `restoreScroll` 跳过，所以只有它露馅 | 用 `lastTopRef`（滚动时记下的最后可见位置）落盘与恢复，别在 cleanup 里读实时 scrollTop；栏目不可见期间的 scroll 事件一律忽略。回归见 `verify-read-tab-return` |
 | 点词没有短语 | 本地词典多词条目只覆盖约三分之一 | 有墨墨 token 时会走 `lookupKnownPhrases` 兜底；都没有就退回单词 |
 
 ---
@@ -715,6 +717,10 @@ done | sort -rn | head -5
 3. **弹层必须调 `ui/hooks/useScrollLock`**，且遮罩上**不要**写 `touch-action: none`——
    那是祖先限制，会把弹层自己的滚动一起禁掉。遮罩本身加 `overscroll-behavior: none`。
    底栏反过来：它没有内部滚动，直接 `touch-action: none` 吃掉纵向手势。
+4. **滚动位置落盘不许读「实时 scrollTop」**。`display:none` 一挂上（切栏目、进子视图），
+   浏览器立刻把 scrollTop 夹进新容器的可滚范围，而 cleanup 恰恰跑在这之后 ——
+   写下去的是夹出来的中间值，下次恢复就落在错的地方。要落盘就只在滚动事件里记
+   「最后可见的位置」，卸载时写那个 ref；页面不可见期间的 scroll 事件必须忽略。
 
 ---
 

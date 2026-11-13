@@ -56,6 +56,13 @@ export default function App() {
   /** 每个栏目各自的滚动位置。所有页面共用一个滚动容器，不记就会串。 */
   const scrollMemory = useRef<Partial<Record<TabKey, number>>>({})
   const bodyRef = useRef<HTMLDivElement>(null)
+  /**
+   * 当前栏目。渲染期就更新（不用 effect）：切栏目时浏览器会先因为内容换成目标栏目
+   * 而把 scrollTop 夹一次，那个 scroll 事件到达时这里已经是新栏目了，
+   * 下面那个监听据此认出「这是夹出来的值」，不往旧栏目头上记。
+   */
+  const tabRef = useRef<TabKey>(tab)
+  tabRef.current = tab
 
   useEffect(() => {
     void load()
@@ -120,8 +127,11 @@ export default function App() {
 
     let timer = 0
     const onScroll = () => {
+      // 栏目已经切走：这条 scroll 多半是内容换掉后浏览器夹出来的，不是用户滚的
+      if (tabRef.current !== tab) return
       window.clearTimeout(timer)
       timer = window.setTimeout(() => {
+        if (tabRef.current !== tab) return
         scrollMemory.current[tab] = body.scrollTop
         saveScroll(tab, body.scrollTop)
       }, 300)

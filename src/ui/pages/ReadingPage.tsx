@@ -192,6 +192,16 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   const pageRef = useRef<HTMLDivElement>(null)
   /** 打开文章库之前的阅读位置，返回时原地恢复 */
   const articleScroll = useRef(0)
+  /**
+   * 最后一次「页面可见时」观察到的滚动位置。
+   *
+   * 不能等到落盘那一刻再读 `scroller.scrollTop`：effect 的 cleanup 跑在 React
+   * 提交之后，那时 `.body` 里装的已经是**目标栏目**的内容、阅读页变成 `display:none`，
+   * 浏览器早把 scrollTop 夹进了新容器的可滚范围（详见下面落盘处的注释）。
+   */
+  const lastTopRef = useRef(0)
+  /** `lastTopRef` 记的是哪篇文章的位置 —— 换文章必须清零，否则会把上一篇的位置套到新文章上 */
+  const lastTopIdRef = useRef('')
   const headerStuck = useScrollStuck(headerRef)
 
   const today = dateKey()
@@ -374,18 +384,30 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     const scroller = findScrollParent(pageRef.current)
     if (!scroller) return
 
-    // 正文是异步读出来的，首帧高度往往不够，交给 restoreScroll 重试到位
-    const saved = readReadPos(articleId)
+    // 换了文章：上一篇的位置不能拿来套在这一篇上
+    if (lastTopIdRef.current !== articleId) {
+      lastTopIdRef.current = articleId
+      lastTopRef.current = 0
+    }
+
+    // 正文是异步读出来的，首帧高度往往不够，交给 restoreScroll 重试到位。
+    // 优先用「刚才看着的位置」（同一会话内切栏目回来），没有才读落盘值（冷启动）。
+    const saved = lastTopRef.current > 0 ? lastTopRef.current : readReadPos(articleId)
     let cancelRestore = () => {}
     if (saved > 0) {
+      lastTopRef.current = saved
       articleScroll.current = saved
       cancelRestore = restoreScroll(scroller, saved)
     }
 
     let debounce = 0
     const onScroll = () => {
+      // 切栏目时阅读页先变成 display:none，浏览器会把 scrollTop 夹到新容器的高度上，
+      // 那个值不是用户的阅读位置。不可见期间一律不记（activeRef 在提交前就已更新）。
+      if (!activeRef.current) return
+      lastTopRef.current = scroller.scrollTop
       window.clearTimeout(debounce)
-      debounce = window.setTimeout(() => saveReadPos(articleId, scroller.scrollTop), 300)
+      debounce = window.setTimeout(() => saveReadPos(articleId, lastTopRef.current), 300)
     }
     scroller.addEventListener('scroll', onScroll, { passive: true })
 
@@ -393,7 +415,17 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
       scroller.removeEventListener('scroll', onScroll)
       window.clearTimeout(debounce)
       cancelRestore()
-      saveReadPos(articleId, scroller.scrollTop)
+      /*
+       * 落盘用的是「最后观察到的位置」，不是此刻的 scroller.scrollTop。
+       *
+       * cleanup 跑在 React 提交之后：这时 `.body` 里已经换成目标栏目的内容，阅读页
+       * 被 display:none，scrollTop 已被浏览器夹进新容器的可滚范围。统计页恰好高到
+       * 能夹出一个非零的中间值（实测 2400 → 517），于是它被当成阅读位置存了下来；
+       * 返回阅读时 restoreScroll 又按这个值把页面拽回去 —— 这就是「切到统计再回来
+       * 位置就乱了」的成因。今日 / 设置 / 历史首页比阅读页矮得多，夹出来是 0，
+       * 而 restoreScroll 对 0 直接跳过，所以那几栏看起来一切正常。
+       */
+      saveReadPos(articleId, lastTopRef.current)
     }
   }, [active, articleId, sub.isOpen])
 
