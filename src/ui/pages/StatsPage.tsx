@@ -7,7 +7,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 import { getAllDays } from '@/data/store'
 import { getAllReadingDays, type ReadingDay } from '@/data/reading'
 import { useTheme } from '@/store/theme'
-import { lineState, type TodaySnapshot, type WordState } from '@/domain/collect'
+import { groupCounts, type TodaySnapshot, type WordState } from '@/domain/collect'
 import { monthDay } from '@/lib/date'
 
 import EmptyState from '../components/EmptyState'
@@ -28,9 +28,10 @@ function buildRows(days: TodaySnapshot[]): Row[] {
     .slice()
     .reverse()
     .map((d) => {
-      // 堆叠柱需要互斥，否则同一根柱子会重复计数；用竖线口径（按反馈）最直观
-      const c: Record<WordState, number> = { new: 0, vague: 0, forget: 0 }
-      for (const w of d.words) c[lineState(w)] += 1
+      // 与今日页同一套互斥分组：柱状图的三段之和 == 今日页三组之和。
+      // 曾经按 firstResponse 重算，一个「新学但答错」的词在今日页算新学、
+      // 在这里算忘记，两页永远差几个数。
+      const c = groupCounts(d.words)
       const [, m, day] = d.date.split('-')
       return {
         date: d.date,
@@ -260,25 +261,29 @@ export default function StatsPage({ active }: { active: boolean }) {
   )
 
   const summary = useMemo(() => {
-    let newCount = 0
-    let vagueCount = 0
-    let forgetCount = 0
-    // 摘要用真实口径，允许重叠：一个新学且忘记的词，两个数都要算进去
+    // 与今日页同一套互斥口径（groupCounts），不再按 isNew / firstResponse 各数一套。
+    // 摘要、柱状图、今日页三组必须能对上，否则用户会以为数据丢了。
+    const total: Record<WordState, number> = { new: 0, vague: 0, forget: 0 }
     for (const d of days) {
-      for (const w of d.words) {
-        if (w.isNew) newCount += 1
-        if (w.firstResponse === 'VAGUE') vagueCount += 1
-        if (w.firstResponse === 'FORGET') forgetCount += 1
-      }
+      const c = groupCounts(d.words)
+      total.new += c.new
+      total.vague += c.vague
+      total.forget += c.forget
     }
-    return { newCount, vagueCount, forgetCount, days: days.length }
+    return {
+      newCount: total.new,
+      vagueCount: total.vague,
+      forgetCount: total.forget,
+      days: days.length,
+    }
   }, [days])
 
   const stubborn = useMemo(() => {
     const map = new Map<string, number>()
     for (const d of days) {
       for (const w of d.words) {
-        if (w.firstResponse !== 'FORGET') continue
+        // 同样走分组口径：今日页「忘记」组里不会有新学词，这里也不该有
+        if (!w.groups.includes('forget')) continue
         const key = w.spelling.toLowerCase()
         map.set(key, (map.get(key) ?? 0) + 1)
       }
@@ -324,9 +329,9 @@ export default function StatsPage({ active }: { active: boolean }) {
           <p className={styles.summary}>
             记录的 {summary.days} 天里，
             <br />
-            新学 <strong data-state="new">{summary.newCount}</strong> 个词，
-            有 <strong data-state="vague">{summary.vagueCount}</strong> 次模糊，
-            <strong data-state="forget">{summary.forgetCount}</strong> 次忘记。
+            新学 <strong data-state="new">{summary.newCount}</strong> 个词，模糊{' '}
+            <strong data-state="vague">{summary.vagueCount}</strong> 个，忘记{' '}
+            <strong data-state="forget">{summary.forgetCount}</strong> 个。
           </p>
 
           <section className={styles.section}>

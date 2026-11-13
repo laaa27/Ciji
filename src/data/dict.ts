@@ -237,19 +237,34 @@ const IRREGULAR: Record<string, string> = {
  * 不追求语言学正确，能覆盖考试词库里的规则变化即可。
  *
  * 顺序很重要：越可信的越靠前，调用方通常取第一个查得到的。
+ *
+ * 所有格（pharaoh's / students'）单独处理：墨墨词库与 ECDICT 都只收原形，
+ * 不剥撇号的话文章里的 `pharaoh's` 会「查不到释义、加不进词库、被判定为未使用」——
+ * 三个症状同源。
  */
 export function lemmaCandidates(word: string): string[] {
-  const w = word.toLowerCase()
+  // 排版里的撇号是 U+2019（’），词表里的通常是 U+0027（'）。不归一化的话
+  // 同一个词会分成两个键，缓存与墨墨查询都会各查一遍还都查不到。
+  const w = word.toLowerCase().replace(/[\u2018\u2019\u02bc]/g, "'")
   const out: string[] = [w]
   const add = (s: string) => {
     if (s.length >= 2 && !out.includes(s)) out.push(s)
+  }
+
+  // 所有格与缩写词尾：pharaoh's → pharaoh；students' → students → student。
+  // 先递归还原剥掉撇号后的词，带撇号的复数才不会只停在 `students` 这一层。
+  if (w.endsWith("'s")) {
+    for (const c of lemmaCandidates(w.slice(0, -2))) add(c)
+  } else if (w.endsWith("'")) {
+    for (const c of lemmaCandidates(w.slice(0, -1))) add(c)
   }
 
   // 规则变化
   if (w.endsWith('ies')) add(w.slice(0, -3) + 'y')
   if (w.endsWith('ied')) add(w.slice(0, -3) + 'y')
   if (w.endsWith('es')) add(w.slice(0, -2))
-  if (w.endsWith('s') && !w.endsWith('ss')) add(w.slice(0, -1))
+  // 带撇号的词已经由上面剥过一次，别在这里再削出一个 `pharaoh'`
+  if (w.endsWith('s') && !w.endsWith('ss') && !w.endsWith("'s")) add(w.slice(0, -1))
   // wives → wife / leaves → leaf / knives → knife
   if (w.endsWith('ves')) {
     add(w.slice(0, -3) + 'f')

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { getAllDays } from '@/data/store'
 import { lookupWords } from '@/data/dict'
-import { lineState, responseNote, type TodaySnapshot, type WordState } from '@/domain/collect'
+import { groupCounts, lineState, responseNote, type TodaySnapshot, type WordState } from '@/domain/collect'
 import { monthDay, weekday } from '@/lib/date'
 
 import { useGlossToggle } from '../hooks/useGlossToggle'
@@ -13,14 +13,6 @@ import styles from './HistoryPage.module.css'
 const ORDER: WordState[] = ['new', 'vague', 'forget']
 const TITLE: Record<WordState, string> = { new: '新学', vague: '模糊', forget: '忘记' }
 
-type Counts = Record<WordState, number>
-
-function countBy(words: TodaySnapshot['words']): Counts {
-  const c: Counts = { new: 0, vague: 0, forget: 0 }
-  // 多归属：一个新学且忘记的词两组都算
-  for (const w of words) for (const g of w.groups) c[g] += 1
-  return c
-}
 
 function DayItem({
   day,
@@ -36,7 +28,7 @@ function DayItem({
   isGlossShown: (vocId: string) => boolean
   toggleGloss: (vocId: string) => void
 }) {
-  const counts = useMemo(() => countBy(day.words), [day.words])
+  const counts = useMemo(() => groupCounts(day.words), [day.words])
   const total = day.words.length
 
   const [glosses, setGlosses] = useState<Record<string, string>>({})

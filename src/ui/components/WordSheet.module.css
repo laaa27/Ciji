@@ -6,6 +6,10 @@
   align-items: flex-end;
   background: var(--scrim);
   animation: fade 0.18s ease;
+  /* 遮罩不参与滚动链：手指压在弹层（或它下面的底栏）上滑，不该带着背景内容跑。
+     刻意不写 touch-action: none —— 那是祖先限制，会把弹层内部的滚动一起禁掉，
+     「不能滑动」由 useScrollLock 锁住 .body 来保证 */
+  overscroll-behavior: none;
 }
 
 .mask[data-closing='true'] {
@@ -14,6 +18,15 @@
 
 .sheet {
   width: 100%;
+  /*
+   * 内容会随墨墨状态、变形标签、提示语变长。正常词条远不到一屏，所以「手指滑不动」
+   * 就是默认手感；只有内容超过上限时，才退回让弹层内部自己滚 ——
+   * 否则高过屏幕的部分会溢出到上方视口外，用户既看不到也够不着。
+   */
+  max-height: 84vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 10px var(--gutter) calc(var(--safe-bottom) + var(--sp-5));
   background: var(--surface);
   border-top-left-radius: 14px;

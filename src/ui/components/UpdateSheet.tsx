@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 
 import type { ReleaseInfo } from '@/domain/update'
 
+import { useScrollLock } from '../hooks/useScrollLock'
 import styles from './UpdateSheet.module.css'
 
 type Props = {
@@ -15,6 +16,9 @@ type Props = {
  */
 export default function UpdateSheet({ info, onClose }: Props) {
   const [closing, setClosing] = useState(false)
+
+  // 与词卡同一个问题：遮罩挂在 .body 里，弹层开着时滑动会带着背景滚
+  useScrollLock(true)
 
   // 关闭时先播出场动画，播完再真正卸载
   function requestClose() {

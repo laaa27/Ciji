@@ -1,10 +1,39 @@
 # 更新日志
 
 词迹（Ciji）／包名 `com.laaa27.maimemo`。
-本轮改动集中在 **2026-11-09~12**，基线 0.15.1 → 当前 0.23.7。
+本轮改动集中在 **2026-11-09~13**，基线 0.15.1 → 当前 0.23.15。
 
 - **0.23.0 之前**：架构重构与启动韧性修复，分支 `fix/startup-resilience`（已合并回 master）
 - **0.23.0~0.23.7**：文章生成质量、每日词表分类、用量观测，分支 `refactor/extension-points`（已合并回 master）
+- **0.23.14**：代码整体回退到 0.23.7（0.23.8~0.23.13 的改动退回 `backup/2026-11-13` 分支存档）
+- **0.23.15**：从回退后的 0.23.7 基线重新修三件事（统计口径 / 所有格词形 / 弹层与底栏的穿透滚动）
+
+---
+
+## 0.23.15 — 统计口径统一、所有格词形还原、弹层与底栏不再穿透滚动
+
+### 修复
+- **今日页与统计页数字对不上**：统计页原先自己算两套 —— 柱状图按 `lineState`（看反馈）、
+  摘要按 `isNew` + `firstResponse`（允许重叠）。同一个「今天新学、但答了忘记」的词，
+  今日页算进「新学」，统计页算进「忘记」，两页必然差几个数。
+  新增 `collect.groupCounts()` 作为三组计数的唯一出口，今日页、历史页、统计页柱子与摘要、
+  「反复忘记」全部同源（按 `groups` 互斥）；摘要文案从「次模糊/次忘记」改成「个」（现在是词数不是次数）。
+- **`pharaoh's` 这类所有格查不到、还提示未使用**：`lemmaCandidates` 先把撇号归一化
+  （含 U+2019 弯撇号）再递归剥离 `'s` / `'`，得到 `pharaoh`。查词、墨墨词库判定、文章覆盖判定
+  三处同时受益；`isCovered` 改成两侧都展开还原候选（目标词是原形、正文写所有格也算用上）；
+  `lib/text` 分词同时认 ASCII 与弯撇号，`domain/article` 两处手写正则改走 `wordPattern()`，
+  分词口径只剩一处。
+- **词卡开着时滑动会带着背景文章跑、底栏那一带同样**：遮罩虽是 `position: fixed`，DOM 上仍是
+  `.body`（滚动容器）的后代，触摸滚动会顺着祖先链找到 `.body`。新增 `useScrollLock`
+  （`WordSheet` / `UpdateSheet`），挂载时把 `[data-scroller]` 的 `overflowY` 置 `hidden`、
+  卸载还原，不动 `scrollTop` 所以不跳；词卡加 `max-height: 84vh`，正常词条远不到一屏所以
+  「滑不动」，内容超长时退回弹层内部自己滚。底栏加 `touch-action: none`，手指压在栏上滑
+  不再带走页面。
+
+### 验证
+- `verify-word-forms` 14 项、`verify-stats-parity` 10 项、`verify-scroll-lock` 13 项全过（新增）
+- 回归：`test-reading` 72 / `verify-phrase-match` 23 / `verify-gencounts` 13 / `test-sticky` 19 /
+  `verify-gloss-source` 24 / `verify-article-audit` 12 / `verify-glass` 7，全部 0 挂
 
 ---
 

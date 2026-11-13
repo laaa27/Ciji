@@ -6,6 +6,14 @@
   padding-bottom: var(--safe-bottom);
   border-top: 1px solid var(--rule);
   background: var(--paper);
+  /*
+   * 手指落在底栏上滑动，页面不该跟着动。
+   * 玻璃形态下底栏是 fixed 悬浮层，触摸滚动会穿透到 .body（Chromium 按滚动节点树
+   * 找容器，不看 DOM 祖先），于是压在栏上划一下，底下的文章就被带着窜出去一截；
+   * 这跟点开词卡时的穿透是同一类问题。touch-action: none 让栏自己吃掉纵向手势，
+   * 点击不受影响。
+   */
+  touch-action: none;
 }
 
 /* 液态玻璃：脱离文档流的悬浮胶囊，内容从栏下滚过、透出模糊的底。

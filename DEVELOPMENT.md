@@ -152,7 +152,7 @@ ui  →  store  →  domain  →  data  →  api
 
 | 文件 | 职责 |
 | --- | --- |
-| `collect.ts` | 采集今日快照：进度 + 词表 + 逐词反馈，归成三类 |
+| `collect.ts` | 采集今日快照：进度 + 词表 + 逐词反馈，归成三类；✏️ 新增 `groupCounts()` —— 三组计数的唯一出口 |
 | `article.ts` | 生成流水线：提纲 → 成文 → 审计 → 重生成；候选词与词覆盖校验 |
 | `domain/prompts.ts` | **零依赖**提示词模块，含 `LEVEL_SPEC` 难度规格（✏️ 2026-11 加 `longFrom` / `longExample`：长句门槛与长句标尺）、✏️ 文体层 `GENRE_MIX` / `pickGenre` / `GENRE_SPEC`（说明文 / 议论文）、`MAX_TARGET_WORDS` / `WORD_LIMITS` |
 | `phrase.ts` | 点词时在上下文里找固定搭配（±5 词窗口 + 变形还原） |
@@ -195,6 +195,7 @@ hooks：
 | `useSubView.ts` | 🆕 二级视图三件套：进出状态、返回动画、安卓返回键自动注册 |
 | `useReadingClock.ts` | 🆕 阅读计时：1s 走秒 + 15s 批量落盘 + 切后台不计时 |
 | `useGlossToggle.ts` | 🆕 释义展开：全局总闸（持久化）+ 单词临时覆盖（不落盘） |
+| `useScrollLock.ts` | 🆕 弹层打开时锁住 `.body` 的滚动（只改 overflowY，不动 scrollTop） |
 | `useScrollStuck.ts` | 吸顶检测（单个 / 分组） |
 
 组件：
@@ -388,7 +389,7 @@ curl -s http://localhost:5199/ | grep script
 **用 preview 时不 build 就跑测试，等于在验证上一版代码。** 这个坑真实发生过：一轮 262 断言全绿，
 但完全没覆盖新改动，白跑还差点误判回归。
 
-### 5.2 验证脚本（14 个，`tests/e2e/`）
+### 5.2 验证脚本（17 个，`tests/e2e/`）
 
 ```bash
 # 前置：5199 上有服务；本机装了 Chrome
@@ -406,9 +407,13 @@ node tests/e2e/verify-read-restore.mjs  #  7 项：重启后回到原处
 node tests/e2e/verify-article-audit.mjs # 12 项：生成后审计（残篇 / 截断 / 句式模板化）与重生成
 node tests/e2e/verify-phrase-match.mjs  # 23 项：点词匹配固定搭配
 node tests/e2e/verify-gloss-source.mjs  # 24 项：AI 释义标注在缓存命中后不丢（含本地/MyMemory 不误标）
+node tests/e2e/verify-word-forms.mjs    # 14 项：所有格词形还原 / 覆盖判定 / 分词口径（**必须跑 dev server**，直接 import 源码）
+node tests/e2e/verify-stats-parity.mjs  # 10 项：今日页三组与统计页摘要、反复忘记口径一致
+node tests/e2e/verify-scroll-lock.mjs   # 13 项：弹层打开期间背景不滚、底栏那一带也不滚
 ```
 
-合计 **298 项断言**。跑法约定：
+合计 **300+ 项断言**（各脚本标题里的数字是当时统计，后续新增断言没有逐条回填）。
+`verify-word-forms` 是唯一需要 dev server 的：它 `import('/src/...')` 直接测源码模块。
 
 - **从仓库根目录执行**（脚本用相对路径写截图，才会落在被 `/*.png` 忽略的位置）
 - 输出逐项 ✓ / ✗，**退出码非 0 即有失败**
@@ -627,7 +632,7 @@ grep -o '0\.[0-9]*\.[0-9]*' android/app/src/main/assets/public/assets/index-*.js
 | 功能类型 | 正确落点 | 不该这么做 |
 | --- | --- | --- |
 | **加一个设置项 / 开关** | `data/keys.ts` 加键 → `store/prefs.ts` 的 `Prefs` / `DEFAULTS` / `PARSERS` 三处 → 组件里 `usePrefs(s => s.xxx)` | 在页面里写 `useState` + `useEffect` + `Preferences.set` 四件套（这是被消掉的旧模式） |
-| **加一个二级页面 / 弹层** | `useSubView<T>()` 一行，返回动画与返回键自动接管 | 手写 `returning` state + `setTimeout(320)` + `pushBackHandler`（会漏，词卡那处就漏过滚动记忆） |
+| **加一个二级页面 / 弹层** | `useSubView<T>()` 一行，返回动画与返回键自动接管；遮罩式弹层再补一行 `useScrollLock(true)` | 手写 `returning` state + `setTimeout(320)` + `pushBackHandler`（会漏，词卡那处就漏过滚动记忆）；不锁滚动（遮罩在 `.body` 里，手指会把背景页带着滚） |
 | **加一个危险操作** | 两次点击确认。目前需手写（`WordSheet` / `GenerateArticle` 可参照），统一组件见第 10 章 | 一次点击就执行写操作（加词会消耗用户每天稀缺的额度） |
 | **加一种 LLM 能力** | 先看 `domain/prompts.ts` 能否扩参数；**保持它零 import**，这样 `gen-article.mjs` 能在 node 里跑同一份提示词 | 直接在 `domain/article.ts` 里拼提示词（那是唯一能跑对比实验的通道） |
 | **加一类数据集合** | 仿 `data/article.ts` 的「全文 `article:<id>` + 索引 `article_index`」双键模式；列表只读索引 | 列表页把所有全文读出来再解析（一千篇会卡几秒） |
@@ -698,6 +703,18 @@ done | sort -rn | head -5
 - [ ] 有没有让哪个文件越过 9.4 的红线；越了是合理还是该拆
 - [ ] 我要复制的代码，是不是第 3 次了
 - [ ] 相关脚本全绿，并且确认跑的是当前源码
+
+### 9.9 三条「同一件事只能有一处实现」（2026-11-13 立）
+
+1. **三组词数只用 `domain/collect.groupCounts()`**。今日页、历史页小标题、统计页柱子与摘要、
+   「反复忘记」全部同源（按 `groups` 互斥）。在页面里按 `firstResponse` 或 `isNew` 重算，
+   就是造了第二个口径 —— 一个「新学但答错」的词会被两个页面算进不同的组，数字必然对不上。
+2. **词形还原入口只有 `lemmaCandidates`**：撇号归一化（`'` `’` `ʼ`）与剥所有格都在这里做，
+   查词、墨墨状态、文章覆盖判定都走它。调用方另写一套 = `pharaoh's` 查不到、
+   加不进词库、还被判成「没写进文章」三个症状同时复发。
+3. **弹层必须调 `ui/hooks/useScrollLock`**，且遮罩上**不要**写 `touch-action: none`——
+   那是祖先限制，会把弹层自己的滚动一起禁掉。遮罩本身加 `overscroll-behavior: none`。
+   底栏反过来：它没有内部滚动，直接 `touch-action: none` 吃掉纵向手势。
 
 ---
 

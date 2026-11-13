@@ -2,7 +2,7 @@ import { chatCompletion, takeLastLlmUsage } from '@/api/llm'
 import { useLlm } from '@/store/llm'
 import { lemmaCandidates } from '@/data/dict'
 import { sleep } from '@/lib/async'
-import { countWords, countWordsIn } from '@/lib/text'
+import { countWords, countWordsIn, wordPattern } from '@/lib/text'
 import type { TodaySnapshot } from '@/domain/collect'
 import {
   buildArticleMessages,
@@ -253,8 +253,10 @@ function validate(parsed: unknown): {
 
 /** 校验哪些目标词没出现在正文里 */
 export function missingWords(article: Pick<Article, 'sentences' | 'targetWords'>): string[] {
-  const text = article.sentences.map((s) => s.en).join(' ').toLowerCase()
-  const tokens = text.match(/[a-z][a-z'-]*/g) ?? []
+  const text = article.sentences.map((s) => s.en).join(' ')
+  // 与渲染、词数统计共用同一个口径：撇号与连字符的切法必须一致，
+  // 否则正文里明明写着 `a pharaoh's mask`，判定侧却只看到 `pharaoh` + `s` 两个碎词
+  const tokens = text.match(wordPattern()) ?? []
 
   // 每个 token 的全部还原候选（rests → [rests, rest]），既做单词条集合，也保住位置
   const lemmas: string[][] = tokens.map((token) => lemmaCandidates(token))
@@ -266,19 +268,26 @@ export function missingWords(article: Pick<Article, 'sentences' | 'targetWords'>
 /**
  * 目标词是否被正文覆盖。
  *
- * 单词：词元集合里找得到就算用上（rests / rest 都算覆盖了 rest）。
+ * 单词：任一侧的还原候选在另一边出现就算用上（rests / rest 都算覆盖了 rest）。
+ * 两侧都要展开——目标词本身也可能是变形或所有格（勾的是 `pharaoh`，正文写的是
+ * `pharaoh's` 才算用上；以前只展开正文那一侧，于是永远判定为「没用上」）。
+ *
  * 短语（rest on / be meant to）：在词元序列里找一个**连续窗口**逐词覆盖——
  * 原先把它当整体字符串查集合，永远查不到，「明明用上了却说未用到」；
  * 逐词覆盖后，rests on 覆盖 rest on，was meant to（was→be）覆盖 be meant to。
  */
 function isCovered(word: string, lemmas: string[][], normalized: Set<string>): boolean {
-  const words = word.toLowerCase().trim().split(/\s+/)
-  if (words.length === 1) return normalized.has(words[0])
+  const words = word.toLowerCase().replace(/[\u2018\u2019\u02bc]/g, "'").trim().split(/\s+/)
+
+  if (words.length === 1) {
+    return lemmaCandidates(words[0]).some((c) => normalized.has(c))
+  }
 
   if (words.length > lemmas.length) return false
   outer: for (let i = 0; i + words.length <= lemmas.length; i += 1) {
     for (let j = 0; j < words.length; j += 1) {
-      if (!lemmas[i + j].includes(words[j])) continue outer
+      const cands = lemmaCandidates(words[j])
+      if (!cands.some((c) => lemmas[i + j].includes(c))) continue outer
     }
     return true
   }
@@ -373,7 +382,8 @@ function auditArticle(
     problems.push(`平均句长 ${avg.toFixed(1)} 词（目标 ${spec.avgSentence[0]}~${spec.avgSentence[1]}）`)
   }
 
-  const tokens = a.sentences.map((s) => s.en).join(' ').match(/[A-Za-z][A-Za-z'-]*/g) ?? []
+  // 名词化密度：分词口径与其他地方保持一致（撇号、连字符不能各切各的）
+  const tokens = a.sentences.map((s) => s.en).join(' ').match(wordPattern()) ?? []
   const nominal = tokens.filter((w) => w.length > 5 && NOMINAL_SUFFIX.test(w)).length
   const nominalPct = (100 * nominal) / Math.max(1, tokens.length)
   if (nominalPct > MAX_NOMINAL_PER_100) {

@@ -7,6 +7,7 @@ import { inflectionFamily } from '@/domain/wordforms'
 import { RESPONSE_LABEL } from '@/domain/collect'
 import { dateKey, diffDays, monthDay } from '@/lib/date'
 import { useSession } from '@/store/session'
+import { useScrollLock } from '../hooks/useScrollLock'
 import styles from './WordSheet.module.css'
 
 type Props = {
@@ -49,6 +50,9 @@ function daysSince(iso?: string): number | null {
 
 export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
   const token = useSession((s) => s.token)
+
+  // 弹层开着时，背景里的文章不该还能被手指带着滚（见 hook 注释）
+  useScrollLock(true)
 
   /** 短语 / 单词：匹配到短语时默认看短语，但可以一键切回来 */
   const [view, setView] = useState<'phrase' | 'word'>(phrase ? 'phrase' : 'word')

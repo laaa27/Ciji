@@ -84,6 +84,22 @@ export function lineState(word: CollectedWord): WordState {
   return 'new'
 }
 
+/**
+ * 三组各有多少个词。
+ *
+ * **凡是把「新学 / 模糊 / 忘记」当成三类展示或计数的地方，都必须用它。**
+ * 以前统计页自己算了两套：柱状图按 `lineState`（看反馈）、摘要按 `isNew` +
+ * `firstResponse`（允许重叠）。结果同一个「新学但答错」的词，在今日页算新学、
+ * 在统计页算忘记，两页数字必然对不上——口径不一致比算错更难查。
+ *
+ * 依据是 `groups`（`classify()` 的互斥归组，与今日页分组、生成页词类同源）。
+ */
+export function groupCounts(words: CollectedWord[]): Record<WordState, number> {
+  const counts: Record<WordState, number> = { new: 0, vague: 0, forget: 0 }
+  for (const w of words) for (const g of w.groups) counts[g] += 1
+  return counts
+}
+
 /** 拉取今天的完整快照：进度 + 词表 + 每个词的末次反馈 */
 export async function collectToday(): Promise<TodaySnapshot> {
   const [progressRes, todayRes] = await Promise.all([
