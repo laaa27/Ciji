@@ -1,7 +1,7 @@
 import type { StudyRecord } from '@/api/types'
 import { addWords, advanceStudy, queryStudyRecords } from '@/api/study'
 import { queryVocabulary } from '@/api/vocabulary'
-import { lemmaCandidates } from '@/data/dict'
+import { lemmaCandidates } from '@/lib/lemma'
 
 /**
  * 一个词在墨墨里的状态。

@@ -9,7 +9,7 @@ import {
   saveArticle,
   type ArticleMeta,
 } from '@/data/article'
-import { lemmaCandidates } from '@/data/dict'
+import { lemmaCandidates } from '@/lib/lemma'
 import { lookupKnownPhrases } from '@/domain/memo'
 import { findPhraseAround, phraseCandidates, phraseVariants, type PhraseHit } from '@/domain/phrase'
 import {

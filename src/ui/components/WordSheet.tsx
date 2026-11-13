@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 
-import { lookupOneDetailed } from '@/data/dict'
+import { lookupOneDetailed } from '@/domain/lookup'
 import { addToPlan, advanceWord, lookupMemoState, type MemoState } from '@/domain/memo'
 import type { PhraseHit } from '@/domain/phrase'
 import { inflectionFamily } from '@/domain/wordforms'

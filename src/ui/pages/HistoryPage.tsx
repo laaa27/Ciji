@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { getAllDays } from '@/data/store'
-import { lookupWords } from '@/data/dict'
+import { lookupWords } from '@/domain/lookup'
 import { groupCounts, lineState, responseNote, type TodaySnapshot, type WordState } from '@/domain/collect'
 import { monthDay, weekday } from '@/lib/date'
 

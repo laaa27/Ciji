@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { lookupWords } from '@/data/dict'
+import { lookupWords } from '@/domain/lookup'
 import { lineState, responseNote } from '@/domain/collect'
 import { clockTime, dateKey, monthDay, weekday } from '@/lib/date'
 import { useSession } from '@/store/session'

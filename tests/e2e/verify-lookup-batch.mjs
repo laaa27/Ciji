@@ -66,7 +66,7 @@ const fakeWords = (n, tag) => Array.from({ length: n }, (_, i) => `zzq${tag}${i}
 const run = async (words, opts) =>
   page.evaluate(
     async ({ list, options }) => {
-      const dict = await import('/src/data/dict.ts')
+      const dict = await import('/src/domain/lookup.ts')
       const res = await dict.lookupWords(list, options)
       return { size: res.glosses.size, skipped: res.skipped.length, mm: window.__mm }
     },
@@ -96,7 +96,7 @@ ok('也没查到的词不算 skipped（本来就没打算查）', r3b.size === 0
 
 console.log('\n[4] 本地词典命中不联网')
 const localRes = await page.evaluate(async () => {
-  const dict = await import('/src/data/dict.ts')
+  const dict = await import('/src/domain/lookup.ts')
   const before = window.__mm
   const res = await dict.lookupWords(['abandon', 'site', 'sites'])
   return { before, after: window.__mm, size: res.glosses.size, sites: res.glosses.get('sites') }
@@ -107,7 +107,7 @@ ok('sites 用的是 site 的释义（不是 sit）', /场所|位置/.test(localR
 
 console.log('\n[5] 单条查词与批量走同一条链（开关已删除）')
 const single = await page.evaluate(async () => {
-  const dict = await import('/src/data/dict.ts')
+  const dict = await import('/src/domain/lookup.ts')
   const before = window.__mm
   const r = await dict.lookupOneDetailed('zzqsingleword')
   return { gloss: r.gloss, mm: window.__mm - before }

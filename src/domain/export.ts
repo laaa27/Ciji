@@ -2,7 +2,7 @@ import { Capacitor } from '@capacitor/core'
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
 import { Share } from '@capacitor/share'
 
-import { lookupWords } from '@/data/dict'
+import { lookupWords } from '@/domain/lookup'
 import { getAllDays } from '@/data/store'
 import { buildBackup } from '@/domain/backup'
 import type { TodaySnapshot, WordState } from '@/domain/collect'

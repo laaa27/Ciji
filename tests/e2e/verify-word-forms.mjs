@@ -43,7 +43,7 @@ let mods
 try {
   mods = await page.evaluate(async () => {
     const article = await import('/src/domain/article.ts')
-    const dict = await import('/src/data/dict.ts')
+    const dict = await import('/src/lib/lemma.ts')
     const text = await import('/src/lib/text.ts')
 
     const one = { en: "A spacious community reading room that displays a few pieces from a pharaoh's tomb.", zh: '一间宽敞的社区阅览室，摆着几件来自法老陵墓的物件。' }
@@ -153,7 +153,7 @@ const ORDER = [
 
 const table = await page.evaluate(
   async ({ TABLE, ORDER }) => {
-    const dict = await import('/src/data/dict.ts')
+    const dict = await import('/src/lib/lemma.ts')
     const memo = await import('/src/domain/memo.ts')
 
     const rows = TABLE.map((c) => ({ ...c, cands: dict.lemmaCandidates(c.input) }))

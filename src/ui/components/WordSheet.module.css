@@ -170,38 +170,6 @@
   opacity: 0.7;
 }
 
-/* ── 短语 / 单词 切换 ─────────────────── */
-
-/*
- * 匹配到固定搭配时给两个视角：整串和单个词。
- * 不给切换的话，用户点 spite 想单独查 spite 就没路可走了。
- */
-.views {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.viewChip {
-  padding: 3px 10px;
-  border: 1px solid var(--rule-strong);
-  border-radius: 999px;
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
-}
-
-.viewChip[data-on='true'] {
-  border-color: var(--ink);
-  color: var(--ink);
-  background: var(--tint-ok);
-}
-
-.viewChip:active {
-  opacity: 0.7;
-}
-
 /* ── 墨墨学习状态 ─────────────────────── */
 
 .memo {
@@ -276,4 +244,118 @@
 
 .memoNotice[data-ok='true'] {
   color: var(--state-new);
+}
+
+/* ── 备选释义（AI / 自定义）───────────── */
+
+/*
+ * 主释义永远在最上面；AI 与自定义各占一行，有内容才出现。
+ * 用极次要的底色和细边框 —— 它们是补充信息，不该压过主释义。
+ */
+.altRow {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: baseline;
+  gap: 2px 10px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule);
+  border-radius: 8px;
+  background: var(--surface-2, rgba(127, 127, 127, 0.06));
+}
+
+.altLabel {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  letter-spacing: 0.04em;
+}
+
+.altText {
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  color: var(--ink-2);
+  word-break: break-word;
+}
+
+.altActions {
+  grid-column: 2;
+  display: flex;
+  gap: 14px;
+  margin-top: 2px;
+}
+
+/* 行内小动作（重新生成 / 删除 / 编辑）：文字按钮，不抢主按钮的视觉 */
+.altAction {
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  padding: 2px 0;
+}
+
+.altAction:active {
+  opacity: 0.6;
+}
+
+.altAction:disabled {
+  opacity: 0.45;
+}
+
+/* 还没有内容时的入口按钮，一行两个 */
+.entryRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.entryBtn {
+  padding: 4px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 999px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+.entryBtn:active {
+  opacity: 0.7;
+}
+
+.entryBtn:disabled {
+  opacity: 0.45;
+}
+
+/* 自定义释义的编辑框 */
+.editor {
+  margin-top: 8px;
+}
+
+.editorInput {
+  width: 100%;
+  min-height: 56px;
+  padding: 8px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  resize: none;
+}
+
+.editorInput:focus {
+  border-color: var(--ink);
+  outline: none;
+}
+
+.editorActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.altNotice {
+  margin-top: 6px;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
 }

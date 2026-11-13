@@ -1,6 +1,6 @@
 import { chatCompletion, takeLastLlmUsage } from '@/api/llm'
 import { useLlm } from '@/store/llm'
-import { lemmaCandidates } from '@/data/dict'
+import { lemmaCandidates } from '@/lib/lemma'
 import { sleep } from '@/lib/async'
 import { countWords, countWordsIn, wordPattern } from '@/lib/text'
 import type { TodaySnapshot } from '@/domain/collect'

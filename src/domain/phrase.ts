@@ -1,4 +1,5 @@
-import { dictHas, irregularLemma, lemmaCandidates } from '@/data/dict'
+import { dictHas } from '@/data/dict'
+import { irregularLemma, lemmaCandidates } from '@/lib/lemma'
 
 /**
  * 点词时顺手找一下「这个位置属于哪个固定搭配」。
