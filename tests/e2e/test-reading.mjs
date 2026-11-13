@@ -628,11 +628,14 @@ ok('加入后立刻显示已在计划', sheet.includes('已在学习计划'), sh
 ok('给出成功提示', sheet.includes('已加入学习计划'), sheet.slice(0, 120))
 await closeSheet()
 
-// 词形还原：复数 / -ing 都要能落到原形
+// 词形还原：复数 / -ing 都要能落到原形。
+// 文案口径（0.23.17 起）：先说明「原词不在词库」，再说原形是哪个 —— 不能反过来，
+// 否则「原形 shipment」读起来像在说 Shipments 本身在计划里。
 ok('点到复数形式', await clickWord('Shipments'))
 await t(900)
 sheet = await sheetText()
-ok('复数能落到原形 shipment', sheet.includes('词库里是 shipment'), sheet.slice(0, 120))
+ok('复数能落到原形 shipment', sheet.includes('词库里最接近的是 shipment'), sheet.slice(0, 120))
+ok('并先说清原词不在词库', sheet.includes('墨墨词库里没有「Shipments」'), sheet.slice(0, 120))
 
 const hasFormChip = (form) =>
   page.evaluate(
@@ -658,7 +661,7 @@ await closeSheet()
 ok('点到 -ing 形式', await clickWord('studying'))
 await t(900)
 sheet = await sheetText()
-ok('-ing 能落到原形 study', sheet.includes('词库里是 study'), sheet.slice(0, 120))
+ok('-ing 能落到原形 study', sheet.includes('词库里最接近的是 study'), sheet.slice(0, 120))
 await closeSheet()
 
 // 词库里没有的词

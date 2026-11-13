@@ -156,7 +156,7 @@ ui  →  store  →  domain  →  data  →  api
 | `article.ts` | 生成流水线：提纲 → 成文 → 审计 → 重生成；候选词与词覆盖校验 |
 | `domain/prompts.ts` | **零依赖**提示词模块，含 `LEVEL_SPEC` 难度规格（✏️ 2026-11 加 `longFrom` / `longExample`：长句门槛与长句标尺）、✏️ 文体层 `GENRE_MIX` / `pickGenre` / `GENRE_SPEC`（说明文 / 议论文）、`MAX_TARGET_WORDS` / `WORD_LIMITS` |
 | `phrase.ts` | 点词时在上下文里找固定搭配（±5 词窗口 + 变形还原） |
-| `memo.ts` | 墨墨学习状态查询、加词、提前复习 |
+| `memo.ts` | 墨墨学习状态查询、加词、提前复习；✏️ 查询按「原词 → 还原候选」的顺序挑（`exact` 标记命中是原词还是原形） |
 | `wordforms.ts` | 同族变形（原形 + 词典里真实存在的其他形式） |
 | `backup.ts` | 备份 JSON / CSV 的解析、校验、合并计划（全纯函数） |
 | `export.ts` | 导出 CSV / 备份文件 |
@@ -407,7 +407,7 @@ node tests/e2e/verify-read-restore.mjs  #  7 项：重启后回到原处
 node tests/e2e/verify-article-audit.mjs # 12 项：生成后审计（残篇 / 截断 / 句式模板化）与重生成
 node tests/e2e/verify-phrase-match.mjs  # 23 项：点词匹配固定搭配
 node tests/e2e/verify-gloss-source.mjs  # 24 项：AI 释义标注在缓存命中后不丢（含本地/MyMemory 不误标）
-node tests/e2e/verify-word-forms.mjs    # 14 项：所有格词形还原 / 覆盖判定 / 分词口径（**必须跑 dev server**，直接 import 源码）
+node tests/e2e/verify-word-forms.mjs    # 54 项：变形回归表（必须有/不能有）+ 顺序 + 墨墨挑选顺序（**必须跑 dev server**，直接 import 源码）
 node tests/e2e/verify-stats-parity.mjs  # 10 项：今日页三组与统计页摘要、反复忘记口径一致
 node tests/e2e/verify-scroll-lock.mjs   # 13 项：弹层打开期间背景不滚、底栏那一带也不滚
 node tests/e2e/verify-read-tab-return.mjs # 12 项：切栏目回来阅读位置不丢（要**先预热统计页**才复现得出）
@@ -706,18 +706,23 @@ done | sort -rn | head -5
 - [ ] 我要复制的代码，是不是第 3 次了
 - [ ] 相关脚本全绿，并且确认跑的是当前源码
 
-### 9.9 三条「同一件事只能有一处实现」（2026-11-13 立）
+### 9.9 五条「同一件事只能有一处实现」（2026-11-13 立）
 
 1. **三组词数只用 `domain/collect.groupCounts()`**。今日页、历史页小标题、统计页柱子与摘要、
    「反复忘记」全部同源（按 `groups` 互斥）。在页面里按 `firstResponse` 或 `isNew` 重算，
    就是造了第二个口径 —— 一个「新学但答错」的词会被两个页面算进不同的组，数字必然对不上。
-2. **词形还原入口只有 `lemmaCandidates`**：撇号归一化（`'` `’` `ʼ`）与剥所有格都在这里做，
-   查词、墨墨状态、文章覆盖判定都走它。调用方另写一套 = `pharaoh's` 查不到、
-   加不进词库、还被判成「没写进文章」三个症状同时复发。
-3. **弹层必须调 `ui/hooks/useScrollLock`**，且遮罩上**不要**写 `touch-action: none`——
+2. **词形还原入口只有 `lemmaCandidates`**：撇号归一化（`'` `’` `ʼ`）、剥所有格、后缀规则都在这里。
+   **顺序就是可信度**，原词永远第一；调用方一律按顺序取第一个命中的，
+   **不许把「原词 + 猜测」当集合用**（集合没有优先级，猜出来的原形会冒充用户点的词）。
+   规则必须带前置条件：`sites` 是 site **+s**，剥两个字母得到的 `sit` 是另一个词；
+   `files` 剥两个字母是 `fil`（伊拉克钱币）。改规则前先看
+   `tests/e2e/verify-word-forms.mjs` 的变形回归表（每行都有「不能有」的候选）。
+3. **`exact` 这一位必须一路传到界面**：墨墨状态命中的是原词还是猜出来的原形，文案要分开写。
+   原词不在词库时先说「词库里没有 X」，再说「最接近的是 Y」——反过来就成了把猜测当事实。
+4. **弹层必须调 `ui/hooks/useScrollLock`**，且遮罩上**不要**写 `touch-action: none`——
    那是祖先限制，会把弹层自己的滚动一起禁掉。遮罩本身加 `overscroll-behavior: none`。
    底栏反过来：它没有内部滚动，直接 `touch-action: none` 吃掉纵向手势。
-4. **滚动位置落盘不许读「实时 scrollTop」**。`display:none` 一挂上（切栏目、进子视图），
+5. **滚动位置落盘不许读「实时 scrollTop」**。`display:none` 一挂上（切栏目、进子视图），
    浏览器立刻把 scrollTop 夹进新容器的可滚范围，而 cleanup 恰恰跑在这之后 ——
    写下去的是夹出来的中间值，下次恢复就落在错的地方。要落盘就只在滚动事件里记
    「最后可见的位置」，卸载时写那个 ref；页面不可见期间的 scroll 事件必须忽略。

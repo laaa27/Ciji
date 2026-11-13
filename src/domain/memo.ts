@@ -11,10 +11,14 @@ import { lemmaCandidates } from '@/data/dict'
  * - available 词库里有、但没加入 → 可以加
  * - unknown  词库里没有这个词 → 加不了（短语、专名常见）
  * - error    接口没通 → 只显示释义，不打扰
+ *
+ * `exact` 是关键的一位：命中的是**用户点的那个词本身**（true），还是**猜出来的原形**
+ * （false）。界面必须分开写这两件事 —— 以前把 file 的计划状态直接写成
+ * 「原形 file」，用户会以为 filing 本身在计划里。
  */
 export type MemoState =
-  | { kind: 'in-plan'; record: StudyRecord }
-  | { kind: 'available'; vocId: string; spelling: string }
+  | { kind: 'in-plan'; record: StudyRecord; exact: boolean }
+  | { kind: 'available'; vocId: string; spelling: string; exact: boolean }
   | { kind: 'unknown' }
   | { kind: 'error'; message: string }
 
@@ -23,36 +27,64 @@ const cache = new Map<string, MemoState>()
 
 const keyOf = (word: string) => word.trim().toLowerCase()
 
-/** 把词形候选里真正查到的那条取出来 */
-function pickRecord(records: StudyRecord[], candidates: string[]): StudyRecord | null {
-  const set = new Set(candidates.map((c) => c.toLowerCase()))
-  return records.find((r) => set.has(r.voc_spelling.toLowerCase())) ?? null
+/**
+ * 按「候选可信度」挑第一条命中，而不是「服务端先返回谁就认谁」。
+ *
+ * 墨墨的 query 接口只是按拼写批量查，返回顺序不构成任何保证；
+ * 以前用 Set 判断「在候选集合里」，于是 site / sit 谁先回来就用谁。
+ */
+export function pickByCandidateOrder<T>(
+  items: T[],
+  candidates: string[],
+  spellingOf: (item: T) => string,
+): T | null {
+  for (const cand of candidates) {
+    for (const item of items) {
+      if (spellingOf(item).trim().toLowerCase() === cand) return item
+    }
+  }
+  return null
 }
 
-/** 查一个词的状态。缓存优先，其次按「原形 → 词形还原候选」的顺序试 */
+/**
+ * 查一个词的状态。
+ *
+ * 两段语义，顺序不能反：
+ * 1. **原词优先**：`lemmaCandidates` 第一项就是用户点的词本身。命中就报它自己，
+ *    不做任何"原形"推断；
+ * 2. 原词不在词库里，才按候选顺序退到还原形式，并把这个事实（exact: false）
+ *    交给界面去如实说明。
+ */
 export async function lookupMemoState(word: string): Promise<MemoState> {
   const k = keyOf(word)
   const cached = cache.get(k)
   if (cached) return cached
 
   const candidates = lemmaCandidates(word).slice(0, 6)
+  const exact = candidates[0]
 
   try {
     const rec = await queryStudyRecords({ spellings: candidates, limit: 50 })
-    const hit = pickRecord(rec.records ?? [], candidates)
+    const hit = pickByCandidateOrder(rec.records ?? [], candidates, (r) => r.voc_spelling)
     if (hit) {
-      const state: MemoState = { kind: 'in-plan', record: hit }
+      const state: MemoState = {
+        kind: 'in-plan',
+        record: hit,
+        exact: keyOf(hit.voc_spelling) === exact,
+      }
       cache.set(k, state)
       return state
     }
 
     const voc = await queryVocabulary(candidates)
-    const list = voc.voc ?? []
-    const set = new Set(candidates.map((c) => c.toLowerCase()))
-    const match = list.find((v) => set.has(v.spelling.toLowerCase())) ?? list[0]
-
+    const match = pickByCandidateOrder(voc.voc ?? [], candidates, (v) => v.spelling)
     const state: MemoState = match
-      ? { kind: 'available', vocId: match.id, spelling: match.spelling }
+      ? {
+          kind: 'available',
+          vocId: match.id,
+          spelling: match.spelling,
+          exact: keyOf(match.spelling) === exact,
+        }
       : { kind: 'unknown' }
     cache.set(k, state)
     return state
@@ -107,8 +139,12 @@ export async function addToPlan(word: string): Promise<AddResult> {
       voc_spelling: state.spelling,
       study_count: 0,
     }
-    cache.set(keyOf(word), { kind: 'in-plan', record })
-    cache.set(keyOf(state.spelling), { kind: 'in-plan', record })
+    cache.set(keyOf(word), {
+      kind: 'in-plan',
+      record,
+      exact: keyOf(record.voc_spelling) === keyOf(word),
+    })
+    cache.set(keyOf(state.spelling), { kind: 'in-plan', record, exact: true })
 
     return { ok: true, message: '已加入学习计划，会按墨墨的排期复习' }
   } catch (e) {
@@ -143,7 +179,12 @@ export async function advanceWord(word: string): Promise<AddResult> {
       limit: 10,
     }).catch(() => null)
     if (rec?.records?.[0]) {
-      cache.set(keyOf(word), { kind: 'in-plan', record: rec.records[0] })
+      const record = rec.records[0]
+      cache.set(keyOf(word), {
+        kind: 'in-plan',
+        record,
+        exact: keyOf(record.voc_spelling) === keyOf(word),
+      })
     }
 
     return { ok: true, message: '已提前到今天，去墨墨背它吧' }

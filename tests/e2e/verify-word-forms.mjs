@@ -117,6 +117,103 @@ ok("ASCII 撇号算一个词", mods.asciiCount === 3, String(mods.asciiCount))
 ok('弯撇号算一个词（曾经被拆成 4 个）', mods.curlyCount === 3, String(mods.curlyCount))
 ok('连字符算一个词', mods.hyphenCount === 3, String(mods.hyphenCount))
 
+/*
+ * [4] 变形回归表。
+ *
+ * 只断言「该有的候选在不在」是不够的 —— 之前的两个线上 bug 都是**多了**一个候选：
+ * sites 多出 sit、files 多出 fil，而它们恰好是真实单词，于是挤掉了正确答案。
+ * 所以每行同时写「必须有」和「不能有」，谁再加规则都得先过这张表。
+ */
+const TABLE = [
+  { input: 'sites', need: ['site'], forbid: ['sit'] },
+  { input: 'files', need: ['file'], forbid: ['fil'] },
+  { input: 'notes', need: ['note'], forbid: ['not'] },
+  { input: 'uses', need: ['use'], forbid: [] },
+  { input: 'boxes', need: ['box'], forbid: [] },
+  { input: 'watches', need: ['watch'], forbid: [] },
+  { input: 'dishes', need: ['dish'], forbid: [] },
+  { input: 'studies', need: ['study'], forbid: ['studi'] },
+  { input: 'filing', need: ['file'], forbid: [] },
+  { input: 'filed', need: ['file'], forbid: [] },
+  { input: 'running', need: ['run'], forbid: [] },
+  { input: 'making', need: ['make'], forbid: [] },
+  { input: 'asking', need: ['ask'], forbid: [] },
+  { input: 'stopped', need: ['stop'], forbid: [] },
+  { input: 'analyses', need: ['analysis'], forbid: [] },
+  { input: 'leaves', need: ['leaf'], forbid: [] },
+  { input: "pharaoh's", need: ['pharaoh'], forbid: [] },
+]
+
+/** 顺序也断言：原词第一；「更像原形」的那个必须排前面 */
+const ORDER = [
+  { input: 'uses', before: 'use', after: 'us' },
+  { input: 'filing', before: 'file', after: 'fil' },
+  { input: 'filed', before: 'file', after: 'fil' },
+]
+
+const table = await page.evaluate(
+  async ({ TABLE, ORDER }) => {
+    const dict = await import('/src/data/dict.ts')
+    const memo = await import('/src/domain/memo.ts')
+
+    const rows = TABLE.map((c) => ({ ...c, cands: dict.lemmaCandidates(c.input) }))
+    const orders = ORDER.map((o) => {
+      const cands = dict.lemmaCandidates(o.input)
+      return { input: o.input, cands, mustBefore: o.before, mustAfter: o.after, iBefore: cands.indexOf(o.before), iAfter: cands.indexOf(o.after) }
+    })
+
+    // 墨墨查询的挑选用例：服务端把 sit 排在 site 前面，也必须选 site
+    const pickWrongOrder = memo.pickByCandidateOrder(
+      [{ spelling: 'sit' }, { spelling: 'site' }],
+      dict.lemmaCandidates('sites'),
+      (x) => x.spelling,
+    )
+    // 原词在列表里时，必须优先原词（不能因为 file 更短就先认 file）
+    const pickExactFirst = memo.pickByCandidateOrder(
+      [{ spelling: 'file' }, { spelling: 'filing' }],
+      dict.lemmaCandidates('filing'),
+      (x) => x.spelling,
+    )
+    // 完全没命中时返回 null，不能瞎挑一个
+    const pickNone = memo.pickByCandidateOrder(
+      [{ spelling: 'sit' }],
+      dict.lemmaCandidates('sites'),
+      (x) => x.spelling,
+    )
+
+    return { rows, orders, pickWrongOrder, pickExactFirst, pickNone }
+  },
+  { TABLE, ORDER },
+)
+
+console.log('\n[4] 变形回归表（必须有 / 不能有）')
+for (const r of table.rows) {
+  const missing = r.need.filter((w) => !r.cands.includes(w))
+  const bad = r.forbid.filter((w) => r.cands.includes(w))
+  ok(
+    `${r.input} → ${r.need.join(' / ')}`,
+    missing.length === 0 && bad.length === 0,
+    `候选 ${r.cands.join('|')}${missing.length ? ` 缺 ${missing.join(',')}` : ''}${bad.length ? ` 多了 ${bad.join(',')}` : ''}`,
+  )
+}
+
+console.log('\n[5] 顺序：原词第一、可信的原形排在毒候选前面')
+for (const r of table.rows) {
+  ok(`${r.input} 原词排第一`, r.cands[0] === r.input, r.cands.join('|'))
+}
+for (const o of table.orders) {
+  ok(
+    `${o.input}：${o.mustBefore} 在 ${o.mustAfter} 之前`,
+    o.iBefore >= 0 && (o.iAfter < 0 || o.iBefore < o.iAfter),
+    o.cands.join('|'),
+  )
+}
+
+console.log('\n[6] 墨墨查询的挑选顺序')
+ok('服务端把 sit 排前面也选 site', table.pickWrongOrder?.spelling === 'site', JSON.stringify(table.pickWrongOrder))
+ok('原词 filing 优先于 file', table.pickExactFirst?.spelling === 'filing', JSON.stringify(table.pickExactFirst))
+ok('只返回 sit 时不硬凑（判为没查到）', table.pickNone === null, JSON.stringify(table.pickNone))
+
 console.log(`\n结果：${pass} 过，${fail} 挂`)
 await browser.close()
 process.exit(fail)

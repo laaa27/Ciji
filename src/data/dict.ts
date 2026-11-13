@@ -236,7 +236,15 @@ const IRREGULAR: Record<string, string> = {
  * 词形还原候选：按常见后缀反推原形。
  * 不追求语言学正确，能覆盖考试词库里的规则变化即可。
  *
- * 顺序很重要：越可信的越靠前，调用方通常取第一个查得到的。
+ * **顺序就是可信度**：越可靠的规则排得越前，调用方（查词、墨墨状态、文章覆盖）
+ * 一律按顺序取第一个命中的，不要拿「原词 + 全部猜测」当集合用 —— 集合没有优先级，
+ * 猜出来的原形会冒充用户点的那个词。
+ *
+ * 规则必须带前置条件，不能见后缀就剥：
+ * - `sites` 是 site **+s**，剥两个字母会得到 `sit`（真题词），释义和墨墨状态全错；
+ * - `files` 同理，剥两个字母是 `fil`（伊拉克钱币）；
+ * - `filing` 的来源是 `file` 去 e 加 ing，不是 `fil`。
+ * 这三条都曾经真实发生过，见 `tests/e2e/verify-word-forms.mjs` 的负例断言。
  *
  * 所有格（pharaoh's / students'）单独处理：墨墨词库与 ECDICT 都只收原形，
  * 不剥撇号的话文章里的 `pharaoh's` 会「查不到释义、加不进词库、被判定为未使用」——
@@ -259,42 +267,50 @@ export function lemmaCandidates(word: string): string[] {
     for (const c of lemmaCandidates(w.slice(0, -1))) add(c)
   }
 
-  // 规则变化
+  // ── 复数 / 三单：三种形态互斥，各带前置条件 ──
+  // -ies 只可能来自 -y（studies → study）
   if (w.endsWith('ies')) add(w.slice(0, -3) + 'y')
-  if (w.endsWith('ied')) add(w.slice(0, -3) + 'y')
-  if (w.endsWith('es')) add(w.slice(0, -2))
-  // 带撇号的词已经由上面剥过一次，别在这里再削出一个 `pharaoh'`
+  /*
+   * 纯 -s 排在 -es 之前：以 e 结尾的词是 +s（sites → site、uses → use、
+   * notes → note），剥两个字母会落到另一个真实单词上（sit / us / not）。
+   * -es 只在词干确实以 s/x/z/ch/sh 结尾时才成立（boxes → box、watches → watch、
+   * abacuses → abacus），那时 -s 的结果（boxe / watche）本来就是假词，不影响排序。
+   * 带撇号的词已经由上面剥过一次，别在这里再削出一个 `pharaoh'`
+   */
   if (w.endsWith('s') && !w.endsWith('ss') && !w.endsWith("'s")) add(w.slice(0, -1))
+  if (w.endsWith('es') && /(s|x|z|ch|sh)$/.test(w.slice(0, -2))) add(w.slice(0, -2))
+  // analyses → analysis（`-es` 只能得到 analys，补一条 -is）
+  if (w.endsWith('ses')) add(w.slice(0, -2) + 'is')
   // wives → wife / leaves → leaf / knives → knife
   if (w.endsWith('ves')) {
     add(w.slice(0, -3) + 'f')
     add(w.slice(0, -3) + 'fe')
   }
-  // analyses → analysis（-es 只会得到 analyse，再补一条 -is）
-  if (w.endsWith('ses')) add(w.slice(0, -2) + 'is')
 
   // 不规则复数
   const irregular = IRREGULAR[w]
   if (irregular) add(irregular)
+
+  // ── -ed / -ing：先试「补回词尾 e」，再试裸词干 ──
+  // filed 更可能来自 file（file+d）而不是 fil；filing 同理（file 去 e 加 ing）。
+  // 裸词干排在后面是因为 asking → ask 这类只能靠它兜底（aske 不是词，
+  // 调用方查不到自然会跳过）。
   if (w.endsWith('ed')) {
-    const stem = w.slice(0, -2)
+    const stem = w.slice(0, -2) // filed → fil
+    const doubled = isDoubled(stem) // stopped → stopp
+    if (!doubled && !stem.endsWith('e')) add(w.slice(0, -1)) // file
     add(stem)
-    add(w.slice(0, -1))
-    // stopped → stopp → stop（去掉双写）
-    if (stem.length > 2 && stem[stem.length - 1] === stem[stem.length - 2]) {
-      add(stem.slice(0, -1))
-    }
+    if (doubled) add(stem.slice(0, -1)) // stop
     // studied → studi → study
     if (stem.endsWith('i')) add(stem.slice(0, -1) + 'y')
   }
   if (w.endsWith('ing')) {
-    add(w.slice(0, -3))
-    add(w.slice(0, -3) + 'e')
-    // running → run（去掉双写）
-    const stem = w.slice(0, -3)
-    if (stem.length > 2 && stem[stem.length - 1] === stem[stem.length - 2]) {
-      add(stem.slice(0, -1))
-    }
+    const stem = w.slice(0, -3) // filing → fil
+    const doubled = isDoubled(stem) // running → runn
+    // see / agree 这类词干本身以 e 结尾的，不能再补一个 e
+    if (!doubled && !stem.endsWith('e')) add(stem + 'e') // file / make
+    add(stem) // ask / read
+    if (doubled) add(stem.slice(0, -1)) // run
   }
   if (w.endsWith('est')) {
     const stem = w.slice(0, -3)
@@ -312,6 +328,21 @@ export function lemmaCandidates(word: string): string[] {
   }
 
   return out
+}
+
+/** 词干是不是以双写辅音结尾（stopp / runn）—— 那种情况原形要去掉一个 */
+function isDoubled(stem: string): boolean {
+  return stem.length > 2 && stem[stem.length - 1] === stem[stem.length - 2] && /[bcdfghjklmnpqrstvwxz]/.test(stem[stem.length - 1])
+}
+
+/**
+ * 归一化后的原词：`lemmaCandidates` 的第一项。
+ *
+ * 拆出来是为了让调用方能明确区分「这是用户点的词本身」和「这是猜出来的原形」——
+ * 墨墨查询、展示文案都必须按这个界限分开写。
+ */
+export function exactForm(word: string): string {
+  return lemmaCandidates(word)[0]
 }
 
 /**

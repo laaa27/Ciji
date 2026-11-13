@@ -184,14 +184,12 @@ export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
   const joinedDays = record ? daysSince(record.add_date) : null
   const tag = record?.tags ? TAG_LABEL[record.tags] : ''
 
-  // 点的是变体（shipments）、查到的是原形（shipment）时说清楚，否则用户会以为查错了词
-  const inPlanBase = record && record.voc_spelling.toLowerCase() !== target.toLowerCase()
-    ? record.voc_spelling
-    : ''
-  const availableBase =
-    memo?.kind === 'available' && memo.spelling.toLowerCase() !== target.toLowerCase()
-      ? memo.spelling
-      : ''
+  /*
+   * 「这个词本身在计划里」和「它猜出来的原形在计划里」是两件事，必须分开写。
+   * 以前统一写成「已在学习计划 · 原形 file」，读起来像在陈述事实，用户会以为
+   * filing 本身在计划里 —— 实际上那只是猜的。
+   */
+  const missingExact = memo && (memo.kind === 'in-plan' || memo.kind === 'available') && !memo.exact
 
   return (
     <div className={styles.mask} data-closing={closing} onClick={requestClose} role="presentation">
@@ -260,13 +258,13 @@ export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
           <section className={styles.memo}>
             {memoLoading && <p className={styles.memoMuted}>墨墨状态读取中…</p>}
 
-            {record && (
+            {/* 原词不在词库里：先把这件事说明白，再说它的原形 —— 顺序反了就成了「猜的当事实」 */}
+            {missingExact && <p className={styles.memoMuted}>墨墨词库里没有「{target}」</p>}
+
+            {memo?.kind === 'in-plan' && (
               <>
                 <p className={styles.memoHead}>
-                  已在学习计划
-                  {inPlanBase && (
-                    <span className={styles.memoDim}> · 原形 {inPlanBase}</span>
-                  )}
+                  {memo.exact ? '已在学习计划' : `${memo.record.voc_spelling} 已在学习计划`}
                   {joinedDays !== null && joinedDays >= 0 && (
                     <span className={styles.memoDim}>
                       {' · '}
@@ -276,12 +274,13 @@ export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
                   {tag && <span className={styles.memoTag}>{tag}</span>}
                 </p>
                 <p className={styles.memoLine}>
-                  背过 {record.study_count} 次
-                  {record.last_response && ` · 上次「${RESPONSE_LABEL[record.last_response]}」`}
+                  背过 {memo.record.study_count} 次
+                  {memo.record.last_response &&
+                    ` · 上次「${RESPONSE_LABEL[memo.record.last_response]}」`}
                 </p>
-                {record.next_study_date && (
+                {memo.record.next_study_date && (
                   <p className={styles.memoLine}>
-                    下次复习 {dayLabel(record.next_study_date) || '—'}
+                    下次复习 {dayLabel(memo.record.next_study_date) || '—'}
                   </p>
                 )}
 
@@ -299,10 +298,17 @@ export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
             {memo?.kind === 'available' && (
               <>
                 <p className={styles.memoHead}>
-                  还没加入墨墨
-                  <span className={styles.memoDim}>
-                    {availableBase ? ` · 词库里是 ${availableBase}` : ' · 词库里有这个词'}
-                  </span>
+                  {memo.exact ? (
+                    <>
+                      还没加入墨墨
+                      <span className={styles.memoDim}> · 词库里有这个词</span>
+                    </>
+                  ) : (
+                    <>
+                      词库里最接近的是 {memo.spelling}
+                      <span className={styles.memoDim}> · 加入的是它</span>
+                    </>
+                  )}
                 </p>
                 <button
                   type="button"
