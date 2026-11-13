@@ -29,8 +29,6 @@
 - **每日采集**：自动拉取当天在墨墨的学习记录，按 新学 / 模糊 / 忘记 归档（一个词可多归属）
 - **遗忘曲线**：统计页堆叠柱状图（近 30 天），反复忘记的词单独列出
 - **阅读计时**：自动记录每天阅读时长，统计页独立图表
-- **液态玻璃底栏（实验性）**：悬浮半透明胶囊底栏，不透明度可调，可关闭
-- **导出 / 导入**：JSON 无损备份（换机用）、CSV / Markdown 给人看
 
 ## 大模型配置
 
@@ -150,50 +148,6 @@ android/          Capacitor Android 工程（含 AppearancePlugin 自研原生�
 > 逐模块职责、三条历史遗留的反向依赖、以及新增文件该放哪，见
 > **[DEVELOPMENT.md](./DEVELOPMENT.md)** 第 2 章（结构与模块职责）。
 
-## 加功能要改哪里
-
-| 想加的功能 | 改哪里 |
-|---|---|
-| 一个开关 / 选项 | `data/keys.ts` 加键 → `store/prefs.ts` 的 `Prefs`/`DEFAULTS`/`PARSERS` 三处 → 组件里 `usePrefs()` |
-| 一个二级页面 | 用 `useSubView`，返回动画与安卓返回键自动接管 |
-| 生词本（汇总所有忘记过的词） | `data/store.ts` 加一个聚合函数 → 新建页面 → `TabBar` 注册入口 |
-| 分享打卡图 | 新建页面 → 引 html2canvas → 设置页加入口。数据层不动 |
-| 换翻译源 | 改 `data/dict.ts` 里 `lookupOnline` 那一层 |
-| 加一个统计维度 | `domain/collect.ts` 的分类逻辑 + `StatsPage` |
-| 支持第三种导入格式 | `domain/backup.ts` 加一个 parser 分支，UI 不用动 |
-
-> 更完整的「六类新功能该落在哪、什么规模该拆」，见 **DEVELOPMENT.md 第 9 章（防止再次腐化）**。
-
-## 设计说明
-
-视觉概念是「一页活着的词典」：
-
-- 单词用衬线体（Spectral），是页面绝对主角
-- 状态用**页边墨线**标记——2px 竖线，颜色即状态（靛 / 赭 / 朱），像书页上的批注
-- 不用卡片、不用阴影、不用圆角（除按钮的 2px）
-- 全站只有三态色 + 墨色，克制
-
-设计令牌集中在 `src/ui/styles/tokens.css`，两套主题各一份色值：
-
-- `:root` 白天：纸 `#f7f8f5`、墨 `#16181a`，三支笔 靛/赭/朱
-- `[data-theme='dark']` 深夜：纸 `#121413` 墨黑、墨 `#eceee9`，三支笔换成浅色调（不是反色）
-
-有几类颜色**必须**给两套值，不能靠透明度叠：`--tint`（按压反馈）、`--tint-warn` / `--tint-danger`（提示条）、
-`--scrim`（遮罩）、`--switch-knob`（开关滑块）。深色底上用 `rgb(0 0 0 / 6%)` 会脏，滑块颜色不对会直接看不见。
-
-主题在设置 → 外观切换，存在 `theme`（Preferences），并往 `localStorage` 写一份 `theme_boot` 同步镜像，
-启动瞬间就上色，避免深色用户先闪一帧浅色。
-
-系统栏（状态栏 + 底部导航栏）由自研的 `AppearancePlugin`（`android/.../AppearancePlugin.java`）统一上色与切图标明暗：
-
-- 为什么不用 `@capacitor/status-bar`：它管不到底部导航栏，而且只改图标明暗不改底色 ——
-  Android 15+ 系统栏透明覆盖，看起来没问题；**Android 15 以下系统栏不透明、取主题里的浅色**，
-  于是深色主题会出现「白底 + 浅色图标」的空白带，上下各一条
-- `MainActivity.onCreate` 里会在首帧前读一次 `CapacitorStorage` 的 `theme`，先把系统栏上好色，
-  避免冷启动先露一眼白
-
-> 统计图表（ECharts）的颜色是 init 时从 CSS 变量读的一次性快照，主题变化时依赖变化会重建图表；
-> 以后再加图表记得把 `theme` 放进 effect 依赖。
 
 ## 交互细节
 
