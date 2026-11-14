@@ -28,3 +28,6 @@ android/app/*.keystore
 scripts/corpus/
 scripts/out/
 scripts/llm.config.json
+
+# 开发手册只在本地维护，不进仓库（README 不再引用它）
+DEVELOPMENT.md

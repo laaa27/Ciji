@@ -20,7 +20,8 @@
 
 ## 核心功能
 
-- **生成文章**：自动选取当天忘记 / 模糊 / 新学的词（含数量与类型筛选），用大模型写成一篇包含全部目标词的英语短文
+- **生成文章**：自动选取当天忘记 / 模糊 / 新学的词（含数量与类型筛选），用大模型写成一篇包含全部目标词的英语短文。
+  一次并行写四稿，按「审计硬伤 + 与真题的句长/难度距离」挑最像真题的一篇，通常几秒出稿
 - **点词加深**：文章里的目标词带虚线标记，点词即查释义，并显示该词在墨墨的学习状态；计划外的词可一键加入学习计划
 - **文章库**：每篇生成过都自动留档，按日期回看、删除，随时重读
 
@@ -41,18 +42,12 @@
 > 也可以使用**智谱免费模型**（`glm-4-flash`，[智谱开放平台](https://open.bigmodel.cn/) 注册即有免费额度，
 > 预填项选「智谱」），不花钱就能跑通全流程——但生成质量可能不理想。
 
-不止 DeepSeek 和智谱：**OpenAI / Anthropic / 任何 OpenAI 兼容网关**都支持。不是「选一个服务商」，
-而是**存多份配置随时切换**：
+不止 DeepSeek 和智谱：**任何 OpenAI 兼容网关**都能用（one-api、LM Studio、Ollama……）。
+不是「选一个服务商」，而是**存多份配置随时切换**：
 
-- 每份配置 = 名称 + 接口格式 + Base URL + 模型名 + API Key
+- 每份配置 = 名称 + Base URL + 模型名 + API Key
 - 同一厂商的不同模型（`deepseek-chat` / `deepseek-reasoner`）算两份，切换一次点击
-
-两种接口格式（选预填项会自动带好，一般不用手动改）：
-
-| 格式 | 路径 | 鉴权 | 说明 |
-|---|---|---|---|
-| OpenAI 兼容 | `{base}/chat/completions`，base 无版本段时自动补 `/v1` | `Authorization: Bearer` | 智谱、DeepSeek、one-api、LM Studio、Ollama 都是这套 |
-| Anthropic | `{base}/v1/messages` | `x-api-key` + `anthropic-version: 2023-06-01` | system 提示会提到顶层字段，`max_tokens` 必填 |
+- 接口格式只有一种：`{base}/chat/completions`（base 无版本段时自动补 `/v1`），鉴权走 `Authorization: Bearer`
 
 配置存在 `llm_profiles`（一整份 JSON）与 `llm_active`（当前 id）。
 v0.5.0 之前的 `llm_key` / `llm_provider` / `llm_model` 会在首次启动时自动迁成一条配置，随后删除旧键。
@@ -61,8 +56,10 @@ v0.5.0 之前的 `llm_key` / `llm_provider` / `llm_model` 会在首次启动时�
 > 真机走 `CapacitorHttp`，不受 CORS 限制。
 
 **失败处理。** 空响应（HTTP 200 但 `content` 为空）会自动重试一次：间隔 600ms；
-若是「预算被思维链吃光」（`finish_reason: length` 且正文为空），第二次把 `max_tokens` 翻倍（上限 8000）。
+若是「预算被用光」（`finish_reason: length` 且正文为空），逐级放大 `max_tokens` 再试（上限 32000）。
 429 / 5xx 同样重试一次，鉴权与地址类错误不重试。生成失败时阅读页会给出「查看模型原始响应」。
+
+生成默认**关闭思考**：需要的是速度（一篇几秒），而推理模型默认开着思考会把 50~90 秒和大量 token 花在思路上。
 
 ## 墨墨 API 配置
 
@@ -70,9 +67,6 @@ v0.5.0 之前的 `llm_key` / `llm_provider` / `llm_model` 会在首次启动时�
 获取方式：墨墨 App → 我的 → 更多设置 → 实验功能 → 开放 API。
 
 > 还需在墨墨 App 里打开**自动同步**，否则学习数据接口会返回空。
-
-> 环境搭建、代码规范、测试与构建、出包部署的完整流程见
-> **[DEVELOPMENT.md](./DEVELOPMENT.md)**。
 
 ## 快速开始（开发）
 
@@ -87,11 +81,8 @@ npx cap sync         # 把 dist/ 同步进 Android 工程
 
 ```bash
 node tests/e2e/test-import.mjs   # 导入：选文件 → 预览 → 两种合并策略 → 写盘断言
-node tests/e2e/test-models.mjs   # 模型：迁移 → 添加 → 切换 → 改协议 → 删除（需 dev server）
+node tests/e2e/test-models.mjs   # 模型：迁移 → 添加 → 切换 → 编辑 → 删除（需 dev server）
 ```
-
-> 环境搭建、13 个脚本的完整清单、出包与发布的逐层校验、常见问题排查，见
-> **[DEVELOPMENT.md](./DEVELOPMENT.md)**。
 
 ## 构建 APK
 
@@ -122,7 +113,7 @@ cd android && ./gradlew assembleRelease
 | 图表 | ECharts 6 | 按需引入，只打包柱状图 |
 | 存储 | Capacitor Preferences | 按天存 JSON 快照，见下方说明 |
 | 词典 | ECDICT 裁剪版 | 分片 JSON，按首字母懒加载。数据来自 [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT)（MIT） |
-| 测试 | puppeteer-core | 无头 Chrome 跑断言脚本，13 个脚本 / 262 项断言 |
+| 测试 | puppeteer-core | 无头 Chrome 跑断言脚本，`tests/e2e/` 下 20 个脚本 |
 
 ## 目录结构
 
@@ -138,15 +129,12 @@ src/
     ├── components/ TabBar / WordSheet / ArticleLibrary / GenerateArticle / ModelProfiles / settings
     ├── hooks/      useSubView / useReadingClock / useGlossToggle / useScrollStuck
     └── styles/     tokens.css（设计令牌）+ global.css
-tests/e2e/        浏览器验证脚本（13 个，共 262 项断言）
+tests/e2e/        浏览器验证脚本（20 个）
 scripts/          长期工具：生成文章与真题对比 / 造数据 / 截图
 android/          Capacitor Android 工程（含 AppearancePlugin 自研原生插件）
 ```
 
 依赖方向是单向的：`ui → store → domain → data → api`，`lib/` 在底层、任何层可用。
-
-> 逐模块职责、三条历史遗留的反向依赖、以及新增文件该放哪，见
-> **[DEVELOPMENT.md](./DEVELOPMENT.md)** 第 2 章（结构与模块职责）。
 
 
 ## 交互细节
@@ -242,6 +230,7 @@ CSV 支持带表头 / 不带表头（按导出列序）、BOM、CRLF、引号内
 - **只记录打开 App 的那天**：接口没有日期参数，某天没打开，那天的反馈就取不回来了。
 - **历史"模糊/忘记"是近似值**：`query_study_records` 只留 `last_response`，之后复习过就会被覆盖。历史的"新学"是精确的（`first_study_date` 固定）。
 - **无 CORS 头**：浏览器直连会被拦，所以开发时走 Vite 代理，真机走 CapacitorHttp。
+- **备份与导出仍在调整**：导出的文件可能缺字段、导入可能失败，暂不保证可用，别当作唯一的数据保障。
 
 ## 许可
 
