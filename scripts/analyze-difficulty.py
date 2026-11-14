@@ -60,6 +60,9 @@ SPECIAL = {
     "冒号分号列举": re.compile(r"[:;]"),
 }
 PASSIVE = re.compile(r"\b(is|are|was|were|be|been|being)\s+([a-z]+ed|[a-z]+en)\b", re.I)
+# 短语对偶框架：与 src/domain/article.ts 的 CONTRAST_PHRASE / CONTRAST_ANTITHESIS 同口径。
+# 每处单看都通顺，连起来读就是「作者只有一招」——实测 rather than 篇均 2.1 次（六级），真题 0.33。
+CONTRAST = re.compile(r"\b(rather than|instead of|unlike)\b|\bnot\b[^.;]{0,60}\bbut\b", re.I)
 
 PREPS = set(
     "in on at for with by from of to into onto about against among between through "
@@ -136,6 +139,7 @@ def analyse(text):
         "最长句": max(lens),
         **{f"句长{b}": round(100 * v / n_s) for b, v in buckets.items()},
         "简单句%": round(100 * simple / n_s),
+        "对偶框架数": len(CONTRAST.findall(text)),
         "从句标记/句": round(sum(marks) / n_s, 2),
         "≥2层嵌套句%": round(100 * sum(1 for m in marks if m >= 2) / n_s),
         "≥3层嵌套句%": round(100 * sum(1 for m in marks if m >= 3) / n_s),
@@ -163,7 +167,7 @@ def mean_rows(rows):
 GROUPS = [
     ("① 长短句分布（占句子数 %）", ["平均句长", "中位句长", "p90句长", "最长句", "句长标准差",
                                     "句长≤12", "句长13-20", "句长21-30", "句长31-40", "句长>40"]),
-    ("② 简单句与从句密度", ["简单句%", "零从句句%", "从句标记/句", "≥2层嵌套句%", "≥3层嵌套句%"]),
+    ("② 简单句与从句密度", ["简单句%", "零从句句%", "从句标记/句", "≥2层嵌套句%", "≥3层嵌套句%", "对偶框架数"]),
     ("③ 特殊句式（含该句式的句子占比 %）",
      ["非限制性定从%", "强调句%", "倒装%", "虚拟语气%", "破折号插入%", "独立主格%",
       "there be%", "同位语/插入语%", "冒号分号列举%", "被动语态%", "任一特殊句式%"]),

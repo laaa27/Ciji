@@ -44,6 +44,16 @@ export interface LevelSpec {
   veryLong: number
   /** 至少几句要不超过 12 词（真题里短句很多，全写长句反而不像） */
   shortSents: number
+  /**
+   * 语法简单句占比（无从句、无并列第二谓语），真题实测四级 40.2% / 六级 38.0% / 考研 33.2%。
+   *
+   * ⚠️ 这个数字**不直接渲染成百分比写进提示词**：实测把分布型配额交给模型，它会饱和执行
+   * （长句配额 → 平均句长冲到 29、短句归零；整段配比表 → 篇幅掉到六成）。
+   * 提示词里给的是换算后的「动作」（specLines：每段留一句说完就结束的话、全篇几句），
+   * 这个区间只用于两处：① 换算那个句数；② 离线判定（`scripts/analyze-difficulty.py` 出 `简单句%`）。
+   * 审计**不查**这一项——按区间下界硬卡，存量里 54% / 62% / 69% 的稿子要重生成。
+   */
+  simpleRatio: [number, number]
   /** 段落数区间 */
   paragraphs: [number, number]
   /** 该档允许的句法上限 */
@@ -67,6 +77,7 @@ export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
     longFrom: 30,
     veryLong: 3,
     shortSents: 5,
+    simpleRatio: [0.35, 0.4],
     paragraphs: [5, 5],
     syntax:
       '以简单句和并列句为主；从句最多一层（一个定语从句或一个状语从句），不叠加；' +
@@ -87,6 +98,7 @@ export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
     longFrom: 30,
     veryLong: 2,
     shortSents: 4,
+    simpleRatio: [0.28, 0.33],
     paragraphs: [4, 4],
     syntax:
       '允许两层结构（定语从句 + 状语从句，或分词短语作状语）；可以出现抽象名词，' +
@@ -111,6 +123,7 @@ export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
     longFrom: 35,
     veryLong: 3,
     shortSents: 2,
+    simpleRatio: [0.22, 0.27],
     paragraphs: [4, 4],
     syntax:
       '以「长句但结构清楚」为主：允许一层定语从句 + 一层状语从句、非谓语短语作后置定语；' +
@@ -131,6 +144,7 @@ export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
     longFrom: 35,
     veryLong: 2,
     shortSents: 2,
+    simpleRatio: [0.25, 0.3],
     paragraphs: [4, 4],
     syntax: '学术语域：名词化表达、客观陈述、被动语态适度使用',
     forbid: '禁止口语化与情绪化表达',
@@ -247,7 +261,21 @@ export interface Outline {
 }
 
 /** 提示词版本：出问题时先看这个，确认是不是提示词改动引起的 */
-export const PROMPT_VERSION = 'v6-2026-11-11-distribution'
+export const PROMPT_VERSION = 'v7.1-2026-11-14-buffer-arithmetic'
+
+/**
+ * 简单句的句数配额：`simpleRatio` × 全篇句数估值（词数中位 ÷ 句长中位）。
+ *
+ * 单独成函数是因为它有两个消费者：规格行（要求里给「全篇 X~Y 句」）
+ * 和交付前自查（让模型自己数）。两边各算一遍迟早对不上，就像当年三组词数那样。
+ */
+export function simpleSentenceTargets(spec: LevelSpec): { min: number; max: number; total: number } {
+  const aMid = (spec.avgSentence[0] + spec.avgSentence[1]) / 2
+  const total = Math.max(8, Math.round((spec.words[0] + spec.words[1]) / 2 / aMid))
+  const min = Math.max(spec.paragraphs[0], Math.round(total * spec.simpleRatio[0]))
+  const max = Math.max(min + 1, Math.round(total * spec.simpleRatio[1]))
+  return { min, max, total }
+}
 
 /** 把规格渲染成人能读的几条硬指标，两个阶段共用 */
 function specLines(spec: LevelSpec, detailed: boolean): string[] {
@@ -268,6 +296,9 @@ function specLines(spec: LevelSpec, detailed: boolean): string[] {
   const sPerMin = Math.max(3, Math.floor(wPerMin / aMid))
   const sPerMax = Math.max(sPerMin + 1, Math.ceil(wPerMax / aMid))
 
+  // 简单句配额换算成「全篇几句」：百分比模型数不清，句子数是能自己数的动作。
+  const { min: simpMin, max: simpMax, total: totalS } = simpleSentenceTargets(spec)
+
   const lines = [
     `- 分段：共 ${paraText} 段，每段 ${sPerMin}~${sPerMax} 句、${wPerMin}~${wPerMax} 词` +
       `（合计 ${wMin}~${wMax} 词，写不够就逐段补论据）`,
@@ -283,6 +314,22 @@ function specLines(spec: LevelSpec, detailed: boolean): string[] {
       )
     }
     lines.push(`- 句法：${spec.syntax}`)
+    // 「每段留一句说完就结束的话」是这一条的操作版：不给百分比，给一个能数的动作。
+    // 真题的难度不在句长（三档平均句长都已对齐），在**缓冲句被写没了**——
+    // 实测生成文语法简单句只有 27% / 20% / 13.5%，真题是 40.2% / 38% / 33.2%。
+    //
+    // 第一版（v7 初稿）只说了「要几句」，没算这笔账，结果模型把所有句子一起写短：
+    // 四级 avg 18.8→16.9、六级 20.3→16.4、最长句掉 3~5 词。所以这里必须把
+    // 「剩下那几句要更长，把平均句长撑回来」明着算给它，否则就是拿难度换缓冲句。
+    lines.push(
+      `- 缓冲句：全篇 ${simpMin}~${simpMax} 句「说完就结束」的句子——一个主谓结构讲完一件事，` +
+        `不带 that/which/who 引出的从句，也不带逗号插入语；每段至少留 1 句，放在段首或段末。` +
+        `这不是把整篇写短的借口：这 ${simpMin}~${simpMax} 句会把平均句长拉下来，` +
+        `剩下的 ${totalS - simpMax}~${totalS - simpMin} 句必须写得更长（带从句、带修饰），` +
+        `把平均句长撑回 ${aMin}~${aMax} 词/句；每段的词数下限不变，不够就在复杂句里补信息`,
+      `  这类句子要装具体的东西（谁做了什么、多少、什么时候），长度 12~18 词，不是越短越好；` +
+        `不要用它写 "A is not B" / "It has become hip to …" 这种判断口号——那是社论腔，真题里没有`,
+    )
     // forbid 里本来就以「禁止」打头，这里再挂一次标签会读成「禁止：禁止倒装」
     lines.push(`- 禁止：${spec.forbid.replace(/^禁止/, '')}`)
   } else {
@@ -345,6 +392,7 @@ export function buildArticleMessages(
   ].join('')
 
   const [wMin] = spec.words
+  const simple = simpleSentenceTargets(spec)
   const parts = [`请用下面这些单词写一篇英语短文。`, '', `【必须包含的单词】`, words.join(', '), '']
 
   if (outline) {
@@ -375,6 +423,12 @@ export function buildArticleMessages(
     `- 自查标准：把目标单词全部拿掉，剩下的文字仍然是一篇逻辑通顺的文章——达不到就重写`,
     `- 要写具体场景，不要通篇抽象判断：至少 1 处具体场景（谁在什么场合做什么）、` +
       `1 处年代或地域范围、1 处对比（过去/现在、城市/乡村、A 地与 B 地）`,
+    `- 对比要落成事实对事实：两个数字、两个年代或两个地点并排写，或者用 but / while 把两件事直接摆在一起。` +
+      `不要用 "A rather than B" 这种短语对偶去代替对比`,
+    `- 短语对偶是同一个模子，全篇省着用：rather than / instead of / not … but … / unlike 合计最多 2 处，` +
+      `而且不要连着两段都出现。反面例子（同一篇里出现三次，读起来像作者只有一招）：` +
+      `"a pattern can be seen rather than merely felt" / "an unhurried afternoon rather than the bright posters" / ` +
+      `"a working arrangement rather than a romantic image"`,
     `- 但场景只能写成「可能发生 / 应该发生」，不能写成「已经发生」：具体统计数字、机构名、人名、研究结论都不要虚构。` +
       `整篇的时态与视角必须一致——开头在提建议，就不许中途写成「几年前这里已经建成了公园」`,
     `- 不许为了安置某个词另起话题：每个词都要落进已有的展开里。` +
@@ -393,6 +447,10 @@ export function buildArticleMessages(
     `- 逐段数：这一段几句？加起来够不够每段的句数下限`,
     `- 逐段数字数：每段是否达到每段词数下限；不够就补论据，不要靠加形容词凑`,
     `- 数总词数，确认落在 ${spec.words[0]}~${spec.words[1]} 之间`,
+    `- 数「说完就结束」的句子：够不够 ${simple.min}~${simple.max} 句` +
+      `（少于这个数说明太复杂，多于说明写碎了）`,
+    `- 算平均句长：总词数 ÷ 句数，是否还在 ${spec.avgSentence[0]}~${spec.avgSentence[1]}——` +
+      `低于下界就说明全篇被写短了，把复杂句写长，不是删缓冲句`,
     `- 检查最长的一句是否超过 ${spec.maxSentence} 词，超了就拆`,
     ``,
     `【输出格式】`,

@@ -327,6 +327,22 @@ const CLAIM_WORDS = /\b(should|must|ought to|need to|had better)\b/gi
 const MAX_EXPOSITORY_CLAIMS = 2
 
 /**
+ * 短语对偶框架（rather than / instead of / not … but … / unlike）的合计上限。
+ *
+ * 为什么单独立一条：实测 rather than 篇均 0.95 / 2.12 / 1.92 次，真题只有 0.20 / 0.33 / 0.20；
+ * 六级 31/32 篇都出现、12 篇 3 次以上（最多 5 次）。提示词里已经写了「最多 2 处」，
+ * 但 ", which" 那条的经验是：**只靠措辞拦不住，得有个能数的出口**。
+ *
+ * 按框架族而不是按单词封：只封 rather than 会漂到 instead of / not … but …（真题里这些同样几乎不用）。
+ * 上限取 2 而不是 1：上限 1 会打回 69% 的六级稿，重写率不可接受。
+ */
+const MAX_CONTRAST_FRAME = 2
+/** 词面型对偶（短语级，不含 not … but …） */
+const CONTRAST_PHRASE = /\b(rather than|instead of|unlike)\b/gi
+/** 句式型对偶：not … but … 必须跨词匹配，所以单独一条 */
+const CONTRAST_ANTITHESIS = /\bnot\b[^.;]{0,60}\bbut\b/gi
+
+/**
  * 生成后审计：这一篇够不够得上它的档位。
  *
  * 实测（deepseek-flash）合格率只有四成左右：篇幅经常只有目标的六成，
@@ -408,6 +424,16 @@ function auditArticle(
     problems.push(`「, which/who」用得太密（${nonRestrictive} 句，上限 ${MAX_NONRESTRICTIVE}）`)
   }
 
+  // 对偶框架：这是比 ", which" 更隐蔽的模板——每处单看都通顺，连起来读就是一个人只有一招
+  const fullText = a.sentences.map((s) => s.en).join(' ')
+  const frames =
+    (fullText.match(CONTRAST_PHRASE) ?? []).length + (fullText.match(CONTRAST_ANTITHESIS) ?? []).length
+  if (frames > MAX_CONTRAST_FRAME) {
+    problems.push(
+      `对偶句式过多（rather than / instead of / not…but… 共 ${frames} 处，上限 ${MAX_CONTRAST_FRAME}）`,
+    )
+  }
+
   // 文体一致性。提示词里已经交代了文体，但模型很容易滑回"给建议"的老路：
   // 说明文写成提案（should 满天飞）、议论文写成纯描述（一个主张都没有），都要打回。
   const claims = (a.sentences.map((s) => s.en).join(' ').match(CLAIM_WORDS) ?? []).length
@@ -455,6 +481,24 @@ function thinkingOpts(): { reasoningEffort: 'low' } | { thinkingDisabled: true }
 const ARTICLE_MAX_TOKENS = 16000
 
 /**
+ * 重写指令：把审计发现的问题原样回喂给模型。
+ *
+ * 为什么必须回喂：重试如果原样重发同一份 messages，第二次只是重新抽签，不是「按批评修改」。
+ * 旧版就是这么做的，复算时 7/8 的重写稿仍然不合格（问题清单在代码里，模型看不见）。
+ * 回喂的是「这一篇具体错在哪」，比在提示词里再加三条通用红线的收益高得多。
+ */
+function revisionRequest(problems: string[]): string {
+  return [
+    '上一稿没有通过审核，问题如下：',
+    ...problems.map((p, i) => `${i + 1}. ${p}`),
+    '',
+    '请逐条修正后重写全文，未被指出的部分保持上一稿的写法：',
+    '- 只输出一个 JSON 对象（title / titleZh / sentences），不要解释改了什么',
+    '- 目标词仍然每个都要出现至少一次；改短了句子就要在别处补回信息，总词数和句数不能掉',
+  ].join('\n')
+}
+
+/**
  * 生成一篇文章：先列提纲，再按提纲成文。
  * 两步走比一步直出更不容易写成词表拼接 —— 模型先被迫想清楚要论证什么。
  * 提纲失败会自动退回单步生成；成文格式解析失败会重试一次。
@@ -498,16 +542,23 @@ export async function generateArticle(
   const outline = await buildOutline(opts.words, opts.level, genre)
   trackUsage()
 
-  const messages = buildArticleMessages(opts.words, opts.level, outline, genre)
+  const baseMessages = buildArticleMessages(opts.words, opts.level, outline, genre)
 
   let lastError: unknown = null
   /** 有硬伤但勉强能用的一篇：重生成也不合格时交它，别让用户白等 */
   let best: { article: Article; problems: string[] } | null = null
+  /** 上一稿的审计问题，下次重试时回喂；第一轮为空 */
+  let feedback: string[] = []
 
   for (let attempt = 0; attempt < MAX_GENERATE_ATTEMPTS; attempt += 1) {
     if (attempt > 0) await sleep(400)
 
     onProgress?.({ stage: attempt === 0 ? 'draft' : 'revise', attempt: attempt + 1 })
+
+    const messages =
+      feedback.length > 0
+        ? [...baseMessages, { role: 'user' as const, content: revisionRequest(feedback) }]
+        : baseMessages
 
     try {
       const raw = await chatCompletion(messages, {
@@ -537,6 +588,8 @@ export async function generateArticle(
       const problems = auditArticle(article, opts.level, genre)
       if (problems.length === 0) return article
 
+      // 交给下一轮当批评意见；第二次仍不合格就按问题数取少的交出去
+      feedback = problems
       if (!best || problems.length < best.problems.length) best = { article, problems }
     } catch (e) {
       lastError = e

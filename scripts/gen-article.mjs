@@ -423,6 +423,12 @@ async function runLevel(lv, n) {
   )
   console.log(`  ≥40 词句数 ${sum.veryLong}（规格 ≥${spec.veryLong}）${verdict(sum.veryLong >= spec.veryLong)}`)
   console.log(`  ≤12 词句数 ${sum.short}（规格 ≥${spec.shortSents}）${verdict(sum.short >= spec.shortSents)}`)
+  // 简单句比例要按语法判定（无从句、无并列第二谓语），规则在 analyze-difficulty.py 里，
+  // 这里只报目标值——本脚本不做第二份实现，免得两个口径打架。
+  console.log(
+    `  语法简单句 ${spec.simpleRatio.map((r) => Math.round(r * 100) + '%').join('~')}` +
+      `（真题 40/38/33%，判定见 analyze-difficulty.py 的「简单句%」）`,
+  )
   console.log(`  目标词覆盖 ${sum.cover}/${words.length}`)
   if (failed > 0) console.log(`  ⚠ ${failed} 篇失败（计入分母外）`)
 
