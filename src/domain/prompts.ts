@@ -54,6 +54,15 @@ export interface LevelSpec {
    * 审计**不查**这一项——按区间下界硬卡，存量里 54% / 62% / 69% 的稿子要重生成。
    */
   simpleRatio: [number, number]
+  /**
+   * 被动语态句占比区间（百分比）。
+   *
+   * 为什么是区间而不是上限：真题的被动是「四级最多、考研最少」（19.8 / 8.2 / 5.8），
+   * 而原来的规格只写了上限（15%/22%/30%），结果生成文方向完全反了——实测 5 / 18 / 20，
+   * 四级被压到 5% 没人管，六级考研冲到 18~20 也不触发。
+   * 下限只对说明文判（说明文天然多定义句与状态陈述），议论文只判上限。
+   */
+  passive: [number, number]
   /** 段落数区间 */
   paragraphs: [number, number]
   /** 该档允许的句法上限 */
@@ -78,6 +87,7 @@ export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
     veryLong: 3,
     shortSents: 5,
     simpleRatio: [0.35, 0.4],
+    passive: [12, 30],
     paragraphs: [5, 5],
     syntax:
       '以简单句和并列句为主；从句最多一层（一个定语从句或一个状语从句），不叠加；' +
@@ -99,6 +109,7 @@ export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
     veryLong: 2,
     shortSents: 4,
     simpleRatio: [0.28, 0.33],
+    passive: [4, 16],
     paragraphs: [4, 4],
     syntax:
       '允许两层结构（定语从句 + 状语从句，或分词短语作状语）；可以出现抽象名词，' +
@@ -124,6 +135,7 @@ export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
     veryLong: 3,
     shortSents: 2,
     simpleRatio: [0.22, 0.27],
+    passive: [2, 10],
     paragraphs: [4, 4],
     syntax:
       '以「长句但结构清楚」为主：允许一层定语从句 + 一层状语从句、非谓语短语作后置定语；' +
@@ -145,6 +157,7 @@ export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
     veryLong: 2,
     shortSents: 2,
     simpleRatio: [0.25, 0.3],
+    passive: [8, 20],
     paragraphs: [4, 4],
     syntax: '学术语域：名词化表达、客观陈述、被动语态适度使用',
     forbid: '禁止口语化与情绪化表达',
@@ -261,7 +274,7 @@ export interface Outline {
 }
 
 /** 提示词版本：出问题时先看这个，确认是不是提示词改动引起的 */
-export const PROMPT_VERSION = 'v7.1-2026-11-14-buffer-arithmetic'
+export const PROMPT_VERSION = 'v9-2026-11-14-fact-and-anchor'
 
 /**
  * 简单句的句数配额：`simpleRatio` × 全篇句数估值（词数中位 ÷ 句长中位）。
@@ -275,6 +288,47 @@ export function simpleSentenceTargets(spec: LevelSpec): { min: number; max: numb
   const min = Math.max(spec.paragraphs[0], Math.round(total * spec.simpleRatio[0]))
   const max = Math.max(min + 1, Math.round(total * spec.simpleRatio[1]))
   return { min, max, total }
+}
+
+
+/**
+ * 真题参照段：只教「节奏」，不教内容。
+ *
+ * 为什么需要它：句长分布是唯一靠提示词治不好的指标——三次配额尝试全失败（见
+ * `词迹-生成难度偏差分析.md` 第 9 节），实测生成文的标准差长期在 3.5~5（真题 8~10）。
+ * 文献里 CEFR 分级的做法都是把等级文本直接放进上下文当标尺（few-shot），
+ * 模型靠模仿对齐分布，比读十条形容词管用。
+ *
+ * 选段标准：段内同时有 ≤10 词和 ≥30 词（考研 ≥35）的句子 —— 即「长短交错」本身。
+ * 来源是 2023 年真题语料（`scripts/corpus/`），同一批语料在 analyze-difficulty.py 里当基线。
+ */
+const REFERENCE: Record<ArticleLevel, string> = {
+  cet4:
+    'There are consequences of living big. As middle-class houses have grown larger, two things have happened. ' +
+    'First, large houses take time to maintain, so cleaners and other low-wage service workers are required to keep ' +
+    'these houses in order. Second, once-public spaces, where people from diverse backgrounds used to come together, ' +
+    'have increasingly become privatized, leading to a reduction in the number of public facilities available to all, ' +
+    'and a reduced quality of life for many. Take swimming pools. While in 1950, only 2,500 U.S. families owned pools, ' +
+    'by 1999 this number was 4 million. At the same time, public municipal pools were often closed, leaving low-income ' +
+    'people nowhere to swim.',
+  cet6:
+    "Processed food is inexpensive, it's legal, and it's everywhere. Companies' advertising is cueing us to remember " +
+    'those products and we want those products constantly. So the food environment is one of those key things that ' +
+    'makes food even more problematic for so many people. Memory, nostalgia in particular, plays a big role in the ' +
+    "foods we crave. Soda companies discovered that if they put a soda in the hands of a child when they're at a ball " +
+    'game with their parents, that soda will forever be associated with that joyous moment. Later in life, when that ' +
+    "child wants to experience a joyous moment, they're going to think of soda. Many people seek comfort in the snacks " +
+    'they remember from childhood.',
+  kaoyan:
+    'But the administration is right about one thing: U.S. national parks are in crisis. Collectively, they have a ' +
+    'maintenance backlog of more than $12 billion. Roads, trails, restrooms, visitor centers and other infrastructure ' +
+    "are crumbling. But privatizing and commercializing the campgrounds would not be the panacea that the Interior " +
+    "Department's Outdoor Advisory Committee would have us believe. Campgrounds are a tiny portion of the overall " +
+    'infrastructure backlog, and concessionaires in the parks hand over, on average, only about 5% of their revenues ' +
+    'to the National Park Service. Moreover, increased privatization would certainly undercut one of the major reasons ' +
+    'why 300 million visitors come to the parks each year: to enjoy nature and get a respite from the commercial ' +
+    'drumbeat that overwhelms daily life.',
+  ielts: '',
 }
 
 /** 把规格渲染成人能读的几条硬指标，两个阶段共用 */
@@ -405,6 +459,15 @@ export function buildArticleMessages(
     parts.push('')
   }
 
+  const reference = REFERENCE[level]
+  if (reference) {
+    parts.push(
+      `【真题参照】（只学节奏：短句该多短、长句该多长、句子之间怎么接；内容一律不要抄，也不要改写它）`,
+      `「${reference}」`,
+      '',
+    )
+  }
+
   parts.push(
     `【要求】`,
     `1. 难度：${spec.label}`,
@@ -429,8 +492,11 @@ export function buildArticleMessages(
       `而且不要连着两段都出现。反面例子（同一篇里出现三次，读起来像作者只有一招）：` +
       `"a pattern can be seen rather than merely felt" / "an unhurried afternoon rather than the bright posters" / ` +
       `"a working arrangement rather than a romantic image"`,
-    `- 但场景只能写成「可能发生 / 应该发生」，不能写成「已经发生」：具体统计数字、机构名、人名、研究结论都不要虚构。` +
-      `整篇的时态与视角必须一致——开头在提建议，就不许中途写成「几年前这里已经建成了公园」`,
+    `- 事实与虚构的界线：**常识性事实可以写**——哪类机构、什么年代、什么普遍现象、大致规模，写具体的东西才像真题；` +
+      `但具体统计数字、真实机构名、人名、具体研究结论不许编，整篇的时态与视角也要一致` +
+      `（实测生成文四级有 47% 的句子带情态、真题只有 11%，就是因为把「不许编」读成了「通篇假设」）`,
+    `- 假设语气节制使用：could / may / would 这类假设或委婉说法全篇不超过 4 处，其余一律写陈述句。` +
+      `要写「还没发生的事」就说清条件（If X, Y），不要整篇悬在虚拟语气里`,
     `- 不许为了安置某个词另起话题：每个词都要落进已有的展开里。` +
       `段落主题被某个词带偏（比如从降噪治理拐去谈公共艺术教育）就算不合格，宁可换个更贴切的中心`,
     `- 句式不许靠同一个模板凑长度：「, which …」「, who …」这类非限制性定语从句全篇最多 2 处，` +
@@ -442,6 +508,10 @@ export function buildArticleMessages(
       `a fixed bracket of work hours、the land holder，都是这么造出来的`,
     `- 词表本来就很密：340 词的文章塞 15 个词，平均每 22 词一个，比真题密得多。` +
       `所以不要给每个词配一个独立场景或比喻，能用一次带过就带过`,
+    `- 词表里最生僻的两个「具体名词」（少见物名、职业名、专有化的事物名）不许进标题、不许当全文中心，` +
+      `最多在一句话里带过；更不要为它另开一个场景或比喻。实测反面例子（三篇真机稿都中）：` +
+      `整篇写木片镶嵌工艺（marquetry）、「一位大学校长去参观作坊」、「和前台聊半小时就录用」——` +
+      `读者能看出是词在牵着文章走`,
     ``,
     `【交付前自查】`,
     `- 逐段数：这一段几句？加起来够不够每段的句数下限`,

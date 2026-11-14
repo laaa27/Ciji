@@ -13,12 +13,12 @@ import { countWords, wordPattern } from '@/lib/text'
 import { LEVEL_SPEC, type ArticleLevel } from '@/domain/prompts'
 
 /** 真题实测锚点：2023 年四六级与考研英语二语料（详见 `词迹-生成难度偏差分析.md`） */
-const CORPUS: Record<ArticleLevel, { simple: number; nest: number; sd: number }> = {
-  cet4: { simple: 40.2, nest: 20.4, sd: 10.0 },
-  cet6: { simple: 38.0, nest: 21.5, sd: 7.9 },
-  kaoyan: { simple: 33.2, nest: 27.4, sd: 9.8 },
+const CORPUS: Record<ArticleLevel, { simple: number; nest: number; sd: number; marks: number }> = {
+  cet4: { simple: 40.2, nest: 20.4, sd: 10.0, marks: 0.8 },
+  cet6: { simple: 38.0, nest: 21.5, sd: 7.9, marks: 0.9 },
+  kaoyan: { simple: 33.2, nest: 27.4, sd: 9.8, marks: 0.9 },
   // 雅思档已不可新生成，留个中性值只为类型完整
-  ielts: { simple: 38, nest: 22, sd: 9 },
+  ielts: { simple: 38, nest: 22, sd: 9, marks: 0.9 },
 }
 
 /** 从句标记：关系词（不在句首）、从属连词、逗号后的非谓语 */
@@ -117,6 +117,9 @@ export function distance(m: ArticleMetrics, level: ArticleLevel): number {
     Math.abs(m.nested * 100 - corpus.nest) / 6,
     Math.max(0, spec.veryLong - m.long) * 0.5,
     Math.max(0, spec.shortSents - m.short) * 0.3,
+    // 从句密度必须单列：标准差能被「句句嵌套」刷漂亮。实测考研一篇 sd 10.9（真题 9.8）看着达标，
+    // 但从句标记 1.67/句（真题 0.9）、≥2 层嵌套 53%（真题 27.4）——那不是长短交错，是每句都堆从句。
+    Math.abs(m.marksPerSent - corpus.marks) / 0.3,
   ]
   return parts.reduce((a, b) => a + b, 0) / parts.length
 }

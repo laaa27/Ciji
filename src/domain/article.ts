@@ -323,9 +323,8 @@ function modeOf(kinds: WordKind[]): ArticleMode {
 
 /** 名词化后缀：与 scripts/analyze-difficulty.py 的口径一致，方便两边数字对得上 */
 const NOMINAL_SUFFIX = /(tion|sion|ment|ance|ence|ity|ness|ism|ship)$/i
-/** 真题名词化 2.1~3.5 / 百词、被动 5.8%~19.8%；超过说明写成了学术摘要而不是考试阅读 */
+/** 真题名词化 2.1~3.5 / 百词；超过说明写成了学术摘要而不是考试阅读 */
 const MAX_NOMINAL_PER_100 = 6
-const MAX_PASSIVE_RATIO = 22
 /** 「, which / , who」非限制性定语从句最多几句：真题四级一篇约 0.4 句、考研约 1.7 句 */
 const MAX_NONRESTRICTIVE = 3
 /** 主张表述：议论文靠它立论，说明文里出现就是跑偏 */
@@ -417,11 +416,14 @@ function auditArticle(
     /\b(is|are|was|were|be|been|being)\s+([a-z]+ed|[a-z]+en)\b/i.test(s.en),
   ).length
   const passivePct = (100 * passive) / Math.max(1, lens.length)
-  // 说明文天然被动多（定义句、状态陈述），实测单篇能到 27~31%；议论文则很少超过 10%。
-  // 真题四级整体 19.8%，所以 22% 对说明文偏紧，按 30% 卡。
-  const maxPassive = genre === 'expository' ? 30 : MAX_PASSIVE_RATIO
-  if (passivePct > maxPassive) {
-    problems.push(`被动句过多（${passivePct.toFixed(0)}% 的句子，上限 ${maxPassive}%）`)
+  // 被动改成区间：真题是「四级最多、考研最少」（19.8 / 8.2 / 5.8），只写上限会让方向反过来。
+  // 下限只对说明文判 —— 说明文天然多定义句和状态陈述，议论文本来就少被动。
+  const [passiveMin, passiveMax] = spec.passive
+  if (genre === 'expository' && passivePct < passiveMin) {
+    problems.push(`被动句太少（${passivePct.toFixed(0)}% 的句子，说明文至少要 ${passiveMin}%）`)
+  }
+  if (passivePct > passiveMax) {
+    problems.push(`被动句过多（${passivePct.toFixed(0)}% 的句子，上限 ${passiveMax}%）`)
   }
 
   // 用同一个模板反复凑长句：实测一篇四级稿 15 句里有 6 句是「, which …」，
