@@ -184,7 +184,7 @@ ok('沿用旧模型名', s.profiles[0]?.model === 'deepseek-chat', s.profiles[0]
 ok('命名取厂商', s.profiles[0]?.name === 'DeepSeek', s.profiles[0]?.name)
 ok('自动选中', s.active === s.profiles[0]?.id)
 ok('旧键已清理', s.legacy === null, s.legacy)
-ok('列表显示当前标记', (await bodyText()).includes('deepseek-chat · OpenAI 兼容 · 当前'))
+ok('列表显示当前标记', (await bodyText()).includes('deepseek-chat · 当前'))
 
 console.log('\n[2] 添加一个 OpenAI 兼容配置')
 await clickText('添加模型')
@@ -227,34 +227,33 @@ await page.evaluate(() => {
 await t(400)
 s = await store()
 ok('切回 DeepSeek', s.active === firstId, s.active)
-ok('界面标记跟着变', (await bodyText()).includes('deepseek-chat · OpenAI 兼容 · 当前'))
+ok('界面标记跟着变', (await bodyText()).includes('deepseek-chat · 当前'))
 
-console.log('\n[4] 编辑成 Anthropic 协议')
+console.log('\n[4] 编辑已有配置（只剩 OpenAI 兼容一种格式）')
 await page.evaluate(() => {
   const row = [...document.querySelectorAll('li')].find((li) => li.textContent?.includes('我的中转'))
   const btn = [...row.querySelectorAll('button')].find((b) => b.textContent?.trim() === '编辑')
   if (btn) btn.click()
 })
 await t(400)
-await clickText('Anthropic')
-await t(200)
-await fill('input[inputmode="url"]', 'https://api.anthropic.com')
-await fill('input[placeholder^="例如"]', 'claude-sonnet-4-5')
+// 接口格式选择器已经移除：界面上不该再出现「接口格式」
+ok('没有接口格式选择器', !(await bodyText()).includes('接口格式'))
+
+await fill('input[inputmode="url"]', 'https://gw2.example.com/v1')
+await fill('input[placeholder^="例如"]', 'gpt-4.1-mini')
 await t(150)
 
 calls.length = 0
 await clickText('测试并保存')
 await t(800)
 
-ok('打到 /v1/messages', calls[0]?.url === 'https://api.anthropic.com/v1/messages', calls[0]?.url)
-ok('x-api-key 鉴权', calls[0]?.headers['x-api-key'] === 'sk-custom-1', calls[0]?.headers['x-api-key'])
-ok('anthropic-version 头', calls[0]?.headers['anthropic-version'] === '2023-06-01')
-ok('没有 Bearer', calls[0]?.headers.authorization === undefined, calls[0]?.headers.authorization)
-ok('body 有 max_tokens', typeof calls[0]?.body?.max_tokens === 'number')
-ok('body 无 system 字段（本轮只有 user）', calls[0]?.body?.system === undefined)
+ok('仍走 /chat/completions', calls[0]?.url === 'https://gw2.example.com/v1/chat/completions', calls[0]?.url)
+ok('Bearer 鉴权', calls[0]?.headers.authorization === 'Bearer sk-custom-1', calls[0]?.headers.authorization)
+ok('模型名已改', calls[0]?.body?.model === 'gpt-4.1-mini', calls[0]?.body?.model)
 s = await store()
-ok('协议已改', s.profiles[1]?.protocol === 'anthropic', s.profiles[1]?.protocol)
-ok('地址已改', s.profiles[1]?.baseUrl === 'https://api.anthropic.com')
+ok('编辑不新增配置', s.profiles.length === 2, s.profiles.length)
+ok('地址已改', s.profiles[1]?.baseUrl === 'https://gw2.example.com/v1', s.profiles[1]?.baseUrl)
+ok('模型名已存', s.profiles[1]?.model === 'gpt-4.1-mini', s.profiles[1]?.model)
 
 await page.evaluate(() => {
   const h = [...document.querySelectorAll('h2')].find((x) => x.textContent?.trim() === '大模型')
@@ -294,10 +293,10 @@ s = await store()
 ok('第二次真删掉', s.profiles.length === 1, s.profiles.length)
 ok('当前选中退回剩下的', s.active === firstId, s.active)
 
-console.log('\n[6] 选预设后切换接口格式，高亮不能丢')
+console.log('\n[6] 选预设后改地址，预设高亮不能丢')
 await clickText('添加模型')
 await t(300)
-await clickText('Anthropic Claude')
+await clickText('智谱 GLM')
 await t(200)
 const chipsOn = () =>
   page.evaluate(() =>
@@ -305,19 +304,12 @@ const chipsOn = () =>
       .filter((b) => b.dataset.on === 'true')
       .map((b) => b.textContent?.trim()),
   )
-ok('选中 Anthropic 预设后高亮', (await chipsOn()).includes('Anthropic Claude'), await chipsOn())
-await page.evaluate(() => {
-  const b = [...document.querySelectorAll('button')].find((x) => x.textContent?.trim() === 'OpenAI 兼容')
-  b?.click()
-})
+ok('选中预设后高亮', (await chipsOn()).includes('智谱 GLM'), await chipsOn())
+// 只支持 OpenAI 兼容一种格式后，「接口格式」选择器已移除
+ok('没有接口格式选择器', !(await bodyText()).includes('接口格式'))
+await fill('input[inputmode="url"]', 'https://open.bigmodel.cn/api/paas/v4')
 await t(250)
-ok('切到 OpenAI 格式后仍然高亮', (await chipsOn()).includes('Anthropic Claude'), await chipsOn())
-await page.evaluate(() => {
-  const b = [...document.querySelectorAll('button')].find((x) => x.textContent?.trim() === 'Anthropic')
-  b?.click()
-})
-await t(250)
-ok('切回 Anthropic 格式也还在', (await chipsOn()).includes('Anthropic Claude'), await chipsOn())
+ok('改地址后预设仍高亮', (await chipsOn()).includes('智谱 GLM'), await chipsOn())
 await clickText('取消')
 await t(200)
 

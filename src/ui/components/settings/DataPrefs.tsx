@@ -270,6 +270,11 @@ export default function DataPrefs() {
       <button type="button" className={styles.danger} onClick={() => void handleClearAll()}>
         清空全部记录
       </button>
+
+      <p className={styles.warnNote}>
+        提示：备份与导出功能目前仍在调整中，<strong>不保证可用</strong>。导出的文件可能缺字段或格式变动，
+        导入也可能失败；在功能稳定之前，请不要把它当作唯一的数据保障。
+      </p>
     </section>
   )
 }

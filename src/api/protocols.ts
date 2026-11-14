@@ -1,17 +1,19 @@
 /**
- * 两种协议（OpenAI 兼容 / Anthropic）的请求构造与响应解析。
+ * 请求构造与响应解析（只保留 OpenAI 兼容一种格式）。
  *
- * 单独抽成纯函数模块，好处有三个：
- * 1. 不依赖 Capacitor，可以在 node 里直接跑断言（`node --experimental-strip-types`）
- * 2. 加第三种协议只需要在 PROTOCOLS 里补两个函数，调用方一行不改
- * 3. 各家网关的路径差异集中在这一处，不会散到 UI 里
+ * 2026-11-14 精简：Anthropic 的原生格式已移除。产品只面向 OpenAI 兼容网关
+ * （DeepSeek / 智谱 / one-api / LM Studio / Ollama 都走这套），
+ * 留着第二种格式的代价是每个调用点都要考虑两种 system 语义与两套用量字段。
+ *
+ * 单独抽成纯函数模块的好处：不依赖 Capacitor，可以在 node 里直接跑断言；
+ * 各家网关的路径差异集中在这一处，不会散到 UI 里
  *
  * 注意：OpenAI 兼容的「兼容」是有水分的，不同厂商的 baseUrl 有的带 /v1、
  * 有的带 /api/paas/v4，所以 endpointFor 必须按「末尾是否已是版本段」判断，
  * 不能无脑拼 /v1/chat/completions。
  */
 
-export type LlmProtocol = 'openai' | 'anthropic'
+export type LlmProtocol = 'openai'
 
 export interface ChatMessage {
   role: 'system' | 'user' | 'assistant'
@@ -194,97 +196,10 @@ const openai: ProtocolCodec = {
   },
 }
 
-/* ----------------------------- Anthropic ----------------------------- */
-
-const ANTHROPIC_VERSION = '2023-06-01'
-
-const anthropic: ProtocolCodec = {
-  endpoint(baseUrl) {
-    const base = normalizeBaseUrl(baseUrl)
-    if (/\/messages$/i.test(base)) return base
-    return VERSION_TAIL.test(base) ? `${base}/messages` : `${base}/v1/messages`
-  },
-
-  headers(apiKey) {
-    return {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
-    }
-  },
-
-  body(model, messages, opts) {
-    // Anthropic 没有 system role：系统提示是顶层字段，且只能有一段
-    const system = messages
-      .filter((m) => m.role === 'system')
-      .map((m) => m.content)
-      .join('\n\n')
-
-    const turns = messages
-      .filter((m) => m.role !== 'system')
-      .map((m) => ({ role: m.role, content: m.content }))
-
-    return {
-      model,
-      // 这个字段必填，缺了直接 400
-      max_tokens: opts.maxTokens ?? 2000,
-      temperature: opts.temperature ?? 0.8,
-      ...(system ? { system } : {}),
-      messages: turns,
-      stream: false,
-    }
-  },
-
-  parse(payload) {
-    const data = payload as {
-      content?: { type?: string; text?: string; thinking?: string }[]
-      stop_reason?: string
-      usage?: {
-        input_tokens?: number
-        output_tokens?: number
-        /** 命中缓存的前缀 token */
-        cache_read_input_tokens?: number
-        /** 本次写入缓存的 token（开启 cache_control 后才会有） */
-        cache_creation_input_tokens?: number
-      }
-    }
-    const blocks = data?.content ?? []
-    const text = blocks
-      .filter((b) => b.type === 'text')
-      .map((b) => b.text ?? '')
-      .join('')
-    const reasoning = blocks
-      .filter((b) => b.type === 'thinking')
-      .map((b) => b.thinking ?? '')
-      .join('')
-    const u = data?.usage
-
-    return {
-      text,
-      truncated: data?.stop_reason === 'max_tokens',
-      finishReason: data?.stop_reason,
-      reasoning: reasoning.trim() ? reasoning : undefined,
-      usage: u
-        ? {
-            // Anthropic 的 input_tokens 不含缓存读写那两截，三者相加才是真实输入量；
-            // 直接拿 input_tokens 当输入会把命中率算成 0，看不出缓存有没有生效
-            prompt:
-              num(u.input_tokens) +
-              num(u.cache_read_input_tokens) +
-              num(u.cache_creation_input_tokens),
-            completion: num(u.output_tokens),
-            cached: num(u.cache_read_input_tokens),
-          }
-        : undefined,
-    }
-  },
-}
-
-export const PROTOCOLS: Record<LlmProtocol, ProtocolCodec> = { openai, anthropic }
+export const PROTOCOLS: Record<LlmProtocol, ProtocolCodec> = { openai }
 
 export const PROTOCOL_LABEL: Record<LlmProtocol, string> = {
   openai: 'OpenAI 兼容',
-  anthropic: 'Anthropic',
 }
 
 /* ------------------------- 错误信息与人话解释 ------------------------- */

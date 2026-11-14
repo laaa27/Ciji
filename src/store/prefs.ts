@@ -12,7 +12,6 @@ import { MAX_TARGET_WORDS, WORD_LIMITS, type ArticleLevel } from '@/domain/promp
  * 每加一个偏好就要把四件套再抄一次。
  *
  * 边界：只放「单值、无生命周期」的偏好。
- * - `store/llm.ts` 里的 thinkGen / thinkGloss 不搬：它们和模型配置的生命周期绑在一起
  * - `store/theme.ts` 不搬：它要在首帧之前同步上色，走 localStorage 镜像，机制不同
  *
  * 不新增动作（action）的写法也在这里统一：先改内存再落盘，开关要即时。

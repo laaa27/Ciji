@@ -63,14 +63,6 @@ export const PRESETS: LlmPreset[] = [
     hint: '按量计费，模型名填你账号可用的，如 gpt-4o-mini',
   },
   {
-    key: 'anthropic',
-    name: 'Anthropic Claude',
-    protocol: 'anthropic',
-    baseUrl: 'https://api.anthropic.com',
-    model: '',
-    hint: '走 /v1/messages，模型名如 claude-sonnet-4-5',
-  },
-  {
     key: 'custom',
     name: '自定义',
     protocol: 'openai',
@@ -84,10 +76,6 @@ const K_PROFILES = 'llm_profiles'
 const K_ACTIVE = 'llm_active'
 /** 查词释义专用模型；空 = 跟随文章生成的模型 */
 const K_GLOSS_ACTIVE = 'llm_gloss_active'
-/** 文章生成是否开思考（DeepSeek 实测：开=low 档合格率 100%，关=约半数塌成短文） */
-const K_THINK_GEN = 'llm_think_gen'
-/** 查词释义是否开思考（默认关：短事实问答不值得等 1 分钟） */
-const K_THINK_GLOSS = 'llm_think_gloss'
 
 // v0.5.0 及更早的键，仅用于迁移
 const K_OLD_PROVIDER = 'llm_provider'
@@ -140,10 +128,6 @@ type LlmState = {
   activeId: string | null
   /** 查词释义用哪份配置；null = 跟随 activeId（文章生成模型） */
   glossActiveId: string | null
-  /** 文章生成是否开思考模式（2026-11-14 起默认关，见下方 load 的注释） */
-  thinkGen: boolean
-  /** 查词释义是否开思考模式（默认关） */
-  thinkGloss: boolean
   ready: boolean
 
   load: () => Promise<void>
@@ -153,10 +137,6 @@ type LlmState = {
   setActive: (id: string) => Promise<void>
   /** 切换查词释义模型；传 null 表示跟随文章模型 */
   setGlossActive: (id: string | null) => Promise<void>
-  /** 文章生成思考模式开关 */
-  setThinkGen: (v: boolean) => Promise<void>
-  /** 查词释义思考模式开关 */
-  setThinkGloss: (v: boolean) => Promise<void>
   /** 取当前生效的那份配置（读不到返回 null） */
   active: () => LlmProfile | null
   /** 查词释义实际生效的配置：专用模型存在就用它，否则跟随文章模型 */
@@ -209,7 +189,9 @@ function parseProfiles(raw: string | null): LlmProfile[] {
         return {
           id: String(p.id),
           name: String(p.name ?? '未命名'),
-          protocol: p.protocol === 'anthropic' ? 'anthropic' : 'openai',
+          // 只支持 OpenAI 兼容格式了：老配置里的 anthropic 一律按 openai 读，
+          // 让用户至少能进设置页把它改掉，而不是整份配置被丢弃
+          protocol: 'openai',
           baseUrl: String(p.baseUrl),
           apiKey: String(p.apiKey),
           model: String(p.model ?? ''),
@@ -226,29 +208,18 @@ export const useLlm = create<LlmState>((set, get) => ({
   profiles: [],
   activeId: null,
   glossActiveId: null,
-  thinkGen: false,
-  thinkGloss: false,
   ready: false,
 
   load: async () => {
-    const [stored, activeRaw, glossRaw, thinkGenRaw, thinkGlossRaw] = await Promise.all([
+    const [stored, activeRaw, glossRaw] = await Promise.all([
       Preferences.get({ key: K_PROFILES }),
       Preferences.get({ key: K_ACTIVE }),
       Preferences.get({ key: K_GLOSS_ACTIVE }),
-      Preferences.get({ key: K_THINK_GEN }),
-      Preferences.get({ key: K_THINK_GLOSS }),
     ])
 
     let profiles = parseProfiles(stored.value)
     let activeId = activeRaw.value?.trim() || null
     const glossActiveId = glossRaw.value?.trim() || null
-    // 释义默认关；生成从 2026-11-14 起也默认关。
-    // 生成原先默认开思考，是因为关思考会塌篇（~25%），而塌篇致命的理由是「只有一篇」。
-    // 改成并行 4 路择优之后，塌掉的那几篇在打分环节自然被淘汰，思考模式换来的那点稳定性
-    // 就不值 50~60 秒了（关思考实测 9~11 秒）。用户显式设过 'true' 的仍然保留。
-    const thinkGen = thinkGenRaw.value === 'true'
-    const thinkGloss = thinkGlossRaw.value === 'true'
-
     if (profiles.length === 0) {
       const migrated = await migrateLegacy()
       if (migrated.profiles.length > 0) {
@@ -261,7 +232,7 @@ export const useLlm = create<LlmState>((set, get) => ({
     // activeId 指向已删除的配置时，退回第一条，不让界面处在「有模型但不可用」的状态
     if (!profiles.some((p) => p.id === activeId)) activeId = profiles[0]?.id ?? null
 
-    set({ profiles, activeId, glossActiveId, thinkGen, thinkGloss, ready: true })
+    set({ profiles, activeId, glossActiveId, ready: true })
   },
 
   upsert: async (profile) => {
@@ -301,16 +272,6 @@ export const useLlm = create<LlmState>((set, get) => ({
     if (id !== null && !get().profiles.some((p) => p.id === id)) return
     set({ glossActiveId: id })
     await Preferences.set({ key: K_GLOSS_ACTIVE, value: id ?? '' })
-  },
-
-  setThinkGen: async (v) => {
-    set({ thinkGen: v })
-    await Preferences.set({ key: K_THINK_GEN, value: v ? 'true' : 'false' })
-  },
-
-  setThinkGloss: async (v) => {
-    set({ thinkGloss: v })
-    await Preferences.set({ key: K_THINK_GLOSS, value: v ? 'true' : 'false' })
   },
 
   active: () => {

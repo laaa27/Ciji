@@ -191,7 +191,7 @@ async function buildOutline(
     const { text, usage } = await chatCompletion(buildOutlineMessages(words, level, genre), {
       temperature: 0.9,
       maxTokens: 3000,
-      ...thinkingOpts(),
+      ...THINKING_OFF,
     })
 
     const obj = parseLoose(text) as {
@@ -475,16 +475,13 @@ export interface GenProgress {
 export type GenProgressHandler = (p: GenProgress) => void
 
 /**
- * 按设置决定思考参数（设置 → 大模型 → 「文章生成 · 思考模式」）。
- * 开：reasoning low 档 —— deepseek-flash 实测合格率 5/5，代价是 50~90 秒/篇；
- * 关：显式 thinking.disabled —— 秒级返回、费用更低，但推理模型实测约半数会塌成短文（审计层会兜住并重生成）。
- * 普通模型不认这些字段时，运行时会按 400 报错自动去掉，不影响使用。
+ * 思考模式：一律显式关闭（2026-11-14 从设置里移除）。
+ *
+ * 必须显式发 `thinking.disabled` —— 不传参数不等于关闭，推理模型默认就开着思考。
+ * 之所以可以一律关：关思考的代价是塌篇（~25%），而塌掉的候选在并行 4 路择优里会被直接淘汰，
+ * 不再值得为它多等 40~50 秒。服务端不认这个字段时，llm.ts 会按 400 自动去掉。
  */
-function thinkingOpts(): { reasoningEffort: 'low' } | { thinkingDisabled: true } {
-  return useLlm.getState().thinkGen
-    ? { reasoningEffort: 'low' }
-    : { thinkingDisabled: true }
-}
+const THINKING_OFF = { thinkingDisabled: true } as const
 /** 成文预算：推理模型会把额度分给思考。16000 是实测能写完 400 词正文并留出思考余量的起点；
  *  还不够时 llm.ts 会逐级加到 32000。 */
 const ARTICLE_MAX_TOKENS = 16000
@@ -601,7 +598,7 @@ export async function generateArticle(
       const { text, usage: callUsage } = await chatCompletion(baseMessages, {
         temperature,
         maxTokens: ARTICLE_MAX_TOKENS,
-        ...thinkingOpts(),
+        ...THINKING_OFF,
       })
       addUsage(callUsage)
       const article = assemble(validate(parseLoose(text)))
@@ -630,7 +627,7 @@ export async function generateArticle(
           content: revisionRequest(best.problems, locateDefects(best.item.sentences, opts.level)),
         },
       ],
-      { temperature: 0.8, maxTokens: ARTICLE_MAX_TOKENS, ...thinkingOpts() },
+      { temperature: 0.8, maxTokens: ARTICLE_MAX_TOKENS, ...THINKING_OFF },
     )
     addUsage(callUsage)
     const repaired = evaluate(assemble(validate(parseLoose(text))))

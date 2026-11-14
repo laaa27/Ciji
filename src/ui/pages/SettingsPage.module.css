@@ -363,6 +363,14 @@
   opacity: 0.5;
 }
 
+/* 备份与导出下方的阶段性提示：用主题里的红（--state-forget），亮暗两套都有对应值 */
+.warnNote {
+  margin: 18px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--state-forget);
+}
+
 .danger {
   margin-top: var(--sp-5);
   font-size: var(--fs-sm);
