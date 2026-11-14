@@ -154,7 +154,8 @@ ui  →  store  →  domain  →  data  →  api
 | 文件 | 职责 |
 | --- | --- |
 | `collect.ts` | 采集今日快照：进度 + 词表 + 逐词反馈，归成三类；✏️ 新增 `groupCounts()` —— 三组计数的唯一出口 |
-| `article.ts` | 生成流水线：提纲 → 成文 → 审计 → 重生成；候选词与词覆盖校验。✏️ 2026-11-14：重试时把 `auditArticle` 的问题**回喂**给模型（此前是原样重发，等于重新抽签）；审计新增「对偶框架」计数（`MAX_CONTRAST_FRAME`） |
+| `article.ts` | 生成流水线：提纲 → **并行 4 路成文** → 规则择优 →（仍有硬伤）回喂问题重写一次；候选词与词覆盖校验。✏️ 2026-11-14：重试时把 `auditArticle` 的问题**回喂**给模型并定位到具体句子；审计新增「对偶框架」计数（`MAX_CONTRAST_FRAME`） |
+| `domain/generate/` | 🆕 并行生成的纯逻辑，不依赖 `Article` 类型、可单独测：`metrics.ts`（对已切好的句子算真题形状指标 + 到规格的加权距离 + `locateDefects`）、`select.ts`（温度阶梯、`runParallel`、`rankCandidates`）。⚠️ 指标口径与 `scripts/analyze-difficulty.py` 必须同步改 |
 | `lookup.ts` | 🆕 查词编排：四级链（本地 → 缓存 → AI → MyMemory）、两级额度、`requestAiGloss`；批量返回 `{ glosses, skipped }`，超限的词必须报出来。模型配置由 `main.tsx` 注入 |
 | `domain/prompts.ts` | **零依赖**提示词模块，含 `LEVEL_SPEC` 难度规格（✏️ 2026-11 加 `longFrom` / `longExample`：长句门槛与长句标尺）、✏️ 文体层 `GENRE_MIX` / `pickGenre` / `GENRE_SPEC`（说明文 / 议论文）、`MAX_TARGET_WORDS` / `WORD_LIMITS`、✏️ **`simpleRatio` / `simpleSentenceTargets()`**：简单句占比换算成「全篇几句」的缓冲句要求（2026-11-14，理由见函数注释） |
 | `phrase.ts` | 点词时在上下文里找固定搭配（±5 词窗口 + 变形还原） |
@@ -240,11 +241,14 @@ TodayPage effect → useToday.refresh() → domain/collect.collectToday()
 GenerateArticle 选词 → ReadingPage.handleGenerate()
   → domain/article.generateArticle()
       ① buildOutline（提纲，失败退回单步）
-      ② chatCompletion（成文）
-      ③ auditArticle（篇幅 / 缺词 / 长句）
-      ④ 不合格重生成一次，两次都差就标注 shortfall 仍交付
+      ② 并行 4 路成文（温度 0.7/0.85/1.0/1.05，allSettled）
+      ③ 每篇 evaluate：auditArticle（硬伤）+ metrics.distance（到真题形状的距离）
+      ④ rankCandidates 取最优 → 无硬伤直接交付
+      ⑤ 仍有硬伤：把问题 + locateDefects 定位到的句子回喂，重写一次再比较
   → data/article.saveArticle()
 ```
+为什么是并行而不是「不合格就重写」：重试必然加时间，采样只加 token。墙钟从两轮降到一轮，
+首轮合格率 40% 的情况下这一步省掉的正好是那 60% 的第二轮。
 
 **查词**（点词）
 ```
@@ -758,6 +762,8 @@ done | sort -rn | head -5
 | ~~提示词缓存命中率低~~ **已实测否决（2026-11-11）**：30 篇配对 A/B 打过一轮，**不做**。命中率 0%→55%（不是 83%——静态前缀按「档位 × 文体」裂成 6 个变体，每个首次必冷启），但审计一次通过 11/15→8/15，重排净多 3 篇重写。缓存省 833 输入 token/篇，重写多花约 8000 输出 token/篇，**净亏 5~6 倍** | 数据见工作区 `词迹-LLM缓存重排-AB实验结果.md` 与 `ab-reorder-result.json`；分析见 `词迹-LLM缓存命中优化-可行性分析.md` | **不要再重做这条路**，除非满足其一：① 思考模式改默认关闭（输出降到 ~1200，输入占比升到 60%，缓存价值变成 25~35%）；② 换到有写入费的厂商（Anthropic）不划算，别碰；③ 审计通过率先提到 ≥14/15——真杠杆在重写率，不在缓存 |
 | 单次生成的 token 用量已可观测 | 2026-11-11 起 `Article.usage` 记 `prompt / completion / cached / calls / requests`，阅读页 meta 行显示「缓存 N%」，`scripts/gen-article.mjs` 也落盘。**`requests > calls` 就说明撞过 400 协商或截断加码，那一刻整轮请求是重发的** | 想省钱先看这个数，不要拍脑袋 |
 | 考研档简单句仍不达标 | v7.1 实测 16.0%（目标 22~27，真题 33.2），四级 37.4% / 六级 27.5% 已接近区间。考研的「长句为主」定位和「写简单句」在同一段提示词里互相拉扯，两批 5 篇都只到 15~20% | 再调之前先换手段（few-shot 一段真题当范例），别继续加红线 |
+| ~~生成慢（50~60 秒/篇）~~ **已解决（2026-11-14，0.23.21）** | 改成「提纲 → 并行 4 路成文 → 规则择优」，并把生成思考模式默认关掉。关思考会塌篇，但塌掉的候选会被选择淘汰，不再需要为此多等 40~50 秒 | 实测（离线 4 路 × 2 批）：择优比单篇的距离降 17%。**注意**：候选同源同提示词，相关性高，比第 6 节模拟的 −30% 小 |
+| 生成副作用：模型不会数句子 | 试过「每段写 X 句 / Y 词 / 第几句缓冲句」（按段预算），提示词每段重复一遍，实测把整篇写短（四级 avg 15.1~15.7 vs 基线 18.8，篇幅 280 vs 298），两批一致 → **已回退**。说明「重复同一条约束」的边际效果是负的 | 想控分布只能换手段（few-shot 范例），不要在提示词里重复配额 |
 | **释义缓存的容量治理**（0.23.18 只做了内存上限 2000 条） | 落盘层（Preferences / localStorage）没有上限也没有清理入口：`clearAll()` 只删 `day:*`，gloss 只能靠卸载 App 清。安卓端是单文件 SharedPreferences，`listDays()` 走 `keys()` → `getAll()` 会把整个文件反序列化，缓存越大每次解析越慢；Web 端 localStorage 5 MB 是真上限（写失败已改成静默降级） | 要动就三件事一起做：① 给落盘加软上限（3000 条，按写入顺序淘汰）；② 把 `listDays()` 从 `keys()` 改成单独存一个日期索引键；③ 设置 → 数据 里加「清空释义缓存」。**别只做 ①**，否则慢的根因还在 |
 | 单元测试 | 无（只有 18 个 e2e 脚本） | 若引入 vitest，优先覆盖 `backup.splitCsv` / `parseImportText` / `lemmaCandidates` / `phraseVariants` / `isCovered` / `isNewerVersion` |
 | 生成文的句长分布仍偏平 | 提示词已按真题逐篇统计给出长句标尺，但 deepseek-flash 关思考时基本写不出 30 词以上的句子（实测长句 0~1 句，真题 3~5 句），句长标准差 3~5（真题 8~10）。**审计刻意不查这一项**（为它重生成是白烧额度），只在报告里记录 | 想真正解决要改 few-shot（把一整段真题式样例放进提示词）或换更强模型；`scripts/analyze-difficulty.py` 可直接验证 |
