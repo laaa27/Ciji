@@ -120,3 +120,76 @@ export function distance(m: ArticleMetrics, level: ArticleLevel): number {
   ]
   return parts.reduce((a, b) => a + b, 0) / parts.length
 }
+
+/** 短语对偶：与 article.ts 审计里的 CONTRAST_PHRASE / CONTRAST_ANTITHESIS 同口径 */
+const CONTRAST = /\b(rather than|instead of|unlike)\b|\bnot\b[^.;]{0,60}\bbut\b/gi
+
+/** 能指到具体句子的缺陷：改起来有落点，比「共 4 处」 actionable */
+export interface LocatedDefect {
+  /** 句子原文（截断到 70 字，够模型认出来就行） */
+  text: string
+  reason: string
+}
+
+/**
+ * 把「哪一项不达标」翻译成「哪几句要改」。
+ *
+ * 依据：Self-Refine 的消融显示，具体反馈（43.2）显著优于泛泛反馈（31.2）；
+ * TSAR 的「判为 B2，再简化」也比「比例不够」有效。我们之前的回喂只给统计量，
+ * 模型得自己找出是哪几句，而它并不擅长做这件事。
+ *
+ * 只处理三类最能指出位置的：对偶框架超额、长句缺失、名词化过密。
+ * 其它指标（篇幅、被动）要么是全局量、要么本来就带句子数，不需要额外定位。
+ */
+export function locateDefects(
+  sentences: { en: string }[],
+  level: ArticleLevel,
+): LocatedDefect[] {
+  const spec = LEVEL_SPEC[level]
+  const out: LocatedDefect[] = []
+  const excerpt = (s: string) => (s.length > 70 ? `${s.slice(0, 70)}…` : s)
+
+  // 1) 对偶框架超额：保留前 2 处，多出来的逐句点名
+  const framed = sentences
+    .map((s, i) => ({ i, s: s.en }))
+    .filter((x) => {
+      CONTRAST.lastIndex = 0
+      return CONTRAST.test(x.s)
+    })
+  for (const x of framed.slice(2, 4)) {
+    out.push({
+      text: excerpt(x.s),
+      reason: '这一句用了 rather than / instead of / not…but… 的对偶结构，全篇已有多处；改写成并列句或直接陈述',
+    })
+  }
+
+  // 2) 长句不够：把最长的两句点出来，让它们合并成长句
+  const lens = sentences.map((s) => ({ s: s.en, n: countWords(s.en) }))
+  const longCount = lens.filter((x) => x.n >= spec.longFrom).length
+  if (longCount < spec.veryLong) {
+    const candidates = [...lens].sort((a, b) => b.n - a.n).slice(0, 2)
+    for (const c of candidates) {
+      if (c.n >= spec.longFrom) continue
+      out.push({
+        text: excerpt(c.s),
+        reason: `全篇 ${spec.longFrom} 词以上的长句只有 ${longCount} 句（要 ${spec.veryLong} 句），这一句可以扩成长句：加一个非限制性定语从句或分词短语补信息`,
+      })
+    }
+  }
+
+  // 3) 名词化过密（每百词 > 6 时，逐句点名重灾区）
+  const dense = sentences
+    .map((s) => ({
+      s: s.en,
+      n: (s.en.match(wordPattern()) ?? []).filter((w) => w.length > 5 && NOMINAL.test(w)).length,
+    }))
+    .filter((x) => x.n >= 2)
+  for (const x of dense.slice(0, 2)) {
+    out.push({
+      text: excerpt(x.s),
+      reason: '这一句里的抽象名词（-tion / -ment / -ity 之类）太密，改成动词或形容词的说法',
+    })
+  }
+
+  return out.slice(0, 4)
+}

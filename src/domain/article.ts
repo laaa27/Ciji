@@ -3,7 +3,7 @@ import { useLlm } from '@/store/llm'
 import { lemmaCandidates } from '@/lib/lemma'
 import { countWords, countWordsIn, wordPattern } from '@/lib/text'
 import type { TodaySnapshot } from '@/domain/collect'
-import { distance, measure } from '@/domain/generate/metrics'
+import { distance, locateDefects, measure, type LocatedDefect } from '@/domain/generate/metrics'
 import {
   DRAFT_TEMPERATURES,
   rankCandidates,
@@ -488,21 +488,30 @@ function thinkingOpts(): { reasoningEffort: 'low' } | { thinkingDisabled: true }
 const ARTICLE_MAX_TOKENS = 16000
 
 /**
- * 重写指令：把审计发现的问题原样回喂给模型。
+ * 重写指令：把审计发现的问题原样回喂给模型，能指到句子的就指到句子。
  *
  * 为什么必须回喂：重试如果原样重发同一份 messages，第二次只是重新抽签，不是「按批评修改」。
  * 旧版就是这么做的，复算时 7/8 的重写稿仍然不合格（问题清单在代码里，模型看不见）。
- * 回喂的是「这一篇具体错在哪」，比在提示词里再加三条通用红线的收益高得多。
+ *
+ * 为什么要定位到句：只报「对偶 4 处、上限 2」这类统计量时，模型得自己找出是哪几句，
+ * 而它并不擅长这件事（Self-Refine 的消融：具体反馈 43.2 vs 泛泛反馈 31.2）。
  */
-function revisionRequest(problems: string[]): string {
-  return [
+function revisionRequest(problems: string[], located: LocatedDefect[] = []): string {
+  const lines = [
     '上一稿没有通过审核，问题如下：',
     ...problems.map((p, i) => `${i + 1}. ${p}`),
+  ]
+  if (located.length > 0) {
+    lines.push('', '其中几处能直接指到句子，逐句改：')
+    for (const d of located) lines.push(`- 「${d.text}」→ ${d.reason}`)
+  }
+  lines.push(
     '',
     '请逐条修正后重写全文，未被指出的部分保持上一稿的写法：',
     '- 只输出一个 JSON 对象（title / titleZh / sentences），不要解释改了什么',
     '- 目标词仍然每个都要出现至少一次；改短了句子就要在别处补回信息，总词数和句数不能掉',
-  ].join('\n')
+  )
+  return lines.join('\n')
 }
 
 /**
@@ -612,7 +621,13 @@ export async function generateArticle(
   onProgress?.({ stage: 'revise', attempt: 2 })
   try {
     const { text, usage: callUsage } = await chatCompletion(
-      [...baseMessages, { role: 'user' as const, content: revisionRequest(best.problems) }],
+      [
+        ...baseMessages,
+        {
+          role: 'user' as const,
+          content: revisionRequest(best.problems, locateDefects(best.item.sentences, opts.level)),
+        },
+      ],
       { temperature: 0.8, maxTokens: ARTICLE_MAX_TOKENS, ...thinkingOpts() },
     )
     addUsage(callUsage)
