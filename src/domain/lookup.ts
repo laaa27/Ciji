@@ -103,7 +103,7 @@ async function aiGlossBatch(words: string[]): Promise<Map<string, string>> {
     const opts = model.think
       ? { reasoningEffort: 'low' as const }
       : { thinkingDisabled: true as const }
-    const reply = await chatCompletion(
+    const { text } = await chatCompletion(
       [
         { role: 'system', content: AI_GLOSS_SYSTEM },
         { role: 'user', content: JSON.stringify(list) },
@@ -112,7 +112,7 @@ async function aiGlossBatch(words: string[]): Promise<Map<string, string>> {
       { temperature: 0.2, maxTokens: 2048, timeoutMs: 30000, ...opts },
       model.profile,
     )
-    return parseAiGlosses(reply, list)
+    return parseAiGlosses(text, list)
   } catch {
     return new Map()
   }

@@ -1,4 +1,4 @@
-import { chatCompletion, takeLastLlmUsage } from '@/api/llm'
+import { chatCompletion, type CallUsage } from '@/api/llm'
 import { useLlm } from '@/store/llm'
 import { lemmaCandidates } from '@/lib/lemma'
 import { sleep } from '@/lib/async'
@@ -180,15 +180,15 @@ async function buildOutline(
   words: string[],
   level: ArticleLevel,
   genre: Genre,
-): Promise<Outline | null> {
+): Promise<{ outline: Outline | null; usage: CallUsage | null }> {
   try {
-    const raw = await chatCompletion(buildOutlineMessages(words, level, genre), {
+    const { text, usage } = await chatCompletion(buildOutlineMessages(words, level, genre), {
       temperature: 0.9,
       maxTokens: 3000,
       ...thinkingOpts(),
     })
 
-    const obj = parseLoose(raw) as {
+    const obj = parseLoose(text) as {
       topic?: unknown
       paragraphs?: Array<{ idea?: unknown; link?: unknown; words?: unknown }>
     }
@@ -204,11 +204,12 @@ async function buildOutline(
       }))
       .filter((p) => p.idea)
 
-    if (!topic || paragraphs.length === 0) return null
-    return { topic, paragraphs }
+    // token 已经花掉了，哪怕提纲解析不出来也要把这笔账交回去
+    if (!topic || paragraphs.length === 0) return { outline: null, usage }
+    return { outline: { topic, paragraphs }, usage }
   } catch {
     // 提纲失败不影响主流程，退回单步生成
-    return null
+    return { outline: null, usage: null }
   }
 }
 
@@ -522,13 +523,13 @@ export async function generateArticle(
   const usage: ArticleUsage = { prompt: 0, completion: 0, cached: 0, calls: 0, requests: 0 }
 
   /**
-   * 把上一次调用的用量并进来。
+   * 把一次调用的用量并进来。用量跟着返回值走，不再从模块级单例里取——
+   * 生成改成并行之后，单例会被几路调用互相覆盖（见 api/llm.ts 的 ChatResult 注释）。
    *
-   * 放在「调用之后、判断成败之前」：提纲 JSON 解析失败时 token 照样花掉了，
+   * 收在「调用之后、判断成败之前」：提纲 JSON 解析失败时 token 照样花掉了，
    * 这时候不该因为没有提纲就把这次开销从账上抹掉。
    */
-  const trackUsage = () => {
-    const u = takeLastLlmUsage()
+  const addUsage = (u: CallUsage | null) => {
     if (!u) return
     usage.prompt += u.prompt
     usage.completion += u.completion
@@ -539,8 +540,9 @@ export async function generateArticle(
 
   // 第一步：提纲
   onProgress?.({ stage: 'outline', attempt: 1 })
-  const outline = await buildOutline(opts.words, opts.level, genre)
-  trackUsage()
+  const outlineCall = await buildOutline(opts.words, opts.level, genre)
+  addUsage(outlineCall.usage)
+  const outline = outlineCall.outline
 
   const baseMessages = buildArticleMessages(opts.words, opts.level, outline, genre)
 
@@ -561,12 +563,12 @@ export async function generateArticle(
         : baseMessages
 
     try {
-      const raw = await chatCompletion(messages, {
+      const { text: raw, usage: callUsage } = await chatCompletion(messages, {
         temperature: 0.85,
         maxTokens: ARTICLE_MAX_TOKENS,
         ...thinkingOpts(),
       })
-      trackUsage()
+      addUsage(callUsage)
 
       const { title, titleZh, sentences } = validate(parseLoose(raw))
 

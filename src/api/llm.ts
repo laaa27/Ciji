@@ -49,22 +49,23 @@ export interface CallUsage extends LlmUsage {
   requests: number
 }
 
-let lastUsage: CallUsage | null = null
-
 /**
- * 取走上一次调用的用量，并把槽位清空。
+ * 一次调用的返回值：正文 + 这一次自己的用量。
  *
- * 为什么是「读走即清」而不是纯读：调用方都是累加场景（一篇文章 = 提纲 + 成文 1~2 次），
- * 纯读会让「本次调用失败了」的分支把上一份用量重复计一次，
- * 也会让拿不到用量的网关把旧数字一直粘在新记录上。
+ * 为什么用量必须跟着返回值走，而不是留在模块级单例里：
+ * 生成改成「并行 N 路」之后，同一时刻会有多条调用在飞，`读走即清` 的槽位会被互相覆盖
+ * （A 读完清空，B 写进去，A 再取就拿到了 B 的数）。串账的后果是 `Article.usage` 变成脏数据，
+ * 而且这种错误不会报错，只会让「花了多少钱」永久不可信。
  */
-export function takeLastLlmUsage(): CallUsage | null {
-  const u = lastUsage
-  lastUsage = null
-  return u
+export interface ChatResult {
+  text: string
+  /** 拿不到 usage 的网关会返回 null */
+  usage: CallUsage | null
 }
 
-/** 开发期用的转发入口（见 vite.config.ts 的 llmProxy 插件） */
+/**
+ * 开发期用的转发入口（见 vite.config.ts 的 llmProxy 插件）
+ */
 function proxyUrl(target: string): string {
   return `/__llm?url=${encodeURIComponent(target)}`
 }
@@ -239,12 +240,9 @@ export async function chatCompletion(
   messages: ChatMessage[],
   opts: CallOptions = {},
   profile?: LlmProfile,
-): Promise<string> {
+): Promise<ChatResult> {
   const target = profile ?? useLlm.getState().active()
   if (!target) throw new LlmError('还没有添加大模型，去设置里加一个')
-
-  // 每次调用都从干净状态开始：失败路径不清会把上一次的用量算到这一次头上
-  lastUsage = null
 
   const codec = PROTOCOLS[target.protocol]
   const cached = compatCache.get(target.id)
@@ -316,8 +314,6 @@ export async function chatCompletion(
     }
 
     const reply = codec.parse(res.payload)
-    // guard + 1 = 到这一步为止已经发出去的请求数（重试与协商都算在内）
-    lastUsage = reply.usage ? { ...reply.usage, requests: guard + 1 } : null
 
     if (!reply.text.trim()) {
       lastError = new LlmError(describeEmpty(reply, res.payload), res.status)
@@ -353,7 +349,11 @@ export async function chatCompletion(
       budgetFloor.set(target.id, maxTokens)
     }
 
-    return reply.text
+    return {
+      text: reply.text,
+      // guard + 1 = 到这一步为止已经发出去的请求数（重试与协商都算在内）
+      usage: reply.usage ? { ...reply.usage, requests: guard + 1 } : null,
+    }
   }
 
   throw lastError ?? new LlmError('生成失败，请重试')
@@ -361,10 +361,10 @@ export async function chatCompletion(
 
 /** 设置页「测试连接」：发一句最短的请求；可传草稿配置，保存前先验证 */
 export async function testConnection(profile?: LlmProfile): Promise<string> {
-  const reply = await chatCompletion(
+  const { text } = await chatCompletion(
     [{ role: 'user', content: '只回复两个字：正常' }],
     { maxTokens: 32, temperature: 0, timeoutMs: 30000 },
     profile,
   )
-  return reply.trim().slice(0, 20)
+  return text.trim().slice(0, 20)
 }
