@@ -77,13 +77,6 @@ npm run build        # 构建 Web 产物到 dist/
 npx cap sync         # 把 dist/ 同步进 Android 工程
 ```
 
-浏览器里验证（需先在 5199 起服务，**用 `vite preview` 的话要先 `npm run build`**）：
-
-```bash
-node tests/e2e/test-import.mjs   # 导入：选文件 → 预览 → 两种合并策略 → 写盘断言
-node tests/e2e/test-models.mjs   # 模型：迁移 → 添加 → 切换 → 编辑 → 删除（需 dev server）
-```
-
 ## 构建 APK
 
 前置：JDK 17、Android SDK（compileSdk 36）、Gradle（用 wrapper 自动下）。
@@ -113,7 +106,6 @@ cd android && ./gradlew assembleRelease
 | 图表 | ECharts 6 | 按需引入，只打包柱状图 |
 | 存储 | Capacitor Preferences | 按天存 JSON 快照，见下方说明 |
 | 词典 | ECDICT 裁剪版 | 分片 JSON，按首字母懒加载。数据来自 [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT)（MIT） |
-| 测试 | puppeteer-core | 无头 Chrome 跑断言脚本，`tests/e2e/` 下 20 个脚本 |
 
 ## 目录结构
 
@@ -129,7 +121,6 @@ src/
     ├── components/ TabBar / WordSheet / ArticleLibrary / GenerateArticle / ModelProfiles / settings
     ├── hooks/      useSubView / useReadingClock / useGlossToggle / useScrollStuck
     └── styles/     tokens.css（设计令牌）+ global.css
-tests/e2e/        浏览器验证脚本（20 个）
 scripts/          长期工具：生成文章与真题对比 / 造数据 / 截图
 android/          Capacitor Android 工程（含 AppearancePlugin 自研原生插件）
 ```
