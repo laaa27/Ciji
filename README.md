@@ -163,40 +163,6 @@ android/          Capacitor Android 工程（含 AppearancePlugin 自研原生�
 切后台/切栏目的瞬间也会强制落盘。数据按天存 `reading:YYYY-MM-DD`（秒），
 统计页有独立的「阅读时长」柱状图（近 30 天，按分钟）。
 
-**液态玻璃底栏（实验性）。** 设置 → 外观打开后，底栏变成悬浮的半透明胶囊：
-`backdrop-filter: blur + saturate` 透出滚过的内容，颜色走 `--glass-*` 令牌随深浅主题。
-不透明度在设置里滑杆调节（0~100%），实际是覆盖 CSS 变量 `--glass-alpha`。
-玻璃开启时内容区自动留出底部占位。激活项有磨砂玻璃气泡替代下划线。
-只动 blur/saturate 两项合成器操作，投影等装饰在手势开始时一次画好——别逐帧改。
-
-## 数据格式
-
-每天一条，存在 `CapacitorStorage.day:YYYY-MM-DD`：
-
-```jsonc
-{
-  "date": "2026-11-07",
-  "finished": 32,
-  "total": 150,
-  "studyTimeMs": 1452000,
-  "collectedAt": "2026-11-07T02:30:00.000Z",
-  "words": [
-    {
-      "vocId": "...",
-      "spelling": "abandon",
-      "groups": ["new", "forget"],  // 可多归属：新学 与 模糊/忘记 正交
-      "isNew": true,
-      "firstResponse": "FAMILIAR",
-      "lastResponse": "FAMILIAR",
-      "isFinished": true,
-      "order": 1
-    }
-  ]
-}
-```
-
-**为什么不用 SQLite**：一天一条，一年 365 条，用 Preferences 足够。原生走 SharedPreferences，web 走 localStorage，两端行为一致，不需要 wasm 和平台分支。数据量真的大起来（比如五年）再换。
-
 ## 导出与导入
 
 设置页「数据」区，三种导出、两种导入：
