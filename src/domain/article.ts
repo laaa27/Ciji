@@ -1,9 +1,15 @@
 import { chatCompletion, type CallUsage } from '@/api/llm'
 import { useLlm } from '@/store/llm'
 import { lemmaCandidates } from '@/lib/lemma'
-import { sleep } from '@/lib/async'
 import { countWords, countWordsIn, wordPattern } from '@/lib/text'
 import type { TodaySnapshot } from '@/domain/collect'
+import { distance, measure } from '@/domain/generate/metrics'
+import {
+  DRAFT_TEMPERATURES,
+  rankCandidates,
+  runParallel,
+  type Candidate,
+} from '@/domain/generate/select'
 import {
   buildArticleMessages,
   buildOutlineMessages,
@@ -448,9 +454,6 @@ function auditArticle(
   return problems
 }
 
-/** 最多生成几次：1 次初稿 + 1 次重生成 */
-const MAX_GENERATE_ATTEMPTS = 2
-
 /**
  * 生成过程中对外汇报的「大致进度」。
  * 只用来给用户一个"模型在忙什么"的交代，不追求精确——
@@ -460,8 +463,11 @@ export type GenStage = 'outline' | 'draft' | 'revise' | 'save'
 
 export interface GenProgress {
   stage: GenStage
-  /** 第几次成文（1 = 初稿，2 = 审计未过后的重写） */
+  /** 第几次成文（1 = 并行初稿，2 = 仍有硬伤时的定向重写） */
   attempt: number
+  /** 并行的完成进度：已完成几篇 / 一共几篇。只有成文阶段会填 */
+  done?: number
+  total?: number
 }
 
 export type GenProgressHandler = (p: GenProgress) => void
@@ -500,12 +506,16 @@ function revisionRequest(problems: string[]): string {
 }
 
 /**
- * 生成一篇文章：先列提纲，再按提纲成文。
- * 两步走比一步直出更不容易写成词表拼接 —— 模型先被迫想清楚要论证什么。
- * 提纲失败会自动退回单步生成；成文格式解析失败会重试一次。
+ * 生成一篇文章：先列提纲，再**并行**按提纲成文 K 篇，本地按规则择优。
  *
- * onProgress 在每次换阶段时回调一次（提纲 → 成文 → 必要时重写），
- * 让界面能说清"现在在干嘛"，而不是只有一个转圈。
+ * 为什么改成并行：旧流程是「成文 → 审计 → 不合格就串行重写」，重试必然加时间，
+ * 而首轮合格率只有四成，等于六成文章要跑两轮。改成一次多跑几路、本地挑最好的之后，
+ * 墙钟从「两轮」降到「一轮」，质量反而更好（多篇里挑胜过一篇赌运气）。
+ *
+ * 选择用**确定性规则**（审计硬伤 + 到真题形状的距离），不让模型当评委——
+ * 模型评判自己人时误差会被 argmax 放大，散文类实测 N 超过个位数就开始变差。
+ *
+ * 提纲失败退回单步生成；四路全挂才报错；最优仍有硬伤时回喂问题做一次定向重写。
  */
 export async function generateArticle(
   opts: GenerateOptions,
@@ -524,7 +534,7 @@ export async function generateArticle(
 
   /**
    * 把一次调用的用量并进来。用量跟着返回值走，不再从模块级单例里取——
-   * 生成改成并行之后，单例会被几路调用互相覆盖（见 api/llm.ts 的 ChatResult 注释）。
+   * 并行之后几路调用同时在飞，单例会互相覆盖（见 api/llm.ts 的 ChatResult 注释）。
    *
    * 收在「调用之后、判断成败之前」：提纲 JSON 解析失败时 token 照样花掉了，
    * 这时候不该因为没有提纲就把这次开销从账上抹掉。
@@ -538,70 +548,81 @@ export async function generateArticle(
     usage.requests += u.requests
   }
 
+  /** 装配成品：用量在最后统一挂上，过程中不用反复同步 */
+  const finish = (a: Article, problems: string[] = []): Article => ({
+    ...a,
+    usage: usage.calls > 0 ? { ...usage } : undefined,
+    ...(problems.length > 0 ? { shortfall: problems.join('；') } : {}),
+  })
+
+  const assemble = (raw: { title: string; titleZh?: string; sentences: ArticleSentence[] }): Article => ({
+    date: opts.date,
+    title: raw.title,
+    titleZh: raw.titleZh,
+    sentences: raw.sentences,
+    targetWords: opts.words,
+    kinds: opts.kinds,
+    mode: modeOf(opts.kinds),
+    level: opts.level,
+    genre,
+    model: profile ? `${profile.name} / ${profile.model}` : 'unknown',
+    createdAt: new Date().toISOString(),
+  })
+
+  /** 一篇候选：硬伤（能不能交）+ 距离（够不够像真题） */
+  const evaluate = (a: Article): Candidate<Article> => ({
+    item: a,
+    problems: auditArticle(a, opts.level, genre),
+    distance: distance(measure(a.sentences, opts.level), opts.level),
+  })
+
   // 第一步：提纲
   onProgress?.({ stage: 'outline', attempt: 1 })
   const outlineCall = await buildOutline(opts.words, opts.level, genre)
   addUsage(outlineCall.usage)
-  const outline = outlineCall.outline
+  const baseMessages = buildArticleMessages(opts.words, opts.level, outlineCall.outline, genre)
 
-  const baseMessages = buildArticleMessages(opts.words, opts.level, outline, genre)
-
-  let lastError: unknown = null
-  /** 有硬伤但勉强能用的一篇：重生成也不合格时交它，别让用户白等 */
-  let best: { article: Article; problems: string[] } | null = null
-  /** 上一稿的审计问题，下次重试时回喂；第一轮为空 */
-  let feedback: string[] = []
-
-  for (let attempt = 0; attempt < MAX_GENERATE_ATTEMPTS; attempt += 1) {
-    if (attempt > 0) await sleep(400)
-
-    onProgress?.({ stage: attempt === 0 ? 'draft' : 'revise', attempt: attempt + 1 })
-
-    const messages =
-      feedback.length > 0
-        ? [...baseMessages, { role: 'user' as const, content: revisionRequest(feedback) }]
-        : baseMessages
-
-    try {
-      const { text: raw, usage: callUsage } = await chatCompletion(messages, {
-        temperature: 0.85,
+  // 第二步：并行成文。温度阶梯让候选真的不一样——同温度跑四遍等于白花三份钱
+  let done = 0
+  onProgress?.({ stage: 'draft', attempt: 1, done: 0, total: DRAFT_TEMPERATURES.length })
+  const drafted = await runParallel(
+    DRAFT_TEMPERATURES.map((temperature) => async () => {
+      const { text, usage: callUsage } = await chatCompletion(baseMessages, {
+        temperature,
         maxTokens: ARTICLE_MAX_TOKENS,
         ...thinkingOpts(),
       })
       addUsage(callUsage)
+      const article = assemble(validate(parseLoose(text)))
+      done += 1
+      onProgress?.({ stage: 'draft', attempt: 1, done, total: DRAFT_TEMPERATURES.length })
+      return article
+    }),
+  )
 
-      const { title, titleZh, sentences } = validate(parseLoose(raw))
-
-      const article: Article = {
-        date: opts.date,
-        title,
-        titleZh,
-        sentences,
-        targetWords: opts.words,
-        kinds: opts.kinds,
-        mode: modeOf(opts.kinds),
-        level: opts.level,
-        genre,
-        model: profile ? `${profile.name} / ${profile.model}` : 'unknown',
-        createdAt: new Date().toISOString(),
-        usage: usage.calls > 0 ? { ...usage } : undefined,
-      }
-
-      const problems = auditArticle(article, opts.level, genre)
-      if (problems.length === 0) return article
-
-      // 交给下一轮当批评意见；第二次仍不合格就按问题数取少的交出去
-      feedback = problems
-      if (!best || problems.length < best.problems.length) best = { article, problems }
-    } catch (e) {
-      lastError = e
-    }
+  if (drafted.ok.length === 0) {
+    const first = drafted.errors[0]
+    throw first instanceof Error ? first : new Error('生成失败')
   }
 
-  // 两次都有硬伤：交出问题最少的那篇，并如实标注，而不是假装成功
-  if (best) return { ...best.article, shortfall: best.problems.join('；') }
+  const best = rankCandidates(drafted.ok.map(evaluate))[0]
+  if (best.problems.length === 0) return finish(best.item)
 
-  throw lastError instanceof Error ? lastError : new Error('生成失败')
+  // 第三步：仍有硬伤，回喂问题做一次定向重写，再和原候选比较
+  onProgress?.({ stage: 'revise', attempt: 2 })
+  try {
+    const { text, usage: callUsage } = await chatCompletion(
+      [...baseMessages, { role: 'user' as const, content: revisionRequest(best.problems) }],
+      { temperature: 0.8, maxTokens: ARTICLE_MAX_TOKENS, ...thinkingOpts() },
+    )
+    addUsage(callUsage)
+    const repaired = evaluate(assemble(validate(parseLoose(text))))
+    const final = rankCandidates([best, repaired])[0]
+    return finish(final.item, final.problems)
+  } catch {
+    // 重写失败不影响交付：手上这篇有硬伤但能用，如实标注
+    return finish(best.item, best.problems)
+  }
 }
 
 export function wordCount(article: Pick<Article, 'sentences'>): number {

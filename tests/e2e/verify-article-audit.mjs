@@ -235,28 +235,28 @@ async function runScenario(name, plan) {
   await sleep(900)
   await click('个词生成')
 
-  // 两次成文 + 提纲，各 350ms 级；留足重生成的余量
-  await sleep(2600)
+  // 提纲 1 次 + 并行 4 路成文（必要时再加一次定向重写）；mock 是立即返回的，留足余量
+  await sleep(3200)
 
   const text = await page.evaluate(() => document.body.innerText.replace(/\s+/g, ' '))
   return { page, text, articleCalls }
 }
 
-/* ── 场景 1：残篇 → 重生成成功 ── */
+/* ── 场景 1：四路里有一路残篇 → 择优拿到完整的那篇 ── */
 {
-  const { page, text, articleCalls } = await runScenario('[1] 首篇残篇 → 自动重生成', (n) =>
+  const { page, text, articleCalls } = await runScenario('[1] 一路残篇 → 择优拿完整篇', (n) =>
     n === 1 ? 'short' : 'long',
   )
-  ok('成文被请求了 2 次（触发重生成）', articleCalls === 2, articleCalls)
+  ok('并行了 4 路成文', articleCalls === 4, articleCalls)
   ok('最终拿到的是长的那篇', text.includes('AUDIT-LONG'), text.slice(0, 80))
   ok('合格的那篇没有标注', !text.includes('未完全达标'), text.slice(0, 80))
   await page.close()
 }
 
-/* ── 场景 2：两次都残篇 → 标注 ── */
+/* ── 场景 2：四路都残篇 → 一次定向重写仍不行 → 交出并标注 ── */
 {
-  const { page, text, articleCalls } = await runScenario('[2] 两次都残篇 → 交出并标注', () => 'short')
-  ok('成文被请求了 2 次（用尽重试）', articleCalls === 2, articleCalls)
+  const { page, text, articleCalls } = await runScenario('[2] 全是残篇 → 重写一次后标注', () => 'short')
+  ok('4 路成文 + 1 次定向重写', articleCalls === 5, articleCalls)
   ok('阅读页标了「未完全达标」', text.includes('未完全达标'), text.slice(0, 80))
   const reason = await page.evaluate(
     () => document.querySelector('[class*="shortfall"]')?.getAttribute('title') ?? '',
@@ -266,23 +266,23 @@ async function runScenario(name, plan) {
   await page.close()
 }
 
-/* ── 场景 3：末句被截断（其余指标合格）→ 也要重生成 ── */
+/* ── 场景 3：一路末句被截断（其余合格）→ 择优时淘汰 ── */
 {
-  const { page, text, articleCalls } = await runScenario('[3] 末句截断 → 自动重生成', (n) =>
+  const { page, text, articleCalls } = await runScenario('[3] 一路末句截断 → 择优淘汰它', (n) =>
     n === 1 ? 'cut' : 'long',
   )
-  ok('成文被请求了 2 次（截断也算硬伤）', articleCalls === 2, articleCalls)
+  ok('并行了 4 路成文', articleCalls === 4, articleCalls)
   ok('最终拿到完整的那篇', text.includes('AUDIT-LONG'), text.slice(0, 80))
   ok('残篇没有被当成品交付', !text.includes('AUDIT-CUT'), text.slice(0, 80))
   await page.close()
 }
 
-/* ── 场景 4：, which 模板化（其余合格）→ 也要重生成 ── */
+/* ── 场景 4：一路 , which 模板化（其余合格）→ 择优时淘汰 ── */
 {
-  const { page, text, articleCalls } = await runScenario('[4] 句式模板化 → 自动重生成', (n) =>
+  const { page, text, articleCalls } = await runScenario('[4] 一路句式模板化 → 择优淘汰它', (n) =>
     n === 1 ? 'which' : 'long',
   )
-  ok('成文被请求了 2 次（句式重复也算硬伤）', articleCalls === 2, articleCalls)
+  ok('并行了 4 路成文', articleCalls === 4, articleCalls)
   ok('最终拿到句式有变化的那篇', text.includes('AUDIT-LONG'), text.slice(0, 80))
   await page.close()
 }

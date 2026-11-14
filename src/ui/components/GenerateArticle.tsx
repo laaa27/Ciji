@@ -76,9 +76,12 @@ function stageLine(stage: GenProgress | null): string {
     case 'outline':
       return '在读这些词，先想清楚这篇要论证什么'
     case 'draft':
-      return '按提纲写正文，逐句把目标词放进论证里'
+      // 并行时把「几路里好了几路」说清楚，比转圈更能解释为什么这次值得等
+      return stage.total && stage.total > 1
+        ? `并行写 ${stage.total} 稿（${stage.done ?? 0}/${stage.total}），写完挑最像真题的那一篇`
+        : '按提纲写正文，逐句把目标词放进论证里'
     case 'revise':
-      return '上一稿没过检查（篇幅 / 缺词 / 句式），正在重写'
+      return '挑出来的那篇还差一点（篇幅 / 缺词 / 句式），正在按问题清单改'
     case 'save':
       return '写完了，正在存进文章库'
   }

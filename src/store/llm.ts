@@ -140,7 +140,7 @@ type LlmState = {
   activeId: string | null
   /** 查词释义用哪份配置；null = 跟随 activeId（文章生成模型） */
   glossActiveId: string | null
-  /** 文章生成是否开思考模式（默认开，强度 low） */
+  /** 文章生成是否开思考模式（2026-11-14 起默认关，见下方 load 的注释） */
   thinkGen: boolean
   /** 查词释义是否开思考模式（默认关） */
   thinkGloss: boolean
@@ -226,7 +226,7 @@ export const useLlm = create<LlmState>((set, get) => ({
   profiles: [],
   activeId: null,
   glossActiveId: null,
-  thinkGen: true,
+  thinkGen: false,
   thinkGloss: false,
   ready: false,
 
@@ -242,8 +242,11 @@ export const useLlm = create<LlmState>((set, get) => ({
     let profiles = parseProfiles(stored.value)
     let activeId = activeRaw.value?.trim() || null
     const glossActiveId = glossRaw.value?.trim() || null
-    // 生成默认开、释义默认关；只在用户显式选过 false/true 时才覆盖默认值
-    const thinkGen = thinkGenRaw.value !== 'false'
+    // 释义默认关；生成从 2026-11-14 起也默认关。
+    // 生成原先默认开思考，是因为关思考会塌篇（~25%），而塌篇致命的理由是「只有一篇」。
+    // 改成并行 4 路择优之后，塌掉的那几篇在打分环节自然被淘汰，思考模式换来的那点稳定性
+    // 就不值 50~60 秒了（关思考实测 9~11 秒）。用户显式设过 'true' 的仍然保留。
+    const thinkGen = thinkGenRaw.value === 'true'
     const thinkGloss = thinkGlossRaw.value === 'true'
 
     if (profiles.length === 0) {

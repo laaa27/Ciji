@@ -391,9 +391,12 @@ console.log('\n[6] 生成 → 回到阅读页')
 await clickText('25')
 await t(300)
 await clickIncludes('个词生成')
-await t(2600)
+// 并行生成 4 路，mock 每路都会把序号 +1，所以这里不能写死是第几篇：
+// 只要求「拿到某一篇」并把它的序号记下来，后面判断"换没换新的"用这个基准
+await t(3200)
 text = await bodyText()
-ok('文章已生成', text.includes('The Weight of Habit 1'), text.slice(0, 80))
+const firstNo = Number(/The Weight of Habit (\d+)/.exec(text)?.[1] ?? 0)
+ok('文章已生成', firstNo >= 1, text.slice(0, 80))
 ok('生成页已关闭', !text.includes('哪一天'))
 
 console.log('\n[7] 已用过的词默认不出现，开关可展开')
@@ -438,7 +441,7 @@ await tabs[0].click()
 await t(400)
 await tabs[2].click()
 await t(500)
-ok('文章还在', (await bodyText()).includes('The Weight of Habit 1'))
+ok('文章还在', (await bodyText()).includes(`The Weight of Habit ${firstNo}`))
 ok('译文仍开着', (await bodyText()).includes('第 1 句用平静'))
 const y2 = await page.evaluate(() => {
   const s = [...document.querySelectorAll('div')].find((d) => d.scrollHeight > d.clientHeight + 100)
@@ -459,7 +462,7 @@ console.log('\n[8.5] 复制全文（打开译文时逐句交替）')
   ok('复制后弹提示', toastText.includes('已复制全文'), toastText)
 
   const withZh = await page.evaluate(() => navigator.clipboard.readText())
-  ok('剪贴板开头是标题', withZh.startsWith('The Weight of Habit 1'), withZh.slice(0, 40))
+  ok('剪贴板开头是标题', withZh.startsWith(`The Weight of Habit ${firstNo}`), withZh.slice(0, 40))
   ok(
     '逐句交替：英文行后紧跟译文行',
     /mentions [a-z]+[^\n]*\n第 1 句用平静的方式提到了/.test(withZh),
@@ -516,14 +519,18 @@ ok('切走后弹提示', toast === '文章生成好了', toast)
 
 await tabs[2].click()
 await t(600)
-ok('新文章已就位', (await bodyText()).includes('The Weight of Habit 2'), (await bodyText()).slice(0, 80))
+const newNo = Number(/The Weight of Habit (\d+)/.exec(await bodyText())?.[1] ?? 0)
+ok('新文章已就位', newNo > firstNo, (await bodyText()).slice(0, 80))
 
 console.log('\n[11] 文章库：打开、删除')
 await clickText('文章库')
 await t(700)
 text = await bodyText()
 ok('进入文章库', text.includes('2 篇'), text.slice(0, 40))
-ok('倒序排列', text.indexOf('The Weight of Habit 2') < text.indexOf('The Weight of Habit 1'))
+ok(
+  '倒序排列',
+  text.indexOf(`The Weight of Habit ${newNo}`) < text.indexOf(`The Weight of Habit ${firstNo}`),
+)
 
 const removeRow = (title) =>
   page.evaluate((tt) => {
