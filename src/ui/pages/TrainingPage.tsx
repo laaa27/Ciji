@@ -10,6 +10,7 @@ import {
 
 import { findScrollParent } from '../hooks/useScrollStuck'
 import { useSubView } from '../hooks/useSubView'
+import BackButton from '../components/BackButton'
 import EmptyState from '../components/EmptyState'
 import TrainingDoc from '../components/TrainingDoc'
 import styles from './TrainingPage.module.css'
@@ -164,9 +165,7 @@ export default function TrainingPage() {
       return (
         <div className={styles.page} data-view="doc" ref={pageRef}>
           <header className={styles.subHead}>
-            <button type="button" className={styles.back} onClick={closeDoc}>
-              返回
-            </button>
+            <BackButton onClick={closeDoc} />
             <h1 className={styles.subTitle}>{section.label}</h1>
           </header>
           <TrainingDoc
@@ -191,9 +190,7 @@ export default function TrainingPage() {
     return (
       <div className={styles.page} data-view="paper" ref={pageRef}>
         <header className={styles.subHead}>
-          <button type="button" className={styles.back} onClick={closePaper}>
-            返回
-          </button>
+          <BackButton onClick={closePaper} />
           <h1 className={styles.subTitle}>{paper?.label ?? '套卷'}</h1>
         </header>
 

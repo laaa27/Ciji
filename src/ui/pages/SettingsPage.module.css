@@ -99,7 +99,7 @@
 /* 二级页头部 */
 .subHead {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--sp-4);
   margin-bottom: var(--sp-6);
 }

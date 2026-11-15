@@ -5,7 +5,7 @@
   top: calc(var(--safe-top) - var(--sp-2));
   z-index: 3;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 10px;
   padding: var(--sp-2) 0;
   margin-top: calc(-1 * var(--sp-2));

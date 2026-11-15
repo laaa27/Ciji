@@ -20,6 +20,7 @@ import { monthDay } from '@/lib/date'
 import { readGenDraft, saveGenDraft } from '@/store/ui'
 
 import styles from './GenerateArticle.module.css'
+import BackButton from './BackButton'
 
 /**
  * 生成文章（二级页面）。
@@ -275,9 +276,7 @@ export default function GenerateArticle({
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={onBack}>
-          <span aria-hidden="true">‹</span> 返回
-        </button>
+        <BackButton onClick={onBack} />
         <h1 className={styles.title}>生成文章</h1>
         <span className={styles.count}>已选 {chosen.length}</span>
       </header>

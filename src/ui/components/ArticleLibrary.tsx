@@ -4,6 +4,7 @@ import type { ArticleMeta } from '@/data/article'
 import { clockTime, monthDay, weekday } from '@/lib/date'
 
 import styles from './ArticleLibrary.module.css'
+import BackButton from './BackButton'
 
 /**
  * 文章库：按日期分组、时间倒序，可打开、可删除。
@@ -47,9 +48,7 @@ export default function ArticleLibrary({ items, currentId, onBack, onOpen, onDel
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <button type="button" className={styles.back} onClick={onBack}>
-          <span aria-hidden="true">‹</span> 返回
-        </button>
+        <BackButton onClick={onBack} />
         <h1 className={styles.title}>文章库</h1>
         <span className={styles.count}>{items.length} 篇</span>
       </header>

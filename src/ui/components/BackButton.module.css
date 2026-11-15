@@ -1,0 +1,28 @@
+/*
+ * 返回键：箭头本体只有 9px，外面留 32x32 的可点区域。
+ * 左边负 margin 是为了让箭头的视觉左缘和页面文字左缘对齐 ——
+ * 图标本身有留白，不抵消的话会看着比标题缩进去一截。
+ */
+.back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  margin-left: -8px;
+  color: var(--ink-2);
+  transition: color 0.15s ease;
+}
+
+.back:active {
+  color: var(--ink);
+}
+
+.chevron {
+  width: 9px;
+  height: 9px;
+  border-left: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+  transform: rotate(45deg);
+}

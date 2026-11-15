@@ -677,7 +677,9 @@
   right: 10px;
   bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 8px);
   z-index: 30;
-  max-height: 52vh;
+  /* 固定高度：所有题型同一副身板，够不够都在这个框里滚，页面不会因为
+     选项多寡而上下跳。收起时才回到内容高度 */
+  height: 44vh;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -686,6 +688,11 @@
   border: 1px solid var(--rule);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.qbar[data-collapsed='true'] {
+  height: auto;
+  overflow: visible;
 }
 
 .qbarHead {
@@ -794,7 +801,7 @@
 
 /* 答题条占掉的高度：给内容留出滚动余量，否则最后几行永远压在条下面 */
 .doc[data-qbar='open'] {
-  padding-bottom: 44vh;
+  padding-bottom: 47vh;
 }
 
 .doc[data-qbar='mini'] {

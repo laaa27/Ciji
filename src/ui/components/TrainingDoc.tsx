@@ -280,7 +280,6 @@ export default function TrainingDoc({ paper, section, passage, ordinal }: Props)
           answered={answeredCount}
           total={questions.length}
           right={rightCount}
-          activeBlank={activeBlank}
           collapsed={barCollapsed}
           onToggle={() => setBarCollapsed((v) => !v)}
           onFill={fillBlank}
@@ -505,7 +504,6 @@ function ClozeBar({
   answered,
   total,
   right,
-  activeBlank,
   collapsed,
   onToggle,
   onFill,
@@ -517,7 +515,6 @@ function ClozeBar({
   answered: number
   total: number
   right: number
-  activeBlank: number | null
   collapsed: boolean
   onToggle: () => void
   onFill: (key: string) => void
@@ -530,9 +527,6 @@ function ClozeBar({
           {submitted ? `已提交 · 答对 ${right} / ${total}` : `已答 ${answered} / ${total}`}
         </span>
         <div className={styles.qbarNav}>
-          {!submitted && (
-            <span className={styles.panelTip}>{activeBlank ? `填第 ${activeBlank} 空` : '点空位或直接点词'}</span>
-          )}
           <button type="button" className={styles.navBtn} onClick={onToggle}>
             {collapsed ? '展开' : '收起'}
           </button>

@@ -11,6 +11,7 @@ import { findScrollParent } from '../hooks/useScrollStuck'
 import WordRow from '../components/WordRow'
 import EmptyState from '../components/EmptyState'
 import StatsPage from './StatsPage'
+import BackButton from '../components/BackButton'
 import styles from './HistoryPage.module.css'
 
 const ORDER: WordState[] = ['new', 'vague', 'forget']
@@ -172,9 +173,7 @@ export default function HistoryPage({ active }: { active: boolean }) {
     return (
       <div className={styles.page} data-view="stats" ref={pageRef}>
         <header className={styles.subHead}>
-          <button type="button" className={styles.back} onClick={sub.close}>
-            返回
-          </button>
+          <BackButton onClick={sub.close} />
           <h1 className={styles.subTitle}>统计</h1>
         </header>
 

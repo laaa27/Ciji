@@ -6,6 +6,7 @@ import MemoAccount from '../components/settings/MemoAccount'
 import AppearancePrefs from '../components/settings/AppearancePrefs'
 import DataPrefs from '../components/settings/DataPrefs'
 import AboutPanel from '../components/settings/AboutPanel'
+import BackButton from '../components/BackButton'
 
 import styles from './SettingsPage.module.css'
 
@@ -91,9 +92,7 @@ export default function SettingsPage() {
       ) : (
         <>
           <header className={styles.subHead}>
-            <button type="button" className={styles.back} onClick={nav.close}>
-              返回
-            </button>
+            <BackButton onClick={nav.close} />
             <h1 className={styles.subTitle}>{activeCat?.title}</h1>
           </header>
 
