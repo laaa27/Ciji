@@ -149,6 +149,20 @@
   background: var(--tint-ok);
 }
 
+/* 手动高亮：与阅读页同一套荧光笔效果 */
+.word[data-mark='true'] {
+  background: var(--mark);
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px var(--mark);
+}
+
+/* 手动高亮：与阅读页同一套荧光笔效果 */
+.word[data-mark='true'] {
+  background: var(--mark);
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px var(--mark);
+}
+
 .zh {
   margin-left: 4px;
   font-family: var(--font-ui);

@@ -1,10 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { loadTrainingIndex, loadTrainingPaper } from '@/data/training'
-import { loadPaperProgress, type PaperProgress } from '@/data/trainingProgress'
 import {
   LEVELS,
-  scoreOf,
   type TrainingIndexItem,
   type TrainingLevel,
   type TrainingPaper,
@@ -29,23 +27,22 @@ import styles from './TrainingPage.module.css'
  */
 /** 题型行右侧的成绩：没交过就不显示，交过才占位 */
 function PassageScore({
-  passage,
-  progress,
+  score,
 }: {
   passage: TrainingPassage
-  progress?: { answers: Record<number, string>; submitted: boolean; submittedAt?: string }
+  score?: { right: number; total: number; at: string }
 }) {
-  if (!progress?.submitted) return null
-  const { right, total, rate } = scoreOf(passage, progress.answers)
+  if (!score) return null
+  const rate = score.total > 0 ? Math.round((100 * score.right) / score.total) : 0
   return (
     <span className={styles.rowScore}>
       <span className={styles.rowRate}>
         正确率 {rate}%
         <em>
-          {right}/{total}
+          {score.right}/{score.total}
         </em>
       </span>
-      {progress.submittedAt && <span className={styles.rowTime}>{clockLabel(progress.submittedAt)}</span>}
+      <span className={styles.rowTime}>{clockLabel(score.at)}</span>
     </span>
   )
 }
@@ -73,8 +70,10 @@ export default function TrainingPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [paper, setPaper] = useState<TrainingPaper | null>(null)
-  /** 这套卷各篇的作答进度：列表右侧要显示「正确率 20% / 21:13」 */
-  const [progress, setProgress] = useState<PaperProgress>({})
+  /** 本次会话里各篇的提交成绩（列表右侧显示）；退出 App 即清空 */
+  const [scores, setScores] = useState<
+    Record<string, { right: number; total: number; at: string }>
+  >({})
   const [paperError, setPaperError] = useState<string | null>(null)
 
   const pageRef = useRef<HTMLDivElement>(null)
@@ -129,11 +128,7 @@ export default function TrainingPage() {
     paperNav.open(key)
     toTop()
     void loadTrainingPaper(key)
-      .then((p) => {
-        setPaper(p)
-        // 进度可能变过（刚才在里面答了几题），进套卷时重读一次
-        void loadPaperProgress(key).then(setProgress)
-      })
+      .then(setPaper)
       .catch((e: unknown) => setPaperError(e instanceof Error ? e.message : '套卷读取失败'))
   }
 
@@ -152,8 +147,6 @@ export default function TrainingPage() {
   function closeDoc() {
     docNav.close()
     restore(paperScroll)
-    // 刚在里面做过题，回到列表要把最新成绩刷出来
-    if (paper) void loadPaperProgress(paper.key).then(setProgress)
   }
 
   const list = index.filter((p) => p.level === level)
@@ -229,6 +222,7 @@ export default function TrainingPage() {
                   ? pi + 1
                   : 0
             }
+            onScore={(sc) => setScores((prev) => ({ ...prev, [sc.passageId]: sc }))}
           />
         </div>
       )
@@ -273,7 +267,7 @@ export default function TrainingPage() {
                         {sec.id === 'listening' ? ' · 音频暂缺' : ''}
                       </span>
                     </span>
-                    <PassageScore passage={p} progress={progress[p.id]} />
+                    <PassageScore passage={p} score={scores[p.id]} />
                     <span className={styles.chevron} aria-hidden="true" />
                   </button>
                 </li>

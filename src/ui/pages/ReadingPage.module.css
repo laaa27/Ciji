@@ -332,6 +332,13 @@
   background: var(--tint-ok);
 }
 
+/* 手动高亮：像荧光笔，左右各留一点，连着的标点跟着亮 */
+.word[data-mark='true'] {
+  background: var(--mark);
+  border-radius: 2px;
+  box-shadow: 0 0 0 2px var(--mark);
+}
+
 /* 译文：跟在句子后面连排，不再另起一块 */
 .zh {
   margin-left: 4px;

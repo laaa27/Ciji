@@ -99,6 +99,13 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   const [error, setError] = useState<string | null>(null)
   const [missing, setMissing] = useState<string[]>([])
   const [sheetWord, setSheetWord] = useState<string | null>(null)
+  /** 手动高亮的词（小写去重）。切换文章就清空 —— 标记属于当前这一篇 */
+  const [marks, setMarks] = useState<string[]>([])
+  const markSet = useMemo(() => new Set(marks), [marks])
+  const toggleMark = (w: string) => {
+    const key = w.toLowerCase()
+    setMarks((prev) => (prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]))
+  }
   /** 点词后在上下文里匹配到的固定搭配；到货后弹层会自动切到短语视图 */
   const [sheetPhrase, setSheetPhrase] = useState<PhraseHit | null>(null)
   /** 防止上一次匹配的结果盖到刚点的另一个词上 */
@@ -199,6 +206,10 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   )
 
   /** 按固定句数切段落：段内连排，段间留白 */
+  useEffect(() => {
+    setMarks([])
+  }, [article?.id])
+
   const paragraphs = useMemo(() => {
     const list = article?.sentences ?? []
     const out: ArticleSentence[][] = []
@@ -461,6 +472,15 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
           </span>
           {hasArticle && (
             <>
+              {marks.length > 0 && (
+                <button
+                  type="button"
+                  className={styles.action}
+                  onClick={() => setMarks([])}
+                >
+                  清除高亮
+                </button>
+              )}
               <button
                 type="button"
                 className={styles.action}
@@ -612,6 +632,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
                               type="button"
                               className={styles.word}
                               data-target={isTargetWord(part.text)}
+                              data-mark={markSet.has(part.text.toLowerCase()) ? 'true' : undefined}
                               onClick={() => openWord(parts, j)}
                             >
                               {part.text}
@@ -649,6 +670,8 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
         <WordSheet
           word={sheetWord}
           phrase={sheetPhrase}
+          marked={markSet.has(sheetWord.toLowerCase())}
+          onHighlight={() => toggleMark(sheetWord)}
           onClose={() => {
             phraseForRef.current = ''
             setSheetPhrase(null)

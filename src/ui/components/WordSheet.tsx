@@ -18,6 +18,10 @@ type Props = {
    * 用户随时能切回单词——因为"我其实只想查这个词"完全合理。
    */
   phrase?: PhraseHit | null
+  /** 打开高亮：按下把当前词标进正文 */
+  onHighlight?: () => void
+  /** 这个词现在是否已高亮 */
+  marked?: boolean
   onClose: () => void
   /** 点变形小标签：换成那个词重新查 */
   onPick: (word: string) => void
@@ -48,7 +52,7 @@ function daysSince(iso?: string): number | null {
   return diffDays(dateKey(new Date()), dateKey(d))
 }
 
-export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
+export default function WordSheet({ word, phrase, onHighlight, marked, onClose, onPick }: Props) {
   const token = useSession((s) => s.token)
 
   // 弹层开着时，背景里的文章不该还能被手指带着滚（见 hook 注释）
@@ -199,6 +203,16 @@ export default function WordSheet({ word, phrase, onClose, onPick }: Props) {
         <div className={styles.handle} />
         <div className={styles.head}>
           <span className={styles.word}>{target}</span>
+          {onHighlight && (
+            <button
+              type="button"
+              className={styles.mark}
+              data-on={marked ? 'true' : 'false'}
+              onClick={onHighlight}
+            >
+              {marked ? '取消高亮' : '高亮'}
+            </button>
+          )}
           <button type="button" className={styles.close} onClick={requestClose} aria-label="关闭">
             关闭
           </button>

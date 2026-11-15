@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import {
   BLANK_RE,
@@ -11,12 +11,9 @@ import {
   type TrainingQuestion,
   type TrainingSection,
 } from '@/domain/training'
-import { loadPaperProgress, savePassageProgress } from '@/data/trainingProgress'
-import { restoreScroll } from '@/lib/scroll'
 import { tokenize } from '@/lib/text'
 import { usePrefs, type FontSize } from '@/store/prefs'
 
-import { findScrollParent } from '../hooks/useScrollStuck'
 import WordSheet from './WordSheet'
 import styles from './TrainingDoc.module.css'
 
@@ -33,6 +30,8 @@ type Props = {
   passage: TrainingPassage
   /** 第几篇（阅读按题型族连续编号，见 TrainingPage 的 ordinals）；0 表示单篇题型，不标 */
   ordinal: number
+  /** 提交后把本场成绩交给列表页（仅本次会话） */
+  onScore: (s: { passageId: string; right: number; total: number; at: string }) => void
 }
 
 /** 一段文字切成「普通文字 / 填空位」两种片段 */
@@ -62,7 +61,7 @@ function splitBlanks(text: string): Chunk[] {
  * 3. 阅读 / 长篇阅读一次一题，可上一题下一题；长篇阅读的段号是排他的，用过就不能再用。
  * 4. 选词填空把空位做进文章里，待选词库常驻下方。
  */
-export default function TrainingDoc({ paper, section, passage, ordinal }: Props) {
+export default function TrainingDoc({ paper, section, passage, ordinal, onScore }: Props) {
   const fontSize = usePrefs((s) => s.readingFont)
   const cloze = isCloze(passage)
   const hasZh = useMemo(() => hasTranslation(passage), [passage])
@@ -72,6 +71,13 @@ export default function TrainingDoc({ paper, section, passage, ordinal }: Props)
   const [showZh, setShowZh] = useState(false)
   const [sizePanel, setSizePanel] = useState(false)
   const [sheetWord, setSheetWord] = useState<string | null>(null)
+  /** 手动高亮的词（小写）。换篇目时组件会重挂载，自然清空 */
+  const [marks, setMarks] = useState<string[]>([])
+  const markSet = useMemo(() => new Set(marks), [marks])
+  const toggleMark = (w: string) => {
+    const key = w.toLowerCase()
+    setMarks((prev) => (prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]))
+  }
 
   /** 题号 → 选项字母 */
   const [answers, setAnswers] = useState<Record<number, string>>({})
@@ -83,16 +89,6 @@ export default function TrainingDoc({ paper, section, passage, ordinal }: Props)
   const [openBlank, setOpenBlank] = useState<number | null>(null)
   /** 选项条收起：想把整屏留给文章时用 */
   const [barCollapsed, setBarCollapsed] = useState(false)
-  /** 提交时间：标题栏要显示「提交 21:07」 */
-  const [submittedAt, setSubmittedAt] = useState<string | undefined>(undefined)
-
-  const rootRef = useRef<HTMLDivElement>(null)
-  /** 最后一次可见时的滚动位置。卸载时不能读实时的 scrollTop（见手册 9.9 第 5 条） */
-  const scrollRef = useRef(0)
-  /** 进度读回来之前不要落盘，否则会用空答案把已有的覆盖掉 */
-  const [loaded, setLoaded] = useState(false)
-  /** 滚动落盘的节流信号 */
-  const [scrollTick, setScrollTick] = useState(0)
 
   const questions = passage.questions
   const judged = questions.filter(isObjective)
@@ -138,101 +134,17 @@ export default function TrainingDoc({ paper, section, passage, ordinal }: Props)
   const q = questions[current]
   const bank = passage.bank ?? []
 
-  // ---- 进度：读回来 / 存下去 ----
-
-  useEffect(() => {
-    let alive = true
-    void loadPaperProgress(paper.key).then((all) => {
-      if (!alive) return
-      const saved = all[passage.id]
-      if (saved) {
-        setAnswers(saved.answers ?? {})
-        setSubmitted(Boolean(saved.submitted))
-        setCurrent(saved.current ?? 0)
-        setSubmittedAt(saved.submittedAt)
-        scrollRef.current = saved.scroll ?? 0
-      }
-      setLoaded(true)
-    })
-    return () => {
-      alive = false
-    }
-  }, [paper.key, passage.id])
-
-  // 内容铺开之后再滚回去（首帧高度不够，直接设 scrollTop 会被夹住）
-  useEffect(() => {
-    if (!loaded) return
-    const scroller = findScrollParent(rootRef.current)
-    if (!scroller) return
-    return restoreScroll(scroller, scrollRef.current)
-  }, [loaded])
-
-  // 滚动位置单独节流：答案是小步变化，滚动是连续的，合成一条会写得过于频繁
-  useEffect(() => {
-    const scroller = findScrollParent(rootRef.current)
-    if (!scroller) return
-    let timer = 0
-    const onScroll = () => {
-      scrollRef.current = scroller.scrollTop
-      window.clearTimeout(timer)
-      timer = window.setTimeout(() => setScrollTick((x) => x + 1), 500)
-    }
-    scroller.addEventListener('scroll', onScroll, { passive: true })
-    return () => {
-      scroller.removeEventListener('scroll', onScroll)
-      window.clearTimeout(timer)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!loaded) return
-    void savePassageProgress(paper.key, passage.id, {
-      answers,
-      submitted,
-      current,
-      submittedAt,
-      scroll: scrollRef.current,
-    })
-  }, [loaded, paper.key, passage.id, answers, submitted, current, submittedAt, scrollTick])
-
-  /** 最新的作答状态。切后台、被系统杀掉、点返回时都要靠它落盘 */
-  const latest = useRef({ answers, submitted, current, submittedAt })
-  latest.current = { answers, submitted, current, submittedAt }
-
-  useEffect(() => {
-    if (!loaded) return
-
-    const flush = () => {
-      void savePassageProgress(paper.key, passage.id, {
-        ...latest.current,
-        scroll: scrollRef.current,
-      })
-    }
-    // 切后台（含被系统回收前的回调）与页面隐藏时各存一次 —— 只靠 React 的
-    // effect 落盘的话，进程被杀那一刻的最后一次改动会丢
-    const onHide = () => {
-      if (document.visibilityState === 'hidden') flush()
-    }
-    document.addEventListener('visibilitychange', onHide)
-    window.addEventListener('pagehide', flush)
-
-    return () => {
-      document.removeEventListener('visibilitychange', onHide)
-      window.removeEventListener('pagehide', flush)
-      flush()
-    }
-  }, [loaded, paper.key, passage.id])
-
   function submit() {
-    setSubmittedAt(new Date().toISOString())
+    const at = new Date().toISOString()
     setSubmitted(true)
+    // 会话内的一次性成绩：交给列表页显示，退出 App 就没了
+    onScore({ passageId: passage.id, right: rightCount, total: judged.length, at })
   }
   /** 选词填空：字母 → 单词。卷面上显示词，不显示字母 */
   const wordOf = (key?: string) => (key ? bank.find((b) => b.key === key)?.text : undefined)
 
   return (
     <div
-      ref={rootRef}
       className={styles.doc}
       data-size={fontSize}
       data-qbar={barCollapsed ? 'mini' : 'open'}
@@ -261,6 +173,11 @@ export default function TrainingDoc({ paper, section, passage, ordinal }: Props)
               onClick={() => setShowZh((v) => !v)}
             >
               译文
+            </button>
+          )}
+          {marks.length > 0 && (
+            <button type="button" className={styles.action} onClick={() => setMarks([])}>
+              清除高亮
             </button>
           )}
           <button
@@ -336,6 +253,7 @@ export default function TrainingDoc({ paper, section, passage, ordinal }: Props)
                               <button
                                 type="button"
                                 className={styles.word}
+                                data-mark={markSet.has(part.text.toLowerCase()) ? 'true' : undefined}
                                 onClick={() => setSheetWord(part.text)}
                               >
                                 {part.text}
@@ -416,6 +334,8 @@ export default function TrainingDoc({ paper, section, passage, ordinal }: Props)
       {sheetWord && (
         <WordSheet
           word={sheetWord}
+          marked={markSet.has(sheetWord.toLowerCase())}
+          onHighlight={() => toggleMark(sheetWord)}
           onClose={() => setSheetWord(null)}
           onPick={(next) => setSheetWord(next)}
         />

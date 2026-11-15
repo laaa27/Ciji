@@ -60,6 +60,27 @@
   word-break: break-word;
 }
 
+/* 高亮：与「关闭」并排靠右。谁在左边谁吃掉 auto margin ——
+   两个都写 auto 的话会把空白摊成两半，高亮跑到中间去 */
+.mark {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  padding: 4px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+}
+
+.mark[data-on='true'] {
+  background: var(--mark);
+  color: var(--ink);
+}
+
+.mark + .close {
+  margin-left: 10px;
+}
+
 .close {
   margin-left: auto;
   flex: none;

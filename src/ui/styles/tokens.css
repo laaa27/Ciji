@@ -30,6 +30,8 @@
      所以每个都单独给两套值。 */
   --tint: #f2f4ef;
   --tint-ok: #eef2ea;
+  /* 单词高亮：像荧光笔扫过，字仍要清楚 */
+  --mark: #f8eeb8;
   --tint-warn: #fdf8ef;
   --tint-danger: #fdf1ef;
   --scrim: rgba(18, 20, 19, 0.22);
@@ -107,6 +109,7 @@
 
   --tint: #1d201e;
   --tint-ok: #1b221d;
+  --mark: #4a3f1c;
   --tint-warn: #241f17;
   --tint-danger: #241917;
   --scrim: rgba(0, 0, 0, 0.66);
