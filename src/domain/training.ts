@@ -47,11 +47,18 @@ export type TrainingQuestion = {
   analysis?: TrainingAnalysis
 }
 
+/** 一段：若干句 + 这一段的中译（题库的译文是段级的，不是句级） */
+export type TrainingPara = {
+  sents: TrainingSentence[]
+  zh?: string
+}
+
 export type TrainingPassage = {
   id: string
-  /** 逐段：段 → 句 */
-  paras: TrainingSentence[][]
+  paras: TrainingPara[]
   questions: TrainingQuestion[]
+  /** 选词填空的待选词库（15 词，填 10 空） */
+  bank?: TrainingOption[]
   /** 题面要求（写作的 Directions、翻译的中文原文）。不掺进正文，正文要能逐词点 */
   brief?: string
   /** 附注（写作范文的中译等） */
@@ -101,7 +108,15 @@ export function isObjective(q: TrainingQuestion): boolean {
 
 /** 这一篇里有没有中文（决定「译文」开关要不要出现） */
 export function hasTranslation(p: TrainingPassage): boolean {
-  return p.paras.some((para) => para.some((s) => Boolean(s.zh)))
+  if (p.paras.some((para) => Boolean(para.zh))) return true
+  return p.paras.some((para) => para.sents.some((s) => Boolean(s.zh)))
+}
+
+/** 选词填空：句子里带 `__(26)__` 空位 */
+export const BLANK_RE = /__\((\d+)\)__/
+
+export function isCloze(p: TrainingPassage): boolean {
+  return Boolean(p.bank && p.bank.length > 0)
 }
 
 /** 题量汇总，列表页显示「阅读理解 · 5 题」用 */

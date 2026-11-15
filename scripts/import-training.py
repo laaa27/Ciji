@@ -32,7 +32,8 @@ SECTION_LABEL = {
     'writing': '写作',
     'translation': '翻译',
 }
-SECTION_ORDER = ['listening', 'cloze', 'matching', 'reading1', 'reading2', 'writing', 'translation']
+# 写作与翻译是主观题：判分只能靠范文对照，做题闭环价值低，先不做
+SECTION_ORDER = ['listening', 'cloze', 'matching', 'reading1', 'reading2']
 
 # 句末标点后接空格，才算一个句子边界。缩写单独排掉，否则 Mr. Smith 会被切开
 ABBREV = {'mr', 'mrs', 'ms', 'dr', 'prof', 'st', 'jr', 'sr', 'vs', 'etc', 'e.g', 'i.e', 'no', 'fig', 'al'}
@@ -140,11 +141,63 @@ def parse_options(lines):
     return out
 
 
-def material_passages(row, section):
-    """把一条 section_materials 的 content_json 变成若干段落（每段是句子数组）。
+def parse_passage_translation(text):
+    """解析页里的「P1..Pn 段号、逐段附中文翻译」块 → [(英文, 中文)]。
 
-    同时返回 brief：写作/翻译的题目要求（中文或英文指令），单独一行显示，
-    不掺进正文 —— 正文要能逐词点查，题干混进去会让"这个词该不该点"变得模糊。
+    排版是「P1 + 英文段 + 中文段 + P2 + …」，中文段紧随英文段。
+    末尾还会接「题目与逐题解析」，遇到就停。
+    """
+    if not text:
+        return []
+
+    # 砍掉末尾的题目解析部分
+    tail = text.find('题目与逐题解析')
+    if tail > 0:
+        text = text[:tail]
+
+    marks = list(re.finditer(r'(?m)^\s*P(\d+)\s*$', text))
+    if not marks:
+        # 有的排版 P1 与正文同一行
+        marks = list(re.finditer(r'(?m)^\s*P(\d+)\s*', text))
+    if len(marks) < 2:
+        return []
+
+    out = []
+    for i, m in enumerate(marks):
+        end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
+        body = text[m.end():end]
+
+        # 英文在前、中文在后：以第一个连续中文行作为分界
+        lines = [ln.strip() for ln in body.split('\n') if ln.strip()]
+        first_zh = None
+        for li, ln in enumerate(lines):
+            if len(re.findall(r'[\u4e00-\u9fa5]', ln)) >= 6:
+                first_zh = li
+                break
+        en_lines = lines[:first_zh] if first_zh is not None else lines
+        zh_lines = lines[first_zh:] if first_zh is not None else []
+
+        en = ' '.join(en_lines)
+        # 解析页会混进一句题号说明，去掉
+        en = re.sub(r'Questions?\s+\d+\s+to\s+\d+\s+are\s+based\s+on\s+the\s+following\s+passage\.?',
+                    '', en, flags=re.I)
+        en = re.sub(r'\s+', ' ', en).strip()
+        zh = re.sub(r'\s+', '', ' '.join(zh_lines)).strip()
+        # P1– 这种标号残片会被当成一段，扔掉：少于 3 个词或没有成词的基本都是噪声
+        if len(re.findall(r"[A-Za-z]{2,}", en)) < 3:
+            continue
+        if en:
+            out.append((en, zh))
+    return out
+
+
+def material_passages(row, section):
+    """把一条 section_materials 变成「逐段」结构：每段若干句 + 可选的中译。
+
+    阅读的中译来自 translation_json 里的 P1..Pn 块（解析页原文就是这么排的），
+    段落边界也用它的 —— 题库的 passage 是一整段字符串，本身没有段落信息。
+
+    同时返回 brief：写作/翻译的题目要求，不掺进正文（正文要能逐词点查）。
     """
     try:
         data = json.loads(row['content_json'] or '{}')
@@ -156,7 +209,7 @@ def material_passages(row, section):
     if section == 'listening':
         paras = []
         for g in data.get('groups') or []:
-            sentences = []
+            sents = []
             for line in g.get('lines') or []:
                 en = (line.get('en') or '').strip()
                 if not en:
@@ -165,9 +218,9 @@ def material_passages(row, section):
                 cn = (line.get('cn') or '').strip()
                 if cn:
                     item['zh'] = cn
-                sentences.append(item)
-            if sentences:
-                paras.append(sentences)
+                sents.append(item)
+            if sents:
+                paras.append({'sents': sents})
         return paras, brief
 
     # 信息匹配：段落带 A/B/C… 标号，一段一段给
@@ -177,25 +230,43 @@ def material_passages(row, section):
             txt = (p.get('text') or '').strip()
             if not txt:
                 continue
-            label = (p.get('label') or '').strip()
             sents = [{'en': s} for s in split_sentences(txt)]
             if sents:
+                label = (p.get('label') or '').strip()
                 if label:
                     sents[0]['label'] = label
-                paras.append(sents)
+                paras.append({'sents': sents})
         return paras, brief
 
-    # 普通文章：一段字符串，按标点切句后每 4 句归一段（与阅读页同一节奏）
+    # 文章：优先用解析页的逐段中译定段落边界
     text = (data.get('passage') or '').strip()
     if text:
+        try:
+            tr = json.loads(row['translation_json'] or '{}').get('passage_translation') or ''
+        except (json.JSONDecodeError, AttributeError):
+            tr = ''
+        blocks = parse_passage_translation(tr)
+        if blocks:
+            paras = []
+            for en, zh in blocks:
+                sents = [{'en': s} for s in split_sentences(en)]
+                if not sents:
+                    continue
+                para = {'sents': sents}
+                if zh:
+                    para['zh'] = zh
+                paras.append(para)
+            if paras:
+                return paras, brief
+        # 没有译段就退回「每 4 句一段」，至少排版不变
         sents = [{'en': s} for s in split_sentences(text)]
-        return [sents[i:i + 4] for i in range(0, len(sents), 4)], brief
+        return [{'sents': sents[i:i + 4]} for i in range(0, len(sents), 4)], brief
 
-    # 写作 / 翻译：题面单独给，正文是范文或参考译文
+    # 兜底：写作/翻译类材料的正文
     body = data.get('model_essay') or data.get('reference_translation') or ''
     if body.strip():
         sents = [{'en': s} for s in split_sentences(body)]
-        return [sents[i:i + 4] for i in range(0, len(sents), 4)], brief
+        return [{'sents': sents[i:i + 4]} for i in range(0, len(sents), 4)], brief
 
     return [], brief
 
@@ -230,7 +301,7 @@ def build_question(row):
 
 def collect_section(conn, paper_id, section):
     materials = conn.execute(
-        """SELECT group_key, content_json, analysis_text FROM section_materials
+        """SELECT group_key, content_json, translation_json, analysis_text FROM section_materials
            WHERE paper_id=? AND section=? ORDER BY id""",
         (paper_id, section),
     ).fetchall()
@@ -279,6 +350,14 @@ def collect_section(conn, paper_id, section):
         }
         if brief:
             item['brief'] = brief
+        if section == 'cloze' and mat:
+            try:
+                bank = json.loads(mat['content_json'] or '{}').get('word_bank') or []
+            except json.JSONDecodeError:
+                bank = []
+            bank = [{'key': b.get('key'), 'text': (b.get('text') or '').strip()} for b in bank if b.get('key')]
+            if bank:
+                item['bank'] = bank
         cn = ''
         if mat:
             try:

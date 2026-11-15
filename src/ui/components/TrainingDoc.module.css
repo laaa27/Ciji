@@ -414,3 +414,249 @@
   color: var(--ink-3);
   text-align: center;
 }
+
+
+/* ---------- 段落与译文 ---------- */
+
+.paraWrap {
+  margin: 0 0 var(--sp-5);
+}
+
+.paraWrap .para {
+  margin: 0;
+}
+
+/* 段译：跟在整段后面，比正文小一号、灰一档 —— 它是辅助，不该抢正文的注意力 */
+.paraZh {
+  margin-top: 6px;
+  padding-left: 2px;
+  font-family: var(--font-ui);
+  font-size: var(--rd-zh-fs);
+  color: var(--ink-3);
+  line-height: 1.8;
+  letter-spacing: 0.01em;
+}
+
+.hiddenHint {
+  margin-top: var(--sp-5);
+  padding: var(--sp-5) 0;
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+}
+
+/* ---------- 选词填空 ---------- */
+
+.blank {
+  display: inline-block;
+  min-width: 2.6em;
+  margin: 0 3px;
+  padding: 1px 6px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  font-family: var(--font-ui);
+  font-size: 0.72em;
+  color: var(--ink-3);
+  text-align: center;
+  vertical-align: 1px;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.blank[data-filled='true'] {
+  color: var(--ink);
+  border-color: var(--ink-3);
+}
+
+.blank[data-active='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.blank[data-right='true'] {
+  border-color: var(--state-new);
+  color: var(--state-new);
+}
+
+.blank[data-right='false'] {
+  border-color: var(--state-forget);
+  color: var(--state-forget);
+}
+
+.bank {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  list-style: none;
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: var(--fs-sm);
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+
+.chip:active {
+  transform: translateY(1px);
+}
+
+.chip[data-used='true'] {
+  opacity: 0.28;
+  text-decoration: line-through;
+}
+
+.chip:disabled {
+  cursor: default;
+}
+
+.blankList {
+  list-style: none;
+  margin: var(--sp-5) 0 0;
+  padding: 0;
+}
+
+.blankRow {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--rule);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  text-align: left;
+}
+
+.blankRow [data-ok='true'] {
+  color: var(--state-new);
+}
+
+.blankRow [data-ok='false'] {
+  color: var(--state-forget);
+}
+
+.blankMore {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+/* ---------- 题目面板 ---------- */
+
+.panel {
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--rule);
+}
+
+.panelHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+
+.panelNo {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+}
+
+.panelTip {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.nav {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.navBtn {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+  padding: 6px 10px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+}
+
+.navBtn:disabled {
+  opacity: 0.35;
+}
+
+/* 作答中：选中但没有对错 */
+.opt[data-state='chosen'] {
+  border-color: var(--ink);
+  color: var(--ink);
+}
+
+/* ---------- 提交 ---------- */
+
+.submitBar {
+  margin-top: var(--sp-7);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--rule);
+  text-align: center;
+}
+
+.progress {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  margin-bottom: var(--sp-3);
+}
+
+.submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  padding: 0 32px;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 2px;
+  font-size: var(--fs-body);
+  transition: opacity 0.15s ease, transform 0.12s ease;
+}
+
+.submit:active {
+  opacity: 0.85;
+  transform: translateY(1px);
+}
+
+.score {
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+}
+
+/* ---------- 解析 ---------- */
+
+.anVerdict {
+  margin-bottom: var(--sp-3);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.anVerdict[data-right='true'] {
+  color: var(--state-new);
+}
+
+.anVerdict[data-right='false'] {
+  color: var(--state-forget);
+}
+
+.analysis[data-compact='true'] {
+  margin-top: var(--sp-3);
+  background: none;
+  border: 0;
+  padding: 0 0 var(--sp-2);
+}
