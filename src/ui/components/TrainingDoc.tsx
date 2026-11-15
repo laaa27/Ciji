@@ -403,17 +403,29 @@ function QuestionBar({
           第 {current + 1} / {total} 题
         </span>
         <div className={styles.qbarNav}>
-          <button type="button" className={styles.navBtn} disabled={current === 0} onClick={onPrev}>
-            上一题
+          <button
+            type="button"
+            className={styles.navArrow}
+            disabled={current === 0}
+            onClick={onPrev}
+            aria-label="上一题"
+          >
+            ‹
           </button>
           <button
             type="button"
-            className={styles.navBtn}
+            className={styles.navArrow}
             disabled={current >= total - 1}
             onClick={onNext}
+            aria-label="下一题"
           >
-            下一题
+            ›
           </button>
+          {!submitted && (
+            <button type="button" className={styles.qbarSubmit} onClick={onSubmit}>
+              提交
+            </button>
+          )}
           <button type="button" className={styles.navBtn} onClick={onToggle}>
             {collapsed ? '展开' : '收起'}
           </button>
@@ -480,15 +492,11 @@ function QuestionBar({
 
           {submitted && <Analysis q={q} picked={picked} />}
 
-          {submitted ? (
+          {submitted && (
             <p className={styles.qbarScore}>
               已提交 · 答对 {rightCount} / {judgedCount}
               {answeredCount < total ? `（${total - answeredCount} 题未答）` : ''}
             </p>
-          ) : (
-            <button type="button" className={styles.qbarSubmit} onClick={onSubmit}>
-              提交答卷 · 已答 {answeredCount}/{total}
-            </button>
           )}
         </div>
       )}
@@ -527,6 +535,11 @@ function ClozeBar({
           {submitted ? `已提交 · 答对 ${right} / ${total}` : `已答 ${answered} / ${total}`}
         </span>
         <div className={styles.qbarNav}>
+          {!submitted && (
+            <button type="button" className={styles.qbarSubmit} onClick={onSubmit}>
+              提交
+            </button>
+          )}
           <button type="button" className={styles.navBtn} onClick={onToggle}>
             {collapsed ? '展开' : '收起'}
           </button>
@@ -554,11 +567,6 @@ function ClozeBar({
             })}
           </ul>
 
-          {!submitted && (
-            <button type="button" className={styles.qbarSubmit} onClick={onSubmit}>
-              提交答卷 · 已答 {answered}/{total}
-            </button>
-          )}
         </div>
       )}
     </div>

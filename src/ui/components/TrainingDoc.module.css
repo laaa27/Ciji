@@ -234,12 +234,12 @@
   display: flex;
   gap: 8px;
   width: 100%;
-  padding: 9px 10px;
-  margin-bottom: 6px;
+  padding: 6px 10px;
+  margin-bottom: 3px;
   border: 1px solid var(--rule);
   border-radius: 2px;
   text-align: left;
-  font-size: var(--fs-sm);
+  font-size: 13px;
   color: var(--ink-2);
   line-height: 1.6;
   transition: background 0.15s ease, border-color 0.15s ease;
@@ -588,6 +588,7 @@
 }
 
 .navBtn {
+  flex: none;
   font-size: var(--fs-xs);
   color: var(--ink-2);
   padding: 6px 10px;
@@ -678,12 +679,13 @@
   bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 8px);
   z-index: 30;
   /* 固定高度：所有题型同一副身板，够不够都在这个框里滚，页面不会因为
-     选项多寡而上下跳。收起时才回到内容高度 */
-  height: 44vh;
+     选项多寡而上下跳。34vh 是权衡后的值：能装下四个换行的选项，又只占
+     约三分之一屏，不至于把文章挡死。收起时回到内容高度 */
+  height: 36vh;
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
-  padding: 8px var(--sp-4) var(--sp-3);
+  padding: 7px var(--sp-4) 10px;
   background: var(--surface);
   border: 1px solid var(--rule);
   border-radius: 12px;
@@ -703,11 +705,32 @@
 }
 
 .qbarTitle {
+  flex: none;
+  white-space: nowrap;
   font-size: var(--fs-xs);
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
+}
+
+/* 上一题 / 下一题：换成箭头，标题行才放得下「提交」与「收起」 */
+.navArrow {
+  flex: none;
+  width: 28px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--ink-2);
+}
+
+.navArrow:disabled {
+  opacity: 0.3;
 }
 
 .qbarNav {
@@ -721,21 +744,22 @@
 }
 
 .qbarBody .stem {
-  font-size: var(--fs-sm);
-  margin-bottom: var(--sp-3);
+  font-size: 13px;
+  margin-bottom: 6px;
 }
 
+/* 提交：放进标题行，省下正文那 46px —— 四个选项才算完整可见 */
 .qbarSubmit {
-  display: flex;
+  flex: none;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 100%;
-  height: 40px;
-  margin-top: var(--sp-3);
+  height: 28px;
+  padding: 0 12px;
   background: var(--accent);
   color: var(--on-accent);
   border-radius: 2px;
-  font-size: var(--fs-sm);
+  font-size: 12px;
 }
 
 .qbarSubmit:active {
@@ -801,7 +825,7 @@
 
 /* 答题条占掉的高度：给内容留出滚动余量，否则最后几行永远压在条下面 */
 .doc[data-qbar='open'] {
-  padding-bottom: 47vh;
+  padding-bottom: 39vh;
 }
 
 .doc[data-qbar='mini'] {
