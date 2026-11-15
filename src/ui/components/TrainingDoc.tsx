@@ -28,8 +28,8 @@ type Props = {
   paper: TrainingPaper
   section: TrainingSection
   passage: TrainingPassage
-  /** 第几篇（从 0 起） */
-  index: number
+  /** 第几篇（阅读按题型族连续编号，见 TrainingPage 的 ordinals）；0 表示单篇题型，不标 */
+  ordinal: number
 }
 
 /** 一段文字切成「普通文字 / 填空位」两种片段 */
@@ -59,7 +59,7 @@ function splitBlanks(text: string): Chunk[] {
  * 3. 阅读 / 长篇阅读一次一题，可上一题下一题；长篇阅读的段号是排他的，用过就不能再用。
  * 4. 选词填空把空位做进文章里，待选词库常驻下方。
  */
-export default function TrainingDoc({ paper, section, passage, index }: Props) {
+export default function TrainingDoc({ paper, section, passage, ordinal }: Props) {
   const fontSize = usePrefs((s) => s.readingFont)
   const cloze = isCloze(passage)
   const hasZh = useMemo(() => hasTranslation(passage), [passage])
@@ -123,16 +123,20 @@ export default function TrainingDoc({ paper, section, passage, index }: Props) {
   }
 
   const q = questions[current]
+  const bank = passage.bank ?? []
+  /** 选词填空：字母 → 单词。卷面上显示词，不显示字母 */
+  const wordOf = (key?: string) => (key ? bank.find((b) => b.key === key)?.text : undefined)
 
   return (
     <div
       className={styles.doc}
       data-size={fontSize}
-      data-qbar={cloze ? 'none' : barCollapsed ? 'mini' : 'open'}
+      data-qbar={barCollapsed ? 'mini' : 'open'}
     >
       <div className={styles.toolbar}>
         <span className={styles.meta}>
-          {section.label} · 第 {index + 1} 篇 · {questions.length} 题
+          {section.label}
+          {ordinal > 0 ? ` · 第 ${ordinal} 篇` : ''} · {questions.length} 题
         </span>
         <div className={styles.actions}>
           {section.id === 'listening' && (
@@ -211,6 +215,7 @@ export default function TrainingDoc({ paper, section, passage, index }: Props) {
                           key={`b${ci}`}
                           no={chunk.no}
                           chosen={answers[chunk.no]}
+                          word={wordOf(answers[chunk.no])}
                           answer={questions.find((x) => x.no === chunk.no)?.answer}
                           submitted={submitted}
                           active={activeBlank === chunk.no}
@@ -255,22 +260,33 @@ export default function TrainingDoc({ paper, section, passage, index }: Props) {
         </p>
       ))}
 
-      {cloze && (
-        <ClozePanel
+      {cloze && submitted && (
+        <ClozeResult
           questions={questions}
-          bank={passage.bank ?? []}
+          bank={bank}
           answers={answers}
-          usedBy={usedLetters}
-          submitted={submitted}
-          activeBlank={activeBlank}
           openBlank={openBlank}
-          onFill={fillBlank}
           onOpen={setOpenBlank}
-          onSubmitted={() => setSubmitted(true)}
         />
       )}
 
       <p className={styles.foot}>题源：{paper.label}</p>
+
+      {cloze && (
+        <ClozeBar
+          bank={bank}
+          usedBy={usedLetters}
+          submitted={submitted}
+          answered={answeredCount}
+          total={questions.length}
+          right={rightCount}
+          activeBlank={activeBlank}
+          collapsed={barCollapsed}
+          onToggle={() => setBarCollapsed((v) => !v)}
+          onFill={fillBlank}
+          onSubmit={() => setSubmitted(true)}
+        />
+      )}
 
       {!cloze && q && (
         <QuestionBar
@@ -308,6 +324,7 @@ export default function TrainingDoc({ paper, section, passage, index }: Props) {
 function Blank({
   no,
   chosen,
+  word,
   answer,
   submitted,
   active,
@@ -315,6 +332,8 @@ function Blank({
 }: {
   no: number
   chosen?: string
+  /** 已选词的原文 —— 卷面上一段话中间写个字母很别扭，写词才读得下去 */
+  word?: string
   answer?: string
   submitted: boolean
   active: boolean
@@ -331,7 +350,7 @@ function Blank({
       data-right={right ? 'true' : wrong ? 'false' : undefined}
       onClick={onClick}
     >
-      {chosen || no}
+      {word || no}
     </button>
   )
 }
@@ -478,101 +497,120 @@ function QuestionBar({
   )
 }
 
-function ClozePanel({
-  questions,
+/** 选词填空的浮动词库：与选项条同一副壳子，滑到文章任何位置都能点词 */
+function ClozeBar({
   bank,
-  answers,
   usedBy,
   submitted,
+  answered,
+  total,
+  right,
   activeBlank,
-  openBlank,
+  collapsed,
+  onToggle,
   onFill,
-  onOpen,
-  onSubmitted,
+  onSubmit,
 }: {
-  questions: TrainingQuestion[]
   bank: TrainingOption[]
-  answers: Record<number, string>
   usedBy: Map<string, number>
   submitted: boolean
+  answered: number
+  total: number
+  right: number
   activeBlank: number | null
-  openBlank: number | null
+  collapsed: boolean
+  onToggle: () => void
   onFill: (key: string) => void
-  onOpen: (no: number | null) => void
-  onSubmitted: () => void
+  onSubmit: () => void
 }) {
-  const right = questions.filter((q) => answers[q.no] === q.answer).length
-  const answered = questions.filter((q) => answers[q.no]).length
-
   return (
-    <section className={styles.panel}>
-      <div className={styles.panelHead}>
-        <span className={styles.panelNo}>待选词库</span>
-        <span className={styles.panelTip}>
-          {submitted
-            ? `答对 ${right} / ${questions.length}`
-            : activeBlank
-              ? `填第 ${activeBlank} 空`
-              : '点空位或直接点词'}
+    <div className={styles.qbar} data-collapsed={collapsed ? 'true' : 'false'}>
+      <div className={styles.qbarHead}>
+        <span className={styles.qbarTitle}>
+          {submitted ? `已提交 · 答对 ${right} / ${total}` : `已答 ${answered} / ${total}`}
         </span>
+        <div className={styles.qbarNav}>
+          {!submitted && (
+            <span className={styles.panelTip}>{activeBlank ? `填第 ${activeBlank} 空` : '点空位或直接点词'}</span>
+          )}
+          <button type="button" className={styles.navBtn} onClick={onToggle}>
+            {collapsed ? '展开' : '收起'}
+          </button>
+        </div>
       </div>
 
-      <ul className={styles.bank}>
-        {bank.map((b) => {
-          const used = usedBy.get(b.key) !== undefined
-          return (
-            <li key={b.key}>
-              <button
-                type="button"
-                className={styles.chip}
-                data-used={used ? 'true' : 'false'}
-                disabled={submitted || used}
-                onClick={() => onFill(b.key)}
-              >
-                {b.text}
-              </button>
-            </li>
-          )
-        })}
-      </ul>
-
-      {!submitted && (
-        <button type="button" className={styles.submit} onClick={onSubmitted}>
-          提交答卷 · 已答 {answered}/{questions.length}
-        </button>
-      )}
-
-      {submitted && (
-        <>
-          <p className={styles.panelTip}>
-            已提交 · 答对 {right} / {questions.length}
-          </p>
-          <ul className={styles.blankList}>
-            {questions.map((q) => {
-              const ok = answers[q.no] === q.answer
-              const open = openBlank === q.no
+      {!collapsed && (
+        <div className={styles.qbarBody}>
+          <ul className={styles.bank}>
+            {bank.map((b) => {
+              const used = usedBy.get(b.key) !== undefined
               return (
-                <li key={q.no}>
+                <li key={b.key}>
                   <button
                     type="button"
-                    className={styles.blankRow}
-                    onClick={() => onOpen(open ? null : q.no)}
+                    className={styles.chip}
+                    data-used={used ? 'true' : 'false'}
+                    disabled={submitted || used}
+                    onClick={() => onFill(b.key)}
                   >
-                    <span className={styles.qNo}>{q.no}</span>
-                    <span data-ok={ok ? 'true' : 'false'}>
-                      {answers[q.no] ? `你选 ${answers[q.no]}` : '未答'}
-                      {ok ? ' ✓' : ` · 正确 ${q.answer ?? '—'}`}
-                    </span>
-                    <span className={styles.blankMore}>{open ? '收起' : '解析'}</span>
+                    {b.text}
                   </button>
-                  {open && <Analysis q={q} picked={answers[q.no]} compact />}
                 </li>
               )
             })}
           </ul>
-        </>
+
+          {!submitted && (
+            <button type="button" className={styles.qbarSubmit} onClick={onSubmit}>
+              提交答卷 · 已答 {answered}/{total}
+            </button>
+          )}
+        </div>
       )}
-    </section>
+    </div>
+  )
+}
+
+/** 提交后逐空的结果：你的答案、正确答案、可展开的解析 */
+function ClozeResult({
+  questions,
+  bank,
+  answers,
+  openBlank,
+  onOpen,
+}: {
+  questions: TrainingQuestion[]
+  bank: TrainingOption[]
+  answers: Record<number, string>
+  openBlank: number | null
+  onOpen: (no: number | null) => void
+}) {
+  const wordOf = (key?: string) => (key ? bank.find((b) => b.key === key)?.text : undefined)
+
+  return (
+    <ul className={styles.blankList}>
+      {questions.map((q) => {
+        const ok = answers[q.no] === q.answer
+        const open = openBlank === q.no
+        return (
+          <li key={q.no}>
+            <button
+              type="button"
+              className={styles.blankRow}
+              onClick={() => onOpen(open ? null : q.no)}
+            >
+              <span className={styles.qNo}>{q.no}</span>
+              <span data-ok={ok ? 'true' : 'false'}>
+                {answers[q.no] ? wordOf(answers[q.no]) ?? answers[q.no] : '未答'}
+                {ok ? ' ✓' : ` · 正确 ${wordOf(q.answer) ?? q.answer ?? '—'}`}
+              </span>
+              <span className={styles.blankMore}>{open ? '收起' : '解析'}</span>
+            </button>
+            {open && <Analysis q={q} picked={answers[q.no]} compact />}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { loadTrainingIndex, loadTrainingPaper } from '@/data/training'
 import {
@@ -108,6 +108,43 @@ export default function TrainingPage() {
   const list = index.filter((p) => p.level === level)
 
   /**
+   * 篇目序号。
+   *
+   * 四六级的「阅读理解」在卷面上是 Section C 的 Passage One / Passage Two，
+   * 题库却拆成 reading1 / reading2 两个题型、各一篇 —— 列表里就成了两行都叫
+   * 「阅读理解 · 5 题」，看不出谁是谁。所以阅读按「题型族」连续编号，
+   * 四六级得到 1、2，考研的 reading1 自带四篇则得到 1~4。
+   */
+  const ordinals = useMemo(() => {
+    const map = new Map<string, number>()
+    let reading = 0
+    for (const sec of paper?.sections ?? []) {
+      const isReading = sec.id === 'reading1' || sec.id === 'reading2'
+      sec.passages.forEach((p, i) => {
+        if (isReading) {
+          reading += 1
+          map.set(p.id, reading)
+        } else {
+          map.set(p.id, i + 1)
+        }
+      })
+    }
+    return map
+  }, [paper])
+
+  /**
+   * 阅读题型的篇目总数（四六级 2 篇、考研 4 篇）。
+   * 只有一篇的题型（听力 / 完形 / 长篇阅读）不标「第 1 篇」—— 那是噪音。
+   */
+  const readingCount = useMemo(
+    () =>
+      (paper?.sections ?? [])
+        .filter((s) => s.id === 'reading1' || s.id === 'reading2')
+        .reduce((n, s) => n + s.passages.length, 0),
+    [paper],
+  )
+
+  /**
    * 按年份分组：一百多套平铺下来，光靠「2026 年 6 月 · 第 3 套」这行字分不清年与年
    * 的界线。分组之后每一年的第一行就是分界，眼睛有落点。
    */
@@ -132,7 +169,18 @@ export default function TrainingPage() {
             </button>
             <h1 className={styles.subTitle}>{section.label}</h1>
           </header>
-          <TrainingDoc paper={paper} section={section} passage={section.passages[pi]} index={pi} />
+          <TrainingDoc
+            paper={paper}
+            section={section}
+            passage={section.passages[pi]}
+            ordinal={
+              section.id === 'reading1' || section.id === 'reading2'
+                ? (ordinals.get(section.passages[pi].id) ?? pi + 1)
+                : section.passages.length > 1
+                  ? pi + 1
+                  : 0
+            }
+          />
         </div>
       )
     }
@@ -155,7 +203,7 @@ export default function TrainingPage() {
         {paper && (
           <ul className={styles.sections}>
             {paper.sections.map((sec) =>
-              sec.passages.map((p, i) => (
+              sec.passages.map((p) => (
                 <li key={p.id}>
                   <button
                     type="button"
@@ -165,7 +213,13 @@ export default function TrainingPage() {
                     <span className={styles.passageText}>
                       <span className={styles.passageName}>
                         {sec.label}
-                        {sec.passages.length > 1 ? ` · 第 ${i + 1} 篇` : ''}
+                        {sec.id === 'reading1' || sec.id === 'reading2'
+                          ? readingCount > 1
+                            ? ` · 第 ${ordinals.get(p.id)} 篇`
+                            : ''
+                          : sec.passages.length > 1
+                            ? ` · 第 ${ordinals.get(p.id)} 篇`
+                            : ''}
                       </span>
                       <span className={styles.passageMeta}>
                         {p.questions.length} 题
