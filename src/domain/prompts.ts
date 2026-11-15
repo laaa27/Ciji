@@ -90,15 +90,18 @@ export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
     passive: [12, 30],
     paragraphs: [5, 5],
     syntax:
-      '以简单句和并列句为主；从句最多一层（一个定语从句或一个状语从句），不叠加；' +
+      '以简单句和并列句为主；从句通常两层、最多三层（定语从句、状语从句、名词性从句）；' +
       '可以有被动语态和 there be 句式（真题里这两种很常见）；' +
-      '但每篇必须有几句 30 词以上的长句——真题每篇约 3 句，靠「主干 + 一个定语从句 + 一个状语短语」搭出来，不要通篇 15 词的小短句',
+      '可以有少量倒装或虚拟语气（全篇最多 1 处），但不要堆嵌套；' +
+      '每篇必须有几句 30 词以上的长句——真题每篇约 3 句，靠「主干 + 一个定语从句 + 一个状语短语」搭出来，不要通篇 15 词的小短句',
     forbid:
-      '禁止倒装、独立主格、虚拟语气、多层嵌套从句；单句不得超过 45 词，也不许一句话连挂三个以上介词短语；' +
+      '禁止独立主格、三层以上嵌套从句；单句不得超过 45 词，也不许一句话连挂三个以上介词短语；' +
       '禁止把所有句子写成同一个长度（15~20 词一路到底）',
     longExample:
       'The habit of quitting early, which many students develop in their first year of college, ' +
-      'often survives into graduate study, quietly shaping daily choices long after the original fear has faded away.',
+      'often survives into graduate study, quietly shaping daily choices long after the original fear has faded away.'+
+      'At Beth Israel each patient is assigned to a primary nurse who visits at length with the patient and constructs a full scale health account that covers everything from his medical history to his emotional state.'+
+      'It may have been a sharp criticism of the pupil‘s technical abilities in writing, but it was also a sad reflection on the teacher who had omitted to read the essay, which contained some beautiful expressions of the child’s deep feelings.',
   },
   cet6: {
     label: '大学英语六级：有一定句式变化，允许抽象表达',
@@ -113,13 +116,16 @@ export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
     paragraphs: [4, 4],
     syntax:
       '允许两层结构（定语从句 + 状语从句，或分词短语作状语）；可以出现抽象名词，' +
-      '但名词化表达每百词不超过 4 次，不要通篇抽象名词',
+      '但名词化表达每百词不超过 4 次，不要通篇抽象名词；' +
+      '从句通常两层、最多三层（定语从句、状语从句、名词性从句），且整句仍须在 42 词以内',
     forbid:
       '禁止通篇短句；单句不得超过 42 词；被动语态不超过 15% 的句子；' +
       '避免口语化缩略（gonna / kinda / 大量缩写）',
     longExample:
       'The habit of quitting early, which many students develop in their first year of college, ' +
-      'often survives into graduate study, quietly shaping daily choices long after the original fear has faded away.',
+      'often survives into graduate study, quietly shaping daily choices long after the original fear has faded away.'+
+      'But my own worry today is less that of the overwhelming problem of elemental literacy than it is of the slightly more luxurious problem of the decline in the skill even of the middle-class reader, of his unwillingness to afford those spaces of silence, those luxuries of domesticity and time and concentration, that surround the image of the classic act of reading.'+
+      'Finally, advertisers try to begin commercials with sounds that are highly different from those of the programming within which the commercial is buried.',
   },
   /**
    * 考研：以**英语二**的实测为准（2023 英语二 Text 1/Text 2 等，共 5 篇）。
@@ -139,13 +145,16 @@ export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
     paragraphs: [4, 4],
     syntax:
       '以「长句但结构清楚」为主：允许一层定语从句 + 一层状语从句、非谓语短语作后置定语；' +
-      '至少 1 处非限制性定语从句（, which …）或破折号补充说明；名词化每百词不超过 4 次',
+      '至少 1 处非限制性定语从句（, which …）或破折号补充说明；名词化每百词不超过 4 次；' +
+      '从句通常两到三层（定语从句、状语从句、名词性从句），但不再往上叠',
     forbid:
       '禁止三层以上嵌套、禁止连续插入语；单句不得超过 48 词；被动语态不超过 15% 的句子；' +
       '禁止通篇长句——每 5 句至少留 1 句不超过 15 词用来换气',
     longExample:
       'The habit of quitting early, which many students develop during their first year on campus, ' +
-      'often survives into graduate study and their later careers, quietly shaping daily choices long after the fear that first produced it has faded away.',
+      'often survives into graduate study and their later careers, quietly shaping daily choices long after the fear that first produced it has faded away.'+
+      'Since evolution has given rise to few, if any, purposeless physiological responses, it is logical to assume that crying has one or more functions that enhance survival.'+
+      'With the blurring of roles, and the fact that the home front lags well behind the workplace in making adjustments for working women, it‘s not surprising that women are more stressed at home.',
   },
   // 新生成已不可选（LEVELS 里没有它），保留只为老文章能显示档位
   ielts: {
@@ -274,7 +283,7 @@ export interface Outline {
 }
 
 /** 提示词版本：出问题时先看这个，确认是不是提示词改动引起的 */
-export const PROMPT_VERSION = 'v9-2026-11-14-fact-and-anchor'
+export const PROMPT_VERSION = 'v10-2026-11-15-density-and-cap'
 
 /**
  * 简单句的句数配额：`simpleRatio` × 全篇句数估值（词数中位 ÷ 句长中位）。
@@ -365,6 +374,8 @@ function specLines(spec: LevelSpec, detailed: boolean): string[] {
         `- 那几句长句要真的带结构，不是把中句硬拉长：用「主干 + which 引导的非限制性定语从句 + 分词短语作状语」，` +
           `或「主干 + 插入语 + while 引导的让步状语」`,
         `- 长句标尺（照这个长度和密度写，不要照抄内容）：「${spec.longExample}」`,
+        `  上面这三句是「一句标尺 + 两句同密度的参考」：全篇这样长的句子保持 ${spec.veryLong}~${spec.veryLong + 2} 句，` +
+          `其余仍然是中句和缓冲句，不要整篇都按这个密度写`, 
       )
     }
     lines.push(`- 句法：${spec.syntax}`)
