@@ -183,24 +183,62 @@
   color: var(--ink);
 }
 
-/* 标题右侧的成绩：正确率 + 提交时间 */
-.headMeta {
-  margin-left: auto;
+/* 题型行右侧的成绩：正确率在上、时间在下，窄且不抢标题 */
+.rowScore {
   flex: none;
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  margin-right: 4px;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  text-align: right;
 }
 
-/* 标题右侧的成绩：正确率 + 提交时间 */
-.headMeta {
-  margin-left: auto;
-  flex: none;
+.rowRate {
   font-size: var(--fs-xs);
+  color: var(--ink-2);
+}
+
+.rowRate em {
+  margin-left: 4px;
+  font-style: normal;
+  font-size: 10px;
   color: var(--ink-3);
+}
+
+.rowTime {
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+/* 题型行右侧的成绩：正确率在上、时间在下，窄且不抢标题 */
+.rowScore {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  margin-right: 4px;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  text-align: right;
+}
+
+.rowRate {
+  font-size: var(--fs-xs);
+  color: var(--ink-2);
+}
+
+.rowRate em {
+  margin-left: 4px;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--ink-3);
+}
+
+.rowTime {
+  font-size: 10px;
+  color: var(--ink-3);
 }
 
 .subTitle {

@@ -697,6 +697,11 @@
   overflow: visible;
 }
 
+/* 信息匹配只有一排字母方块，撑到 36vh 会空出大半屏 —— 按内容收缩 */
+.qbar[data-compact='true'] {
+  height: auto;
+}
+
 .qbarHead {
   display: flex;
   align-items: center;

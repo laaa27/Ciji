@@ -119,6 +119,17 @@ export function isCloze(p: TrainingPassage): boolean {
   return Boolean(p.bank && p.bank.length > 0)
 }
 
+/** 一次作答的成绩：答对几题、共几道可判分的题 */
+export function scoreOf(
+  passage: TrainingPassage,
+  answers: Record<number, string>,
+): { right: number; total: number; rate: number } {
+  const judged = passage.questions.filter(isObjective)
+  const right = judged.filter((q) => answers[q.no] === q.answer).length
+  const total = judged.length
+  return { right, total, rate: total > 0 ? Math.round((100 * right) / total) : 0 }
+}
+
 /** 题量汇总，列表页显示「阅读理解 · 5 题」用 */
 export function sectionQuestionCount(s: TrainingSection): number {
   return s.passages.reduce((n, p) => n + p.questions.length, 0)

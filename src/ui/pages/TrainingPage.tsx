@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { loadTrainingIndex, loadTrainingPaper } from '@/data/training'
+import { loadPaperProgress, type PaperProgress } from '@/data/trainingProgress'
 import {
   LEVELS,
+  scoreOf,
   type TrainingIndexItem,
   type TrainingLevel,
   type TrainingPaper,
+  type TrainingPassage,
 } from '@/domain/training'
 
 import { findScrollParent } from '../hooks/useScrollStuck'
@@ -24,18 +27,43 @@ import styles from './TrainingPage.module.css'
  * 两层二级视图（套卷详情 / 做题）各用一个 useSubView：返回动画与安卓返回键
  * 都由 hook 接管，后进先出正好是「先退做题、再退套卷」。
  */
-/** ISO → 21:07；不是今天的补上月日，免得把昨天的成绩看成刚做的 */
+/** 题型行右侧的成绩：没交过就不显示，交过才占位 */
+function PassageScore({
+  passage,
+  progress,
+}: {
+  passage: TrainingPassage
+  progress?: { answers: Record<number, string>; submitted: boolean; submittedAt?: string }
+}) {
+  if (!progress?.submitted) return null
+  const { right, total, rate } = scoreOf(passage, progress.answers)
+  return (
+    <span className={styles.rowScore}>
+      <span className={styles.rowRate}>
+        正确率 {rate}%
+        <em>
+          {right}/{total}
+        </em>
+      </span>
+      {progress.submittedAt && <span className={styles.rowTime}>{clockLabel(progress.submittedAt)}</span>}
+    </span>
+  )
+}
+
+/**
+ * ISO → 11月15日 21:07。
+ *
+ * 日期一律带上：做到一半隔天再进来，只有「21:07」会让人以为是今天做的。
+ * 跨年了才补年份。
+ */
 function clockLabel(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return ''
   const hh = String(d.getHours()).padStart(2, '0')
   const mm = String(d.getMinutes()).padStart(2, '0')
-  const today = new Date()
-  const sameDay =
-    d.getFullYear() === today.getFullYear() &&
-    d.getMonth() === today.getMonth() &&
-    d.getDate() === today.getDate()
-  return sameDay ? `${hh}:${mm}` : `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}`
+  const md = `${d.getMonth() + 1}月${d.getDate()}日`
+  const sameYear = d.getFullYear() === new Date().getFullYear()
+  return `${sameYear ? md : `${d.getFullYear()}年${md}`} ${hh}:${mm}`
 }
 
 export default function TrainingPage() {
@@ -45,10 +73,8 @@ export default function TrainingPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [paper, setPaper] = useState<TrainingPaper | null>(null)
-  /** 当前篇目的成绩摘要，显示在试卷标题旁 */
-  const [summary, setSummary] = useState<{ rate: number; at?: string; count?: string } | null>(
-    null,
-  )
+  /** 这套卷各篇的作答进度：列表右侧要显示「正确率 20% / 21:13」 */
+  const [progress, setProgress] = useState<PaperProgress>({})
   const [paperError, setPaperError] = useState<string | null>(null)
 
   const pageRef = useRef<HTMLDivElement>(null)
@@ -103,7 +129,11 @@ export default function TrainingPage() {
     paperNav.open(key)
     toTop()
     void loadTrainingPaper(key)
-      .then(setPaper)
+      .then((p) => {
+        setPaper(p)
+        // 进度可能变过（刚才在里面答了几题），进套卷时重读一次
+        void loadPaperProgress(key).then(setProgress)
+      })
       .catch((e: unknown) => setPaperError(e instanceof Error ? e.message : '套卷读取失败'))
   }
 
@@ -115,7 +145,6 @@ export default function TrainingPage() {
   function openDoc(passageId: string) {
     const s = scroller()
     if (s) paperScroll.current = s.scrollTop
-    setSummary(null)
     docNav.open(passageId)
     toTop()
   }
@@ -123,6 +152,8 @@ export default function TrainingPage() {
   function closeDoc() {
     docNav.close()
     restore(paperScroll)
+    // 刚在里面做过题，回到列表要把最新成绩刷出来
+    if (paper) void loadPaperProgress(paper.key).then(setProgress)
   }
 
   const list = index.filter((p) => p.level === level)
@@ -182,17 +213,10 @@ export default function TrainingPage() {
     const pi = section ? section.passages.findIndex((p) => p.id === docNav.view) : -1
     if (section && pi >= 0) {
       return (
-        <div className={styles.page} data-view="doc" ref={pageRef}>
+        <div key={`doc-${docNav.view}`} className={styles.page} data-view="doc" ref={pageRef}>
           <header className={styles.subHead}>
             <BackButton onClick={closeDoc} />
             <h1 className={styles.subTitle}>{section.label}</h1>
-            {summary && (
-              <span className={styles.headMeta}>
-                正确率 {summary.rate}%
-                {summary.count ? `（${summary.count}）` : ''}
-                {summary.at ? ` · 提交 ${clockLabel(summary.at)}` : ''}
-              </span>
-            )}
           </header>
           <TrainingDoc
             paper={paper}
@@ -205,7 +229,6 @@ export default function TrainingPage() {
                   ? pi + 1
                   : 0
             }
-            onSummary={setSummary}
           />
         </div>
       )
@@ -215,7 +238,7 @@ export default function TrainingPage() {
   // ---- 套卷详情 ----
   if (paperNav.view) {
     return (
-      <div className={styles.page} data-view="paper" ref={pageRef}>
+      <div key={`paper-${paperNav.view}`} className={styles.page} data-view="paper" ref={pageRef}>
         <header className={styles.subHead}>
           <BackButton onClick={closePaper} />
           <h1 className={styles.subTitle}>{paper?.label ?? '套卷'}</h1>
@@ -250,6 +273,7 @@ export default function TrainingPage() {
                         {sec.id === 'listening' ? ' · 音频暂缺' : ''}
                       </span>
                     </span>
+                    <PassageScore passage={p} progress={progress[p.id]} />
                     <span className={styles.chevron} aria-hidden="true" />
                   </button>
                 </li>

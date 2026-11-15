@@ -33,8 +33,6 @@ type Props = {
   passage: TrainingPassage
   /** 第几篇（阅读按题型族连续编号，见 TrainingPage 的 ordinals）；0 表示单篇题型，不标 */
   ordinal: number
-  /** 把「正确率 / 提交时间」交给页面标题栏显示 */
-  onSummary: (s: { rate: number; at?: string; count?: string } | null) => void
 }
 
 /** 一段文字切成「普通文字 / 填空位」两种片段 */
@@ -64,7 +62,7 @@ function splitBlanks(text: string): Chunk[] {
  * 3. 阅读 / 长篇阅读一次一题，可上一题下一题；长篇阅读的段号是排他的，用过就不能再用。
  * 4. 选词填空把空位做进文章里，待选词库常驻下方。
  */
-export default function TrainingDoc({ paper, section, passage, ordinal, onSummary }: Props) {
+export default function TrainingDoc({ paper, section, passage, ordinal }: Props) {
   const fontSize = usePrefs((s) => s.readingFont)
   const cloze = isCloze(passage)
   const hasZh = useMemo(() => hasTranslation(passage), [passage])
@@ -197,16 +195,33 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onSummar
     })
   }, [loaded, paper.key, passage.id, answers, submitted, current, submittedAt, scrollTick])
 
-  // 标题栏的正确率
+  /** 最新的作答状态。切后台、被系统杀掉、点返回时都要靠它落盘 */
+  const latest = useRef({ answers, submitted, current, submittedAt })
+  latest.current = { answers, submitted, current, submittedAt }
+
   useEffect(() => {
-    if (!submitted) {
-      onSummary(null)
-      return
+    if (!loaded) return
+
+    const flush = () => {
+      void savePassageProgress(paper.key, passage.id, {
+        ...latest.current,
+        scroll: scrollRef.current,
+      })
     }
-    const rate = judged.length > 0 ? Math.round((100 * rightCount) / judged.length) : 0
-    // 带上「对了几题」，否则 0% 配 5 题全空会让人以为一道都没做
-    onSummary({ rate, at: submittedAt, count: `${rightCount}/${judged.length}` })
-  }, [submitted, rightCount, judged.length, submittedAt, onSummary])
+    // 切后台（含被系统回收前的回调）与页面隐藏时各存一次 —— 只靠 React 的
+    // effect 落盘的话，进程被杀那一刻的最后一次改动会丢
+    const onHide = () => {
+      if (document.visibilityState === 'hidden') flush()
+    }
+    document.addEventListener('visibilitychange', onHide)
+    window.addEventListener('pagehide', flush)
+
+    return () => {
+      document.removeEventListener('visibilitychange', onHide)
+      window.removeEventListener('pagehide', flush)
+      flush()
+    }
+  }, [loaded, paper.key, passage.id])
 
   function submit() {
     setSubmittedAt(new Date().toISOString())
@@ -486,7 +501,11 @@ function QuestionBar({
     q.options && q.options.length > 0 ? q.options : matchKeys.map((k) => ({ key: k, text: '' }))
 
   return (
-    <div className={styles.qbar} data-collapsed={collapsed ? 'true' : 'false'}>
+    <div
+      className={styles.qbar}
+      data-collapsed={collapsed ? 'true' : 'false'}
+      data-compact={exclusive ? 'true' : 'false'}
+    >
       <div className={styles.qbarHead}>
         <span className={styles.qbarTitle}>
           第 {current + 1} / {total} 题
