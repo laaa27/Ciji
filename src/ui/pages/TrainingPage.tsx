@@ -24,6 +24,20 @@ import styles from './TrainingPage.module.css'
  * 两层二级视图（套卷详情 / 做题）各用一个 useSubView：返回动画与安卓返回键
  * 都由 hook 接管，后进先出正好是「先退做题、再退套卷」。
  */
+/** ISO → 21:07；不是今天的补上月日，免得把昨天的成绩看成刚做的 */
+function clockLabel(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const hh = String(d.getHours()).padStart(2, '0')
+  const mm = String(d.getMinutes()).padStart(2, '0')
+  const today = new Date()
+  const sameDay =
+    d.getFullYear() === today.getFullYear() &&
+    d.getMonth() === today.getMonth() &&
+    d.getDate() === today.getDate()
+  return sameDay ? `${hh}:${mm}` : `${d.getMonth() + 1}月${d.getDate()}日 ${hh}:${mm}`
+}
+
 export default function TrainingPage() {
   const [level, setLevel] = useState<TrainingLevel>('cet4')
   const [index, setIndex] = useState<TrainingIndexItem[]>([])
@@ -31,6 +45,10 @@ export default function TrainingPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [paper, setPaper] = useState<TrainingPaper | null>(null)
+  /** 当前篇目的成绩摘要，显示在试卷标题旁 */
+  const [summary, setSummary] = useState<{ rate: number; at?: string; count?: string } | null>(
+    null,
+  )
   const [paperError, setPaperError] = useState<string | null>(null)
 
   const pageRef = useRef<HTMLDivElement>(null)
@@ -97,6 +115,7 @@ export default function TrainingPage() {
   function openDoc(passageId: string) {
     const s = scroller()
     if (s) paperScroll.current = s.scrollTop
+    setSummary(null)
     docNav.open(passageId)
     toTop()
   }
@@ -167,6 +186,13 @@ export default function TrainingPage() {
           <header className={styles.subHead}>
             <BackButton onClick={closeDoc} />
             <h1 className={styles.subTitle}>{section.label}</h1>
+            {summary && (
+              <span className={styles.headMeta}>
+                正确率 {summary.rate}%
+                {summary.count ? `（${summary.count}）` : ''}
+                {summary.at ? ` · 提交 ${clockLabel(summary.at)}` : ''}
+              </span>
+            )}
           </header>
           <TrainingDoc
             paper={paper}
@@ -179,6 +205,7 @@ export default function TrainingPage() {
                   ? pi + 1
                   : 0
             }
+            onSummary={setSummary}
           />
         </div>
       )

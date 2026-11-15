@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   BLANK_RE,
@@ -11,9 +11,12 @@ import {
   type TrainingQuestion,
   type TrainingSection,
 } from '@/domain/training'
+import { loadPaperProgress, savePassageProgress } from '@/data/trainingProgress'
+import { restoreScroll } from '@/lib/scroll'
 import { tokenize } from '@/lib/text'
 import { usePrefs, type FontSize } from '@/store/prefs'
 
+import { findScrollParent } from '../hooks/useScrollStuck'
 import WordSheet from './WordSheet'
 import styles from './TrainingDoc.module.css'
 
@@ -30,6 +33,8 @@ type Props = {
   passage: TrainingPassage
   /** 第几篇（阅读按题型族连续编号，见 TrainingPage 的 ordinals）；0 表示单篇题型，不标 */
   ordinal: number
+  /** 把「正确率 / 提交时间」交给页面标题栏显示 */
+  onSummary: (s: { rate: number; at?: string; count?: string } | null) => void
 }
 
 /** 一段文字切成「普通文字 / 填空位」两种片段 */
@@ -59,7 +64,7 @@ function splitBlanks(text: string): Chunk[] {
  * 3. 阅读 / 长篇阅读一次一题，可上一题下一题；长篇阅读的段号是排他的，用过就不能再用。
  * 4. 选词填空把空位做进文章里，待选词库常驻下方。
  */
-export default function TrainingDoc({ paper, section, passage, ordinal }: Props) {
+export default function TrainingDoc({ paper, section, passage, ordinal, onSummary }: Props) {
   const fontSize = usePrefs((s) => s.readingFont)
   const cloze = isCloze(passage)
   const hasZh = useMemo(() => hasTranslation(passage), [passage])
@@ -80,6 +85,16 @@ export default function TrainingDoc({ paper, section, passage, ordinal }: Props)
   const [openBlank, setOpenBlank] = useState<number | null>(null)
   /** 选项条收起：想把整屏留给文章时用 */
   const [barCollapsed, setBarCollapsed] = useState(false)
+  /** 提交时间：标题栏要显示「提交 21:07」 */
+  const [submittedAt, setSubmittedAt] = useState<string | undefined>(undefined)
+
+  const rootRef = useRef<HTMLDivElement>(null)
+  /** 最后一次可见时的滚动位置。卸载时不能读实时的 scrollTop（见手册 9.9 第 5 条） */
+  const scrollRef = useRef(0)
+  /** 进度读回来之前不要落盘，否则会用空答案把已有的覆盖掉 */
+  const [loaded, setLoaded] = useState(false)
+  /** 滚动落盘的节流信号 */
+  const [scrollTick, setScrollTick] = useState(0)
 
   const questions = passage.questions
   const judged = questions.filter(isObjective)
@@ -124,11 +139,85 @@ export default function TrainingDoc({ paper, section, passage, ordinal }: Props)
 
   const q = questions[current]
   const bank = passage.bank ?? []
+
+  // ---- 进度：读回来 / 存下去 ----
+
+  useEffect(() => {
+    let alive = true
+    void loadPaperProgress(paper.key).then((all) => {
+      if (!alive) return
+      const saved = all[passage.id]
+      if (saved) {
+        setAnswers(saved.answers ?? {})
+        setSubmitted(Boolean(saved.submitted))
+        setCurrent(saved.current ?? 0)
+        setSubmittedAt(saved.submittedAt)
+        scrollRef.current = saved.scroll ?? 0
+      }
+      setLoaded(true)
+    })
+    return () => {
+      alive = false
+    }
+  }, [paper.key, passage.id])
+
+  // 内容铺开之后再滚回去（首帧高度不够，直接设 scrollTop 会被夹住）
+  useEffect(() => {
+    if (!loaded) return
+    const scroller = findScrollParent(rootRef.current)
+    if (!scroller) return
+    return restoreScroll(scroller, scrollRef.current)
+  }, [loaded])
+
+  // 滚动位置单独节流：答案是小步变化，滚动是连续的，合成一条会写得过于频繁
+  useEffect(() => {
+    const scroller = findScrollParent(rootRef.current)
+    if (!scroller) return
+    let timer = 0
+    const onScroll = () => {
+      scrollRef.current = scroller.scrollTop
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => setScrollTick((x) => x + 1), 500)
+    }
+    scroller.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      scroller.removeEventListener('scroll', onScroll)
+      window.clearTimeout(timer)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!loaded) return
+    void savePassageProgress(paper.key, passage.id, {
+      answers,
+      submitted,
+      current,
+      submittedAt,
+      scroll: scrollRef.current,
+    })
+  }, [loaded, paper.key, passage.id, answers, submitted, current, submittedAt, scrollTick])
+
+  // 标题栏的正确率
+  useEffect(() => {
+    if (!submitted) {
+      onSummary(null)
+      return
+    }
+    const rate = judged.length > 0 ? Math.round((100 * rightCount) / judged.length) : 0
+    // 带上「对了几题」，否则 0% 配 5 题全空会让人以为一道都没做
+    onSummary({ rate, at: submittedAt, count: `${rightCount}/${judged.length}` })
+  }, [submitted, rightCount, judged.length, submittedAt, onSummary])
+
+  function submit() {
+    setSubmittedAt(new Date().toISOString())
+    setSubmitted(true)
+  }
   /** 选词填空：字母 → 单词。卷面上显示词，不显示字母 */
   const wordOf = (key?: string) => (key ? bank.find((b) => b.key === key)?.text : undefined)
 
   return (
     <div
+      ref={rootRef}
       className={styles.doc}
       data-size={fontSize}
       data-qbar={barCollapsed ? 'mini' : 'open'}
@@ -283,7 +372,7 @@ export default function TrainingDoc({ paper, section, passage, ordinal }: Props)
           collapsed={barCollapsed}
           onToggle={() => setBarCollapsed((v) => !v)}
           onFill={fillBlank}
-          onSubmit={() => setSubmitted(true)}
+          onSubmit={submit}
         />
       )}
 
@@ -305,7 +394,7 @@ export default function TrainingDoc({ paper, section, passage, ordinal }: Props)
           onPick={pick}
           onPrev={() => setCurrent((c) => Math.max(0, c - 1))}
           onNext={() => setCurrent((c) => Math.min(questions.length - 1, c + 1))}
-          onSubmit={() => setSubmitted(true)}
+          onSubmit={submit}
         />
       )}
 
@@ -433,7 +522,7 @@ function QuestionBar({
       </div>
 
       {!collapsed && (
-        <div className={styles.qbarBody}>
+        <div key={q.no} className={`${styles.qbarBody} ${styles.qSwitch}`}>
           <p className={styles.stem}>
             <span className={styles.qNo}>{q.no}</span>
             {q.stem ?? '（听力题：无书面题干）'}
@@ -631,7 +720,6 @@ function Analysis({ q, picked, compact }: { q: TrainingQuestion; picked?: string
       <p className={styles.anVerdict} data-right={ok ? 'true' : 'false'}>
         {ok ? '答对了' : `正确答案 ${q.answer ?? '—'}`}
         {an.qtype ? ` · ${an.qtype}` : ''}
-        {q.source ? `（${q.source}）` : ''}
       </p>
       {an.judge && (
         <p className={styles.anRow}>

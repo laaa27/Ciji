@@ -183,6 +183,26 @@
   color: var(--ink);
 }
 
+/* 标题右侧的成绩：正确率 + 提交时间 */
+.headMeta {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* 标题右侧的成绩：正确率 + 提交时间 */
+.headMeta {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .subTitle {
   font-family: var(--font-word);
   font-size: var(--fs-title, var(--fs-display));

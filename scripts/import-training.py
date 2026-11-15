@@ -401,7 +401,9 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--db', required=True)
     ap.add_argument('--out', default='public/training')
-    ap.add_argument('--from', dest='since', type=int, default=2016, help='只导这一年及以后的卷（默认近十年）')
+    ap.add_argument('--from', dest='since', type=int, default=2016, help='四六级的起始年份')
+    ap.add_argument('--kaoyan-from', dest='kaoyan_since', type=int, default=2010,
+                    help='考研的起始年份（题库里考研能追到 1998，但 2010 前的卷面结构与现在差太多）')
     ap.add_argument('--levels', default='cet4,cet6,kaoyan')
     ap.add_argument('--limit', type=int, default=0, help='每级最多导几套（0 = 不限）')
     args = ap.parse_args()
@@ -427,7 +429,8 @@ def main():
         level = level_of(row['paper_key'])
         if level not in levels:
             continue
-        if row['year'] < args.since:
+        floor = args.kaoyan_since if level == 'kaoyan' else args.since
+        if row['year'] < floor:
             continue
         if args.limit and taken[level] >= args.limit:
             continue
