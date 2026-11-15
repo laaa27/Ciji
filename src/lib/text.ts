@@ -34,3 +34,41 @@ export function countWordsIn(sentences: { en: string }[]): number {
   for (const s of sentences) total += countWords(s.en)
   return total
 }
+
+export type Token = {
+  text: string
+  /** 紧跟在词后、中间没有空格的标点（`shop.` 的那个句点） */
+  tail: string
+  isWord: boolean
+}
+
+/**
+ * 按单词切分句子，保留标点和空格。
+ *
+ * `tail` 要跟单词一起渲染成一个不可断的整体 —— 否则浏览器会在 button（inline-block）
+ * 和标点之间断行，句号就孤零零掉到下一行去。
+ *
+ * 阅读页与训练页共用这一份：切词口径不一致的话，同一个词在两边可能一个能点、一个点不到。
+ */
+export function tokenize(sentence: string): Token[] {
+  const parts: Token[] = []
+  const re = wordPattern()
+  let last = 0
+  let m: RegExpExecArray | null
+
+  while ((m = re.exec(sentence)) !== null) {
+    if (m.index > last) parts.push({ text: sentence.slice(last, m.index), tail: '', isWord: false })
+
+    let end = m.index + m[0].length
+    // 只吃「非空白」的尾巴：逗号后的空格必须留在外面，不然下一句会和这个词粘死
+    const glued = /^[^\sA-Za-z]+/.exec(sentence.slice(end))
+    const tail = glued ? glued[0] : ''
+    end += tail.length
+
+    parts.push({ text: m[0], tail, isWord: true })
+    last = end
+  }
+  if (last < sentence.length) parts.push({ text: sentence.slice(last), tail: '', isWord: false })
+
+  return parts
+}

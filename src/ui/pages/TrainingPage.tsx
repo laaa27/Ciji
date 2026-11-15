@@ -1,36 +1,182 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
+import { loadTrainingIndex, loadTrainingPaper } from '@/data/training'
+import {
+  LEVELS,
+  type TrainingIndexItem,
+  type TrainingLevel,
+  type TrainingPaper,
+} from '@/domain/training'
+
+import { findScrollParent } from '../hooks/useScrollStuck'
+import { useSubView } from '../hooks/useSubView'
 import EmptyState from '../components/EmptyState'
-
+import TrainingDoc from '../components/TrainingDoc'
 import styles from './TrainingPage.module.css'
 
 /**
- * 训练页：把真题当练习材料。
+ * 训练页：档位 → 套卷 → 篇目 → 做题。
  *
- * 现在只有界面：档位切换与套卷列表的形状定下来，题目数据还没有来源。
- * 数据接进来时，套卷列表按 `data` → `domain` → `ui` 的方向补，页面本身不用改结构。
+ * 数据是打进包里的静态 JSON（`public/training/`），由 scripts/import-training.py 生成。
+ * 这一页只负责挑卷与切层，做题界面在 `components/TrainingDoc.tsx`。
+ *
+ * 两层二级视图（套卷详情 / 做题）各用一个 useSubView：返回动画与安卓返回键
+ * 都由 hook 接管，后进先出正好是「先退做题、再退套卷」。
  */
-
-const LEVELS = [
-  { key: 'cet4', label: '四级' },
-  { key: 'cet6', label: '六级' },
-  { key: 'kaoyan', label: '考研' },
-] as const
-
-type Level = (typeof LEVELS)[number]['key']
-
 export default function TrainingPage() {
-  /**
-   * 档位只活在本页：还没有题目可挑，记不住上次选了哪档也不影响什么。
-   * 等真要从上次的档位接着练，再按「单值偏好」落到 store/prefs。
-   */
-  const [level, setLevel] = useState<Level>('cet4')
+  const [level, setLevel] = useState<TrainingLevel>('cet4')
+  const [index, setIndex] = useState<TrainingIndexItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
+  const [paper, setPaper] = useState<TrainingPaper | null>(null)
+  const [paperError, setPaperError] = useState<string | null>(null)
+
+  const pageRef = useRef<HTMLDivElement>(null)
+  /** 进下一层之前列表停在哪 */
+  const rootScroll = useRef(0)
+  const paperScroll = useRef(0)
+
+  const paperNav = useSubView<string>()
+  const docNav = useSubView<string>()
+
+  useEffect(() => {
+    let alive = true
+    void loadTrainingIndex()
+      .then((list) => {
+        if (!alive) return
+        setIndex(list)
+        setLoading(false)
+      })
+      .catch((e: unknown) => {
+        if (!alive) return
+        setError(e instanceof Error ? e.message : '题库读取失败')
+        setLoading(false)
+      })
+    return () => {
+      alive = false
+    }
+  }, [])
+
+  /** 切层时滚到顶；返回时用 rAF 等 DOM 换完再恢复 */
+  function scroller(): HTMLElement | null {
+    return findScrollParent(pageRef.current)
+  }
+
+  function toTop() {
+    const s = scroller()
+    if (s) s.scrollTop = 0
+  }
+
+  function restore(pos: { current: number }) {
+    const s = scroller()
+    if (!s || pos.current <= 0) return
+    requestAnimationFrame(() => {
+      s.scrollTop = pos.current
+    })
+  }
+
+  function openPaper(key: string) {
+    const s = scroller()
+    if (s) rootScroll.current = s.scrollTop
+    setPaper(null)
+    setPaperError(null)
+    paperNav.open(key)
+    toTop()
+    void loadTrainingPaper(key)
+      .then(setPaper)
+      .catch((e: unknown) => setPaperError(e instanceof Error ? e.message : '套卷读取失败'))
+  }
+
+  function closePaper() {
+    paperNav.close()
+    restore(rootScroll)
+  }
+
+  function openDoc(passageId: string) {
+    const s = scroller()
+    if (s) paperScroll.current = s.scrollTop
+    docNav.open(passageId)
+    toTop()
+  }
+
+  function closeDoc() {
+    docNav.close()
+    restore(paperScroll)
+  }
+
+  const list = index.filter((p) => p.level === level)
+
+  // ---- 做题 ----
+  if (docNav.view && paper) {
+    const section = paper.sections.find((s) => s.passages.some((p) => p.id === docNav.view))
+    const pi = section ? section.passages.findIndex((p) => p.id === docNav.view) : -1
+    if (section && pi >= 0) {
+      return (
+        <div className={styles.page} data-view="doc" ref={pageRef}>
+          <header className={styles.subHead}>
+            <button type="button" className={styles.back} onClick={closeDoc}>
+              返回
+            </button>
+            <h1 className={styles.subTitle}>{section.label}</h1>
+          </header>
+          <TrainingDoc paper={paper} section={section} passage={section.passages[pi]} index={pi} />
+        </div>
+      )
+    }
+  }
+
+  // ---- 套卷详情 ----
+  if (paperNav.view) {
+    return (
+      <div className={styles.page} data-view="paper" ref={pageRef}>
+        <header className={styles.subHead}>
+          <button type="button" className={styles.back} onClick={closePaper}>
+            返回
+          </button>
+          <h1 className={styles.subTitle}>{paper?.label ?? '套卷'}</h1>
+        </header>
+
+        {paperError && <p className={styles.hint}>{paperError}</p>}
+        {!paper && !paperError && <p className={`${styles.hint} loading-pulse`}>读取中…</p>}
+
+        {paper && (
+          <ul className={styles.sections}>
+            {paper.sections.map((sec) =>
+              sec.passages.map((p, i) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    className={styles.passageRow}
+                    onClick={() => openDoc(p.id)}
+                  >
+                    <span className={styles.passageText}>
+                      <span className={styles.passageName}>
+                        {sec.label}
+                        {sec.passages.length > 1 ? ` · 第 ${i + 1} 篇` : ''}
+                      </span>
+                      <span className={styles.passageMeta}>
+                        {p.questions.length} 题
+                        {sec.id === 'listening' ? ' · 音频暂缺' : ''}
+                      </span>
+                    </span>
+                    <span className={styles.chevron} aria-hidden="true" />
+                  </button>
+                </li>
+              )),
+            )}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
+  // ---- 套卷列表 ----
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-return={paperNav.returning ? 'true' : 'false'} ref={pageRef}>
       <header className={styles.head}>
         <h1 className={styles.title}>训练</h1>
-        <p className={styles.lede}>用真题练手：先自己做，再逐句读。</p>
+        <p className={styles.lede}>用真题练手：先自己做，再逐题看解析。</p>
       </header>
 
       <div className={styles.segments} role="tablist" aria-label="训练档位">
@@ -49,13 +195,33 @@ export default function TrainingPage() {
         ))}
       </div>
 
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>套卷</h2>
-        <EmptyState
-          title="题库还没接入"
-          hint="真题原文、解析与逐句翻译准备好之后，这里会按年份列出套卷。"
-        />
-      </section>
+      {loading && <p className={`${styles.hint} loading-pulse`}>读取中…</p>}
+      {error && <p className={styles.hint}>{error}</p>}
+
+      {!loading && !error && list.length === 0 && (
+        <EmptyState title="这档还没有套卷" hint="题库按年份导入，换一档看看。" />
+      )}
+
+      {list.length > 0 && (
+        <>
+          <p className={styles.count}>{list.length} 套 · 点开按题型逐篇练</p>
+          <ul className={styles.papers}>
+            {list.map((p) => (
+              <li key={p.key}>
+                <button type="button" className={styles.paperRow} onClick={() => openPaper(p.key)}>
+                  <span className={styles.paperText}>
+                    <span className={styles.paperName}>{p.label}</span>
+                    <span className={styles.paperMeta}>
+                      {p.sections.map((s) => s.label).join(' · ')}
+                    </span>
+                  </span>
+                  <span className={styles.chevron} aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
     </div>
   )
 }

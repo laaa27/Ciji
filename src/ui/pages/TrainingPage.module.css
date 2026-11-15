@@ -2,6 +2,29 @@
   padding: calc(var(--safe-top) + var(--sp-7)) var(--gutter) var(--sp-10);
 }
 
+/* 切层方向感与历史页/设置页一致：进去从右边推，回来从左边回 */
+.page[data-view] {
+  animation: sub-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.page[data-return='true'] {
+  animation: back-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes sub-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+}
+
+@keyframes back-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+}
+
 .head {
   margin-bottom: var(--sp-6);
 }
@@ -47,15 +70,109 @@
   color: var(--on-accent);
 }
 
-.section {
-  margin-top: var(--sp-8);
+.hint {
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  padding: var(--sp-4) 0;
+  line-height: 1.6;
 }
 
-.sectionTitle {
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
+.count {
+  margin-top: var(--sp-7);
+  margin-bottom: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+/* 套卷列表 */
+.papers,
+.sections {
+  list-style: none;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+}
+
+.paperRow,
+.passageRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 13px 0;
+  border-bottom: 1px solid var(--rule);
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.paperRow:active,
+.passageRow:active {
+  background: var(--tint);
+}
+
+.paperText,
+.passageText {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.paperName {
+  font-family: var(--font-word);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.passageName {
+  font-size: var(--fs-body);
+  color: var(--ink);
+}
+
+.paperMeta,
+.passageMeta {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  line-height: 1.5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chevron {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid var(--ink-3);
+  border-top: 1.5px solid var(--ink-3);
+  transform: rotate(45deg);
+}
+
+/* 二级页头部 */
+.subHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-5);
+}
+
+.back {
+  flex: none;
+  font-size: var(--fs-sm);
   color: var(--ink-2);
-  padding-bottom: var(--sp-2);
-  margin-bottom: var(--sp-3);
+  padding: 4px 0;
+  transition: color 0.15s ease;
+}
+
+.back:active {
+  color: var(--ink);
+}
+
+.subTitle {
+  font-family: var(--font-word);
+  font-size: var(--fs-title, var(--fs-display));
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
 }

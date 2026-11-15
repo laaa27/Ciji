@@ -29,6 +29,11 @@ scripts/corpus/
 scripts/out/
 scripts/llm.config.json
 
+# 训练题库（由 scripts/import-training.py 从本地题库导出）
+# 不入库的两个理由：内容是第三方整理的真题与解析，仓库是公开的，
+# 提交即构成公开分发；而且 36 套就有 4 MB，跟着源码走没有意义。
+public/training/
+
 # 开发手册只在本地维护，不进仓库（README 不再引用它）
 DEVELOPMENT.md
 
