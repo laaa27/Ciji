@@ -53,18 +53,18 @@ function splitBlanks(text: string): Chunk[] {
 /**
  * 做题界面。
  *
- * 三条与阅读页不同的规则：
- * 1. 答完不立刻判对错 —— 全部答完点「提交答卷」才出答案与解析。当场判分等于边做边看答案，
- *    真题练习就没意义了。
- * 2. 阅读 / 长篇阅读一次只显示一题，选项常驻，可以上一题下一题来回改。
- * 3. 选词填空把空位做进文章里，待选词库常驻下方：先点空位、再点词。
+ * 四条规则，都跟阅读页不同：
+ * 1. 选项条跟词卡一样浮在底栏上方 —— 滑到文章任何位置都能答题，不用来回滚。
+ * 2. 答完不判对错，点「提交答卷」才出答案与解析。当场判分等于边做边看答案。
+ * 3. 阅读 / 长篇阅读一次一题，可上一题下一题；长篇阅读的段号是排他的，用过就不能再用。
+ * 4. 选词填空把空位做进文章里，待选词库常驻下方。
  */
 export default function TrainingDoc({ paper, section, passage, index }: Props) {
   const fontSize = usePrefs((s) => s.readingFont)
   const cloze = isCloze(passage)
   const hasZh = useMemo(() => hasTranslation(passage), [passage])
 
-  /** 听力默认不摊开原文（听写才对，看着原文做听力等于做阅读） */
+  /** 听力默认不摊开原文（听着原文做听力等于做阅读） */
   const [showText, setShowText] = useState(section.id !== 'listening')
   const [showZh, setShowZh] = useState(false)
   const [sizePanel, setSizePanel] = useState(false)
@@ -78,19 +78,29 @@ export default function TrainingDoc({ paper, section, passage, index }: Props) {
   const [activeBlank, setActiveBlank] = useState<number | null>(null)
   /** 选词填空：展开了解析的空位 */
   const [openBlank, setOpenBlank] = useState<number | null>(null)
+  /** 选项条收起：想把整屏留给文章时用 */
+  const [barCollapsed, setBarCollapsed] = useState(false)
 
   const questions = passage.questions
   const judged = questions.filter(isObjective)
   const answeredCount = questions.filter((q) => answers[q.no]).length
   const rightCount = judged.filter((q) => answers[q.no] === q.answer).length
 
-  /** 信息匹配没有选项，用它自己的段号 A..O 当选项 */
+  /**
+   * 信息匹配没有选项，用它自己的段号 A..O 当选项。
+   * 这类题的段号是排他的：一段只能被一句选一次，所以整个题型共享一个已用集合。
+   */
   const matchKeys = useMemo(() => {
-    const labels = passage.paras
-      .map((p) => p.sents[0]?.label)
-      .filter((x): x is string => Boolean(x))
-    return labels.length > 0 ? labels : 'ABCDEFGHIJKLMNO'.split('')
+    const labels = passage.paras.map((p) => p.sents[0]?.label).filter((x): x is string => Boolean(x))
+    return labels.length > 0 ? labels : 'ABCDEFGHIJKLMNOP'.split('')
   }, [passage])
+  const exclusive = !questions.some((q) => (q.options ?? []).length > 0)
+
+  const usedLetters = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const [no, key] of Object.entries(answers)) if (key) map.set(key, Number(no))
+    return map
+  }, [answers])
 
   function pick(no: number, key: string) {
     if (submitted) return
@@ -100,7 +110,7 @@ export default function TrainingDoc({ paper, section, passage, index }: Props) {
   function fillBlank(bankKey: string) {
     if (submitted) return
     // 没点空位就直接点词也能用：落到第一个空着的空位上。
-    // 只允许「先点空位再点词」会让词库那一排在没选中时点了没反应，像坏了
+    // 只允许「先点空位再点词」会让词库那一排在未选中时点了没反应，像坏了
     const target = activeBlank ?? questions.find((x) => !answers[x.no])?.no
     if (target === undefined) return
     setAnswers((prev) => ({ ...prev, [target]: bankKey }))
@@ -112,17 +122,14 @@ export default function TrainingDoc({ paper, section, passage, index }: Props) {
     setAnswers((prev) => ({ ...prev, [no]: '' }))
   }
 
-  /** 哪个空位用了哪个词（同一词只能用一次） */
-  const usedBy = useMemo(() => {
-    const map = new Map<string, number>()
-    for (const [no, key] of Object.entries(answers)) if (key) map.set(key, Number(no))
-    return map
-  }, [answers])
-
   const q = questions[current]
 
   return (
-    <div className={styles.doc} data-size={fontSize}>
+    <div
+      className={styles.doc}
+      data-size={fontSize}
+      data-qbar={cloze ? 'none' : barCollapsed ? 'mini' : 'open'}
+    >
       <div className={styles.toolbar}>
         <span className={styles.meta}>
           {section.label} · 第 {index + 1} 篇 · {questions.length} 题
@@ -248,102 +255,44 @@ export default function TrainingDoc({ paper, section, passage, index }: Props) {
         </p>
       ))}
 
-      {cloze ? (
+      {cloze && (
         <ClozePanel
           questions={questions}
           bank={passage.bank ?? []}
           answers={answers}
-          usedBy={usedBy}
+          usedBy={usedLetters}
           submitted={submitted}
           activeBlank={activeBlank}
           openBlank={openBlank}
           onFill={fillBlank}
           onOpen={setOpenBlank}
+          onSubmitted={() => setSubmitted(true)}
         />
-      ) : (
-        q && (
-          <section className={styles.panel}>
-            <div className={styles.panelHead}>
-              <span className={styles.panelNo}>
-                第 {current + 1} / {questions.length} 题
-              </span>
-              <div className={styles.nav}>
-                <button
-                  type="button"
-                  className={styles.navBtn}
-                  disabled={current === 0}
-                  onClick={() => setCurrent((c) => Math.max(0, c - 1))}
-                >
-                  上一题
-                </button>
-                <button
-                  type="button"
-                  className={styles.navBtn}
-                  disabled={current >= questions.length - 1}
-                  onClick={() => setCurrent((c) => Math.min(questions.length - 1, c + 1))}
-                >
-                  下一题
-                </button>
-              </div>
-            </div>
-
-            <p className={styles.stem}>
-              <span className={styles.qNo}>{q.no}</span>
-              {q.stem ?? '（听力题：无书面题干）'}
-            </p>
-
-            <ul className={styles.opts}>
-              {(q.options && q.options.length > 0
-                ? q.options
-                : matchKeys.map((k) => ({ key: k, text: '' }))
-              ).map((o) => {
-                const chosen = answers[q.no] === o.key
-                let state: string | undefined = chosen ? 'chosen' : undefined
-                if (submitted) {
-                  if (o.key === q.answer) state = 'right'
-                  else if (chosen) state = 'wrong'
-                  else state = undefined
-                }
-                return (
-                  <li key={o.key}>
-                    <button
-                      type="button"
-                      className={styles.opt}
-                      data-state={state}
-                      onClick={() => pick(q.no, o.key)}
-                    >
-                      <span className={styles.optKey}>{o.key}</span>
-                      {o.text && <span className={styles.optText}>{o.text}</span>}
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-
-            {submitted && <Analysis q={q} picked={answers[q.no]} />}
-          </section>
-        )
       )}
 
-      <div className={styles.submitBar}>
-        {submitted ? (
-          <p className={styles.score}>
-            已提交 · 答对 {rightCount} / {judged.length}
-            {answeredCount < questions.length ? `（${questions.length - answeredCount} 题未答）` : ''}
-          </p>
-        ) : (
-          <>
-            <p className={styles.progress}>
-              已答 {answeredCount} / {questions.length} 题
-            </p>
-            <button type="button" className={styles.submit} onClick={() => setSubmitted(true)}>
-              提交答卷
-            </button>
-          </>
-        )}
-      </div>
-
       <p className={styles.foot}>题源：{paper.label}</p>
+
+      {!cloze && q && (
+        <QuestionBar
+          q={q}
+          current={current}
+          total={questions.length}
+          answers={answers}
+          submitted={submitted}
+          exclusive={exclusive}
+          matchKeys={matchKeys}
+          usedLetters={usedLetters}
+          rightCount={rightCount}
+          judgedCount={judged.length}
+          answeredCount={answeredCount}
+          collapsed={barCollapsed}
+          onToggle={() => setBarCollapsed((v) => !v)}
+          onPick={pick}
+          onPrev={() => setCurrent((c) => Math.max(0, c - 1))}
+          onNext={() => setCurrent((c) => Math.min(questions.length - 1, c + 1))}
+          onSubmit={() => setSubmitted(true)}
+        />
+      )}
 
       {sheetWord && (
         <WordSheet
@@ -387,6 +336,148 @@ function Blank({
   )
 }
 
+/** 浮在底栏上方的答题条：与词卡同一个位置关系，滑到文章任何位置都在 */
+function QuestionBar({
+  q,
+  current,
+  total,
+  answers,
+  submitted,
+  exclusive,
+  matchKeys,
+  usedLetters,
+  rightCount,
+  judgedCount,
+  answeredCount,
+  collapsed,
+  onToggle,
+  onPick,
+  onPrev,
+  onNext,
+  onSubmit,
+}: {
+  q: TrainingQuestion
+  current: number
+  total: number
+  answers: Record<number, string>
+  submitted: boolean
+  exclusive: boolean
+  matchKeys: string[]
+  usedLetters: Map<string, number>
+  rightCount: number
+  judgedCount: number
+  answeredCount: number
+  collapsed: boolean
+  onToggle: () => void
+  onPick: (no: number, key: string) => void
+  onPrev: () => void
+  onNext: () => void
+  onSubmit: () => void
+}) {
+  const picked = answers[q.no]
+  const options: TrainingOption[] =
+    q.options && q.options.length > 0 ? q.options : matchKeys.map((k) => ({ key: k, text: '' }))
+
+  return (
+    <div className={styles.qbar} data-collapsed={collapsed ? 'true' : 'false'}>
+      <div className={styles.qbarHead}>
+        <span className={styles.qbarTitle}>
+          第 {current + 1} / {total} 题
+        </span>
+        <div className={styles.qbarNav}>
+          <button type="button" className={styles.navBtn} disabled={current === 0} onClick={onPrev}>
+            上一题
+          </button>
+          <button
+            type="button"
+            className={styles.navBtn}
+            disabled={current >= total - 1}
+            onClick={onNext}
+          >
+            下一题
+          </button>
+          <button type="button" className={styles.navBtn} onClick={onToggle}>
+            {collapsed ? '展开' : '收起'}
+          </button>
+        </div>
+      </div>
+
+      {!collapsed && (
+        <div className={styles.qbarBody}>
+          <p className={styles.stem}>
+            <span className={styles.qNo}>{q.no}</span>
+            {q.stem ?? '（听力题：无书面题干）'}
+          </p>
+
+          {exclusive ? (
+            <ul className={styles.letters}>
+              {options.map((o) => {
+                const chosen = picked === o.key
+                const usedElsewhere = usedLetters.has(o.key) && usedLetters.get(o.key) !== q.no
+                let state: string | undefined
+                if (submitted) {
+                  if (o.key === q.answer) state = 'right'
+                  else if (chosen) state = 'wrong'
+                } else if (chosen) state = 'chosen'
+                return (
+                  <li key={o.key}>
+                    <button
+                      type="button"
+                      className={styles.letter}
+                      data-state={state}
+                      disabled={submitted || usedElsewhere}
+                      onClick={() => onPick(q.no, o.key)}
+                    >
+                      {o.key}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          ) : (
+            <ul className={styles.opts}>
+              {options.map((o) => {
+                const chosen = picked === o.key
+                let state: string | undefined
+                if (submitted) {
+                  if (o.key === q.answer) state = 'right'
+                  else if (chosen) state = 'wrong'
+                } else if (chosen) state = 'chosen'
+                return (
+                  <li key={o.key}>
+                    <button
+                      type="button"
+                      className={styles.opt}
+                      data-state={state}
+                      onClick={() => onPick(q.no, o.key)}
+                    >
+                      <span className={styles.optKey}>{o.key}</span>
+                      {o.text && <span className={styles.optText}>{o.text}</span>}
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          )}
+
+          {submitted && <Analysis q={q} picked={picked} />}
+
+          {submitted ? (
+            <p className={styles.qbarScore}>
+              已提交 · 答对 {rightCount} / {judgedCount}
+              {answeredCount < total ? `（${total - answeredCount} 题未答）` : ''}
+            </p>
+          ) : (
+            <button type="button" className={styles.qbarSubmit} onClick={onSubmit}>
+              提交答卷 · 已答 {answeredCount}/{total}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ClozePanel({
   questions,
   bank,
@@ -397,6 +488,7 @@ function ClozePanel({
   openBlank,
   onFill,
   onOpen,
+  onSubmitted,
 }: {
   questions: TrainingQuestion[]
   bank: TrainingOption[]
@@ -407,8 +499,10 @@ function ClozePanel({
   openBlank: number | null
   onFill: (key: string) => void
   onOpen: (no: number | null) => void
+  onSubmitted: () => void
 }) {
   const right = questions.filter((q) => answers[q.no] === q.answer).length
+  const answered = questions.filter((q) => answers[q.no]).length
 
   return (
     <section className={styles.panel}>
@@ -442,26 +536,41 @@ function ClozePanel({
         })}
       </ul>
 
+      {!submitted && (
+        <button type="button" className={styles.submit} onClick={onSubmitted}>
+          提交答卷 · 已答 {answered}/{questions.length}
+        </button>
+      )}
+
       {submitted && (
-        <ul className={styles.blankList}>
-          {questions.map((q) => {
-            const ok = answers[q.no] === q.answer
-            const open = openBlank === q.no
-            return (
-              <li key={q.no}>
-                <button type="button" className={styles.blankRow} onClick={() => onOpen(open ? null : q.no)}>
-                  <span className={styles.qNo}>{q.no}</span>
-                  <span data-ok={ok ? 'true' : 'false'}>
-                    {answers[q.no] ? `你选 ${answers[q.no]}` : '未答'}
-                    {ok ? ' ✓' : ` · 正确 ${q.answer ?? '—'}`}
-                  </span>
-                  <span className={styles.blankMore}>{open ? '收起' : '解析'}</span>
-                </button>
-                {open && <Analysis q={q} picked={answers[q.no]} compact />}
-              </li>
-            )
-          })}
-        </ul>
+        <>
+          <p className={styles.panelTip}>
+            已提交 · 答对 {right} / {questions.length}
+          </p>
+          <ul className={styles.blankList}>
+            {questions.map((q) => {
+              const ok = answers[q.no] === q.answer
+              const open = openBlank === q.no
+              return (
+                <li key={q.no}>
+                  <button
+                    type="button"
+                    className={styles.blankRow}
+                    onClick={() => onOpen(open ? null : q.no)}
+                  >
+                    <span className={styles.qNo}>{q.no}</span>
+                    <span data-ok={ok ? 'true' : 'false'}>
+                      {answers[q.no] ? `你选 ${answers[q.no]}` : '未答'}
+                      {ok ? ' ✓' : ` · 正确 ${q.answer ?? '—'}`}
+                    </span>
+                    <span className={styles.blankMore}>{open ? '收起' : '解析'}</span>
+                  </button>
+                  {open && <Analysis q={q} picked={answers[q.no]} compact />}
+                </li>
+              )
+            })}
+          </ul>
+        </>
       )}
     </section>
   )

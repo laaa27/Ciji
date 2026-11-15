@@ -660,3 +660,138 @@
   border: 0;
   padding: 0 0 var(--sp-2);
 }
+
+
+/* ---------- 浮起的答题条 ----------
+   与词卡同一个位置关系：贴在底栏上方，滑到文章任何位置都能答题。
+   z-index 低于词卡（50）与底栏玻璃态（40）—— 词卡弹出时应该盖住它。 */
+
+.qbar {
+  position: fixed;
+  left: 10px;
+  right: 10px;
+  bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 8px);
+  z-index: 30;
+  max-height: 52vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  padding: 8px var(--sp-4) var(--sp-3);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+}
+
+.qbarHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.qbarTitle {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.qbarNav {
+  display: flex;
+  gap: 6px;
+  flex: none;
+}
+
+.qbarBody {
+  margin-top: 8px;
+}
+
+.qbarBody .stem {
+  font-size: var(--fs-sm);
+  margin-bottom: var(--sp-3);
+}
+
+.qbarSubmit {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 40px;
+  margin-top: var(--sp-3);
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 2px;
+  font-size: var(--fs-sm);
+}
+
+.qbarSubmit:active {
+  opacity: 0.85;
+}
+
+.qbarScore {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  text-align: center;
+}
+
+/* 长文阅读 / 信息匹配：段号只占一个小方块，别把整屏留给 A–O */
+.letters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.letter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  font-family: var(--font-word);
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  transition: border-color 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+
+.letter[data-state='chosen'] {
+  border-color: var(--ink);
+  color: var(--ink);
+  background: var(--tint);
+}
+
+.letter[data-state='right'] {
+  border-color: var(--state-new);
+  color: var(--state-new);
+  background: var(--tint-ok);
+}
+
+.letter[data-state='wrong'] {
+  border-color: var(--state-forget);
+  color: var(--state-forget);
+}
+
+.letter:disabled {
+  opacity: 0.3;
+}
+
+.letter[data-state='right']:disabled,
+.letter[data-state='wrong']:disabled {
+  opacity: 1;
+}
+
+/* 答题条占掉的高度：给内容留出滚动余量，否则最后几行永远压在条下面 */
+.doc[data-qbar='open'] {
+  padding-bottom: 44vh;
+}
+
+.doc[data-qbar='mini'] {
+  padding-bottom: 76px;
+}
