@@ -388,19 +388,20 @@ def level_of(key):
     return 'cet6'
 
 
-def exam_label(key, level, year, set_no):
+def exam_label(key, level, year, month, set_no):
+    """列表里一眼能分清是哪一场 —— 只写年份的话，6 月和 12 月会混在一起。"""
     if level == 'kaoyan':
         if 'historical' in key:
-            return '%d 年考研英语（早年统考）' % year
-        return '%d 年考研英语%s' % (year, '一' if set_no == 1 else '二')
-    return '%d 年%s第%d套' % (year, '四级' if level == 'cet4' else '六级', set_no)
+            return '%d 年 · 早年统考' % year
+        return '%d 年 · 英语%s' % (year, '一' if set_no == 1 else '二')
+    return '%d 年 %d 月 · 第 %d 套' % (year, month, set_no)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--db', required=True)
     ap.add_argument('--out', default='public/training')
-    ap.add_argument('--from', dest='since', type=int, default=2024, help='只导这一年及以后的卷')
+    ap.add_argument('--from', dest='since', type=int, default=2016, help='只导这一年及以后的卷（默认近十年）')
     ap.add_argument('--levels', default='cet4,cet6,kaoyan')
     ap.add_argument('--limit', type=int, default=0, help='每级最多导几套（0 = 不限）')
     args = ap.parse_args()
@@ -445,7 +446,7 @@ def main():
             'year': row['year'],
             'month': row['month'],
             'setNo': row['set_no'],
-            'label': exam_label(row['paper_key'], level, row['year'], row['set_no']),
+            'label': exam_label(row['paper_key'], level, row['year'], row['month'], row['set_no']),
             'sections': sections,
         }
 

@@ -84,6 +84,20 @@
   color: var(--ink-3);
 }
 
+/* 年份分组：一年一块，标题只做分界，不抢套卷名的注意力 */
+.yearBlock {
+  margin-top: var(--sp-5);
+}
+
+.year {
+  font-family: var(--font-word);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  padding-bottom: 2px;
+}
+
 /* 套卷列表 */
 .papers,
 .sections {

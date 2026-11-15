@@ -107,6 +107,18 @@ export default function TrainingPage() {
 
   const list = index.filter((p) => p.level === level)
 
+  /**
+   * 按年份分组：一百多套平铺下来，光靠「2026 年 6 月 · 第 3 套」这行字分不清年与年
+   * 的界线。分组之后每一年的第一行就是分界，眼睛有落点。
+   */
+  const byYear = new Map<number, TrainingIndexItem[]>()
+  for (const p of list) {
+    const arr = byYear.get(p.year)
+    if (arr) arr.push(p)
+    else byYear.set(p.year, [p])
+  }
+  const years = [...byYear.keys()].sort((a, b) => b - a)
+
   // ---- 做题 ----
   if (docNav.view && paper) {
     const section = paper.sections.find((s) => s.passages.some((p) => p.id === docNav.view))
@@ -205,21 +217,31 @@ export default function TrainingPage() {
       {list.length > 0 && (
         <>
           <p className={styles.count}>{list.length} 套 · 点开按题型逐篇练</p>
-          <ul className={styles.papers}>
-            {list.map((p) => (
-              <li key={p.key}>
-                <button type="button" className={styles.paperRow} onClick={() => openPaper(p.key)}>
-                  <span className={styles.paperText}>
-                    <span className={styles.paperName}>{p.label}</span>
-                    <span className={styles.paperMeta}>
-                      {p.sections.map((s) => s.label).join(' · ')}
-                    </span>
-                  </span>
-                  <span className={styles.chevron} aria-hidden="true" />
-                </button>
-              </li>
-            ))}
-          </ul>
+          {years.map((year) => (
+            <section key={year} className={styles.yearBlock}>
+              <h2 className={styles.year}>{year}</h2>
+              <ul className={styles.papers}>
+                {(byYear.get(year) ?? []).map((p) => (
+                  <li key={p.key}>
+                    <button
+                      type="button"
+                      className={styles.paperRow}
+                      onClick={() => openPaper(p.key)}
+                    >
+                      <span className={styles.paperText}>
+                        <span className={styles.paperName}>{p.label}</span>
+                        <span className={styles.paperMeta}>
+                          {p.sections.length} 类题型 ·{' '}
+                          {p.sections.reduce((n, s) => n + s.questions, 0)} 题
+                        </span>
+                      </span>
+                      <span className={styles.chevron} aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
         </>
       )}
     </div>
