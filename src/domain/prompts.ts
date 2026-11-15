@@ -141,7 +141,9 @@ export const LEVEL_SPEC: Record<ArticleLevel, LevelSpec> = {
     veryLong: 3,
     shortSents: 2,
     simpleRatio: [0.22, 0.27],
-    passive: [2, 10],
+    // 上界 15 而不是 10：v10 实测考研被动 16%（长句变多带来的副作用），真题逐篇最高有 17%；
+    // 卡 10 会把合格稿反复打回重写，卡 15 仍能拦住"通篇被动"的学术腔
+    passive: [2, 15],
     paragraphs: [4, 4],
     syntax:
       '以「长句但结构清楚」为主：允许一层定语从句 + 一层状语从句、非谓语短语作后置定语；' +
