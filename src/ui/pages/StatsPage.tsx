@@ -222,21 +222,14 @@ export default function StatsPage({ active }: { active: boolean }) {
   const [reads, setReads] = useState<ReadingDay[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    let alive = true
-    void Promise.all([getAllDays(), getAllReadingDays()]).then(([dayList, readList]) => {
-      if (!alive) return
-      setDays(dayList)
-      setReads(readList)
-      setLoading(false)
-    })
-    return () => {
-      alive = false
-    }
-  }, [])
-
-  // 页面挂载后一直留着（App 的栏目缓存），每次切回来都要重读，
-  // 否则刚在阅读页攒的时长不会出现在图上
+  /**
+   * 只在「统计正被看着」时读一遍。
+   *
+   * 它原先是底栏的一级栏目，App 会常驻挂载，所以非靠 active 由 false 变 true
+   * 才能把刚攒下的阅读时长读进来。现在它是历史页的二级视图，打开即挂载、
+   * 关掉即卸载 —— 这一个 effect 就覆盖了「每次打开都拿最新数据」，
+   * 不必再保留一次挂载时读取（那会让每次打开都读两遍）。
+   */
   useEffect(() => {
     if (!active) return
     let alive = true
@@ -244,6 +237,7 @@ export default function StatsPage({ active }: { active: boolean }) {
       if (!alive) return
       setDays(dayList)
       setReads(readList)
+      setLoading(false)
     })
     return () => {
       alive = false
@@ -295,9 +289,7 @@ export default function StatsPage({ active }: { active: boolean }) {
   }, [days])
 
   return (
-    <div className={styles.page}>
-      <h1 className={styles.title}>统计</h1>
-
+    <>
       {loading && <p className={`${styles.hint} loading-pulse`}>读取中…</p>}
 
       {!loading && days.length === 0 && (
@@ -373,6 +365,6 @@ export default function StatsPage({ active }: { active: boolean }) {
           </section>
         </>
       )}
-    </div>
+    </>
   )
 }

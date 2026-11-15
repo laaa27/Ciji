@@ -1,0 +1,61 @@
+.page {
+  padding: calc(var(--safe-top) + var(--sp-7)) var(--gutter) var(--sp-10);
+}
+
+.head {
+  margin-bottom: var(--sp-6);
+}
+
+.title {
+  font-family: var(--font-word);
+  font-size: var(--fs-display);
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.lede {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--ink-3);
+  line-height: 1.6;
+}
+
+/* 档位分段：与设置页的分段选择同形，三档等宽 */
+.segments {
+  display: flex;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.segment {
+  flex: 1;
+  padding: 9px 6px;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  border-right: 1px solid var(--rule-strong);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.segment:last-child {
+  border-right: 0;
+}
+
+.segment[data-on='true'] {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.section {
+  margin-top: var(--sp-8);
+}
+
+.sectionTitle {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--ink-2);
+  padding-bottom: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}

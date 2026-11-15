@@ -255,7 +255,7 @@ await page.reload({ waitUntil: 'networkidle0' })
 
 const tabs = await page.$$('nav button')
 const which = process.argv[3] || 'history'
-const idx = { today: 0, history: 1, reading: 2, stats: 3, settings: 4 }[which] ?? 1
+const idx = { today: 0, history: 1, reading: 2, training: 3, settings: 4 }[which] ?? 1
 if (tabs[idx]) await tabs[idx].click()
 await new Promise((r) => setTimeout(r, 700))
 

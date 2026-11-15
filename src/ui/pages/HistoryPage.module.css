@@ -2,6 +2,29 @@
   padding: calc(var(--safe-top) + var(--sp-7)) var(--gutter) var(--sp-10);
 }
 
+/* 进统计「从右边推进来」，返回时列表「从左边回来一点」——与设置页同一套方向感 */
+.page[data-view] {
+  animation: sub-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.page[data-return='true'] {
+  animation: back-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes sub-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+}
+
+@keyframes back-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+}
+
 .titleRow {
   display: flex;
   align-items: baseline;
@@ -17,19 +40,65 @@
   letter-spacing: -0.02em;
 }
 
-/* 全局释义开关：样式沿用今日页「释义」按钮（下划线高亮） */
-.glossToggle {
+/* 标题右侧的入口（统计 / 释义） */
+.actions {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+/* 沿用今日页那个下划线高亮：默认细体次要色，开启/当前项实色带下划线 */
+.entry {
   font-size: var(--fs-xs);
   color: var(--ink-2);
   padding: 6px 0 6px 6px;
   transition: color 0.15s ease;
 }
 
-.glossToggle[data-on='true'] {
+.entry[data-on='true'] {
   color: var(--ink);
   text-decoration: underline;
   text-underline-offset: 4px;
   text-decoration-thickness: 1px;
+}
+
+/* 「统计」是入口不是开关，给个小箭头把它和旁边的「释义」区分开 */
+.chevron {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  margin-left: 5px;
+  border-right: 1.5px solid currentColor;
+  border-top: 1.5px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
+}
+
+/* 二级页头部 */
+.subHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-6);
+}
+
+.back {
+  flex: none;
+  font-size: var(--fs-sm);
+  color: var(--ink-2);
+  padding: 4px 0;
+  transition: color 0.15s ease;
+}
+
+.back:active {
+  color: var(--ink);
+}
+
+.subTitle {
+  font-family: var(--font-word);
+  font-size: var(--fs-title, var(--fs-display));
+  font-weight: 500;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
 }
 
 .hint {

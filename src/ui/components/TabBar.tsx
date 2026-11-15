@@ -1,13 +1,13 @@
 import { useGlass } from '@/store/glass'
 import styles from './TabBar.module.css'
 
-export type TabKey = 'today' | 'history' | 'reading' | 'stats' | 'settings'
+export type TabKey = 'today' | 'history' | 'reading' | 'training' | 'settings'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'today', label: '今日' },
   { key: 'history', label: '历史' },
   { key: 'reading', label: '阅读' },
-  { key: 'stats', label: '统计' },
+  { key: 'training', label: '训练' },
   { key: 'settings', label: '设置' },
 ]
 

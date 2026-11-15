@@ -1,15 +1,5 @@
-.page {
-  padding: calc(var(--safe-top) + var(--sp-7)) var(--gutter) var(--sp-10);
-}
-
-.title {
-  font-family: var(--font-word);
-  font-size: var(--fs-display);
-  font-weight: 500;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-  margin-bottom: var(--sp-6);
-}
+/* 统计是历史页的二级视图：外层的边距由 HistoryPage 的 .page 提供，
+   这里只管内容块之间的节奏（标题栏与返回按钮也归历史页） */
 
 .summary {
   font-size: var(--fs-body);

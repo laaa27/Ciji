@@ -7,7 +7,7 @@ import TabBar, { type TabKey } from './ui/components/TabBar'
 import TodayPage from './ui/pages/TodayPage'
 import HistoryPage from './ui/pages/HistoryPage'
 import ReadingPage from './ui/pages/ReadingPage'
-import StatsPage from './ui/pages/StatsPage'
+import TrainingPage from './ui/pages/TrainingPage'
 import SettingsPage from './ui/pages/SettingsPage'
 import { restoreScroll } from '@/lib/scroll'
 import { useLlm } from '@/store/llm'
@@ -203,7 +203,7 @@ export default function App() {
           {visited.has('today') && <TodayPage onGoSettings={() => changeTab('settings')} />}
         </div>
         <div className={styles.slot} data-active={tab === 'history'}>
-          {visited.has('history') && <HistoryPage />}
+          {visited.has('history') && <HistoryPage active={tab === 'history'} />}
         </div>
         <div className={styles.slot} data-active={tab === 'reading'}>
           {visited.has('reading') && (
@@ -213,8 +213,8 @@ export default function App() {
             />
           )}
         </div>
-        <div className={styles.slot} data-active={tab === 'stats'}>
-          {visited.has('stats') && <StatsPage active={tab === 'stats'} />}
+        <div className={styles.slot} data-active={tab === 'training'}>
+          {visited.has('training') && <TrainingPage />}
         </div>
         <div className={styles.slot} data-active={tab === 'settings'}>
           {visited.has('settings') && <SettingsPage />}

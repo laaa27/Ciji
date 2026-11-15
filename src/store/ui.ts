@@ -16,7 +16,14 @@ const READ_PREFIX = 'cjt.read.'
 const SHOW_ZH_KEY = 'cjt.showzh'
 const GEN_KEY = 'cjt.gen'
 
-export const TABS = ['today', 'history', 'reading', 'stats', 'settings'] as const
+export const TABS = ['today', 'history', 'reading', 'training', 'settings'] as const
+
+/**
+ * 0.24 以前的「统计」曾是一级栏目。它现在降为历史页的二级视图，
+ * 磁盘上仍留着 `cjt.tab = "stats"` 的机器要落到历史页 ——
+ * 直接让校验失败回退「今日」，用户会以为统计数据丢了。
+ */
+const LEGACY_TABS: Record<string, TabKey> = { stats: 'history' }
 
 function read(key: string): string | null {
   try {
@@ -46,6 +53,7 @@ function drop(key: string): void {
 
 export function readTab(): TabKey {
   const raw = read(TAB_KEY)
+  if (raw && raw in LEGACY_TABS) return LEGACY_TABS[raw]
   return TABS.includes(raw as (typeof TABS)[number]) ? (raw as TabKey) : 'today'
 }
 

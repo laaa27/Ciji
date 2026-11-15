@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { getAllDays } from '@/data/store'
 import { lookupWords } from '@/domain/lookup'
@@ -6,8 +6,11 @@ import { groupCounts, lineState, responseNote, type TodaySnapshot, type WordStat
 import { monthDay, weekday } from '@/lib/date'
 
 import { useGlossToggle } from '../hooks/useGlossToggle'
+import { useSubView } from '../hooks/useSubView'
+import { findScrollParent } from '../hooks/useScrollStuck'
 import WordRow from '../components/WordRow'
 import EmptyState from '../components/EmptyState'
+import StatsPage from './StatsPage'
 import styles from './HistoryPage.module.css'
 
 const ORDER: WordState[] = ['new', 'vague', 'forget']
@@ -108,12 +111,32 @@ function DayItem({
   )
 }
 
-export default function HistoryPage() {
+/**
+ * 本页的二级视图只有统计一个。
+ *
+ * 统计原先是底栏的一格，独立成页却和这里读的是同一份日期数据 ——
+ * 看板和明细分成两个入口，用户在两边来回切，反而要记两次位置。
+ * 收进来之后，底栏那一格留给训练。
+ */
+type Sub = 'stats'
+
+export default function HistoryPage({ active }: { active: boolean }) {
   const [days, setDays] = useState<TodaySnapshot[]>([])
   const [loading, setLoading] = useState(true)
   const [open, setOpen] = useState<string | null>(null)
   /** 释义展开：总闸 + 单个词的临时覆盖（默认收起，与今日页一致） */
   const gloss = useGlossToggle('glossHistory')
+
+  const pageRef = useRef<HTMLDivElement>(null)
+  /** 进统计之前列表停在哪 —— 返回时要回到原处 */
+  const listScroll = useRef(0)
+
+  const sub = useSubView<Sub>({
+    onEnter: () => {
+      const scroller = findScrollParent(pageRef.current)
+      if (scroller) listScroll.current = scroller.scrollTop
+    },
+  })
 
   useEffect(() => {
     let alive = true
@@ -127,20 +150,64 @@ export default function HistoryPage() {
     }
   }, [])
 
+  // 进出统计时重置/恢复滚动：看板从顶部看，返回时接着刚才的日期往下翻。
+  // 位置为 0 就不恢复 —— 首帧那次 effect 不能去动 App 记下来的栏目位置。
+  useEffect(() => {
+    const scroller = findScrollParent(pageRef.current)
+    if (!scroller) return
+
+    if (sub.isOpen) {
+      scroller.scrollTop = 0
+      return
+    }
+    if (listScroll.current <= 0) return
+
+    const raf = requestAnimationFrame(() => {
+      scroller.scrollTop = listScroll.current
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [sub.isOpen])
+
+  if (sub.view === 'stats') {
+    return (
+      <div className={styles.page} data-view="stats" ref={pageRef}>
+        <header className={styles.subHead}>
+          <button type="button" className={styles.back} onClick={sub.close}>
+            返回
+          </button>
+          <h1 className={styles.subTitle}>统计</h1>
+        </header>
+
+        <StatsPage active={active} />
+      </div>
+    )
+  }
+
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-return={sub.returning ? 'true' : 'false'} ref={pageRef}>
       <header className={styles.titleRow}>
         <h1 className={styles.title}>历史</h1>
-        {days.length > 0 && (
-          <button
-            type="button"
-            className={styles.glossToggle}
-            data-on={gloss.showGloss}
-            onClick={gloss.toggleAll}
-          >
-            释义
+
+        <div className={styles.actions}>
+          {/*
+            统计入口不跟「有没有记录」走：没有学习记录时它还有阅读时长可看，
+            而释义按钮没有词就无事可做。
+          */}
+          <button type="button" className={styles.entry} onClick={() => sub.open('stats')}>
+            统计
+            <span className={styles.chevron} aria-hidden="true" />
           </button>
-        )}
+          {days.length > 0 && (
+            <button
+              type="button"
+              className={styles.entry}
+              data-on={gloss.showGloss}
+              onClick={gloss.toggleAll}
+            >
+              释义
+            </button>
+          )}
+        </div>
       </header>
 
       {loading && <p className={`${styles.hint} loading-pulse`}>读取中…</p>}
