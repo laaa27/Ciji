@@ -44,6 +44,16 @@ export function diffDays(a: string, b: string): number {
   return Math.round((t1 - t2) / 86_400_000)
 }
 
+/** 把秒数排成 05:24 / 1:02:03 这样的表盘格式 */
+export function fmtDuration(sec: number): string {
+  const s = Math.max(0, Math.floor(sec))
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  const ss = String(s % 60).padStart(2, '0')
+  const mm = String(m).padStart(2, '0')
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+}
+
 const timeFmt = new Intl.DateTimeFormat('zh-CN', {
   timeZone: 'Asia/Shanghai',
   hour: '2-digit',

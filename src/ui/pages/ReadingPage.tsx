@@ -24,7 +24,7 @@ import {
   type GenProgress,
 } from '@/domain/article'
 import { copyText } from '@/lib/clipboard'
-import { dateKey, monthDay } from '@/lib/date'
+import { dateKey, fmtDuration, monthDay } from '@/lib/date'
 import { restoreScroll } from '@/lib/scroll'
 import { tokenize } from '@/lib/text'
 import { getLastLlmResponse } from '@/api/llm'
@@ -63,16 +63,6 @@ const FONT_SIZES: { key: FontSize; label: string }[] = [
  * 段内句子连排（读起来是连续的一段文字），段与段之间才留白。
  */
 const SENTENCES_PER_PARA = 4
-
-/** 把秒数排成 05:24 / 1:02:03 这样的表盘格式 */
-function fmtDuration(sec: number): string {
-  const h = Math.floor(sec / 3600)
-  const m = Math.floor((sec % 3600) / 60)
-  const s = sec % 60
-  const mm = String(m).padStart(2, '0')
-  const ss = String(s).padStart(2, '0')
-  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
-}
 
 export default function ReadingPage({ onGoSettings, active }: Props) {
   // 生成是异步的，完成那一刻的 active 才是准的（过程中用户可能已经切走）

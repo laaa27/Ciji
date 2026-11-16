@@ -12,9 +12,11 @@ import {
   type TrainingSection,
 } from '@/domain/training'
 import { tokenize } from '@/lib/text'
+import { fmtDuration } from '@/lib/date'
 import { usePrefs, type FontSize } from '@/store/prefs'
 
 import WordSheet from './WordSheet'
+import { useStopwatch } from '../hooks/useStopwatch'
 import styles from './TrainingDoc.module.css'
 
 const FONT_SIZES: { key: FontSize; label: string }[] = [
@@ -95,6 +97,9 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
   const answeredCount = questions.filter((q) => answers[q.no]).length
   const rightCount = judged.filter((q) => answers[q.no] === q.answer).length
 
+  /** 本次做题用时：进入即计时，提交后停表；开着词卡查词也算在做题里 */
+  const elapsed = useStopwatch(!submitted)
+
   /**
    * 信息匹配没有选项，用它自己的段号 A..O 当选项。
    * 这类题的段号是排他的：一段只能被一句选一次，所以整个题型共享一个已用集合。
@@ -155,6 +160,15 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
           {ordinal > 0 ? ` · 第 ${ordinal} 篇` : ''} · {questions.length} 题
         </span>
         <div className={styles.actions}>
+          {/* 用时：不走按钮逻辑，始终显示；计计时中用主色提示「在计」 */}
+          <span
+            className={styles.action}
+            data-timer="true"
+            data-on={!submitted}
+            aria-label="本次做题用时"
+          >
+            {fmtDuration(elapsed)}
+          </span>
           {section.id === 'listening' && (
             <button
               type="button"
