@@ -5,6 +5,8 @@ import {
   loadTrainingPaper,
   readScore,
   saveScore,
+  scoreKey,
+  sweepLegacyScores,
   type TrainScore,
 } from '@/data/training'
 import { fmtDuration } from '@/lib/date'
@@ -131,6 +133,8 @@ export default function TrainingPage() {
 
   useEffect(() => {
     let alive = true
+    // 0.24.13 及以前的成绩键裸用篇目 id，跨卷串号，全是脏数据——进页先清
+    sweepLegacyScores()
     void loadTrainingIndex()
       .then((list) => {
         if (!alive) return
@@ -172,12 +176,12 @@ export default function TrainingPage() {
     toTop()
     void loadTrainingPaper(key)
       .then((p) => {
-        // 这套卷的历史成绩铺进来（上次会话提交过的那些）
+        // 这套卷的历史成绩铺进来（上次会话提交过的那些；键带套卷 key，见 scoreKey）
         const cached: Record<string, TrainScore> = {}
         for (const sec of p.sections) {
           for (const pg of sec.passages) {
-            const s = readScore(pg.id)
-            if (s) cached[pg.id] = s
+            const s = readScore(p.key, pg.id)
+            if (s) cached[scoreKey(p.key, pg.id)] = s
           }
         }
         if (Object.keys(cached).length > 0) {
@@ -277,9 +281,14 @@ export default function TrainingPage() {
                   : 0
             }
             onScore={(sc) => {
-              const score: TrainScore = { right: sc.right, total: sc.total, at: sc.at, secs: sc.secs }
-              saveScore(sc.passageId, score)
-              setScores((prev) => ({ ...prev, [sc.passageId]: score }))
+              const score: TrainScore = {
+                right: sc.right,
+                total: sc.total,
+                at: sc.at,
+                secs: sc.secs,
+              }
+              saveScore(paper.key, sc.passageId, score)
+              setScores((prev) => ({ ...prev, [scoreKey(paper.key, sc.passageId)]: score }))
             }}
           />
         </div>
@@ -289,6 +298,7 @@ export default function TrainingPage() {
 
   // ---- 套卷详情 ----
   if (paperNav.view) {
+    const paperKey = paperNav.view
     return (
       <div key={`paper-${paperNav.view}`} className={styles.page} data-view="paper" ref={pageRef}>
         <header className={styles.subHead}>
@@ -324,7 +334,7 @@ export default function TrainingPage() {
                         {p.questions.length} 题
                       </span>
                     </span>
-                    <PassageScore score={scores[p.id]} />
+                    <PassageScore score={scores[scoreKey(paperKey, p.id)]} />
                     <span className={styles.chevron} aria-hidden="true" />
                   </button>
                 </li>

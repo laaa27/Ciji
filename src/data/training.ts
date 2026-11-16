@@ -58,10 +58,30 @@ export type TrainScore = {
   secs?: number
 }
 
-export function readScore(passageId: string): TrainScore | null {
+/** 成绩键：套卷 key + 篇目 id。篇目 id 只在套卷内唯一（cloze-1 每套卷都有），
+    裸用会跨卷串成绩——0.24.13 及以前的 bug 正是这么来的 */
+export function scoreKey(paperKey: string, passageId: string): string {
+  return `${paperKey}#${passageId}`
+}
+
+/** 0.24.13 及以前落盘的成绩键裸用篇目 id，全是串了卷的脏数据；进训练页时清一次 */
+export function sweepLegacyScores(): void {
+  try {
+    const stale: string[] = []
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const k = window.localStorage.key(i)
+      if (k && k.startsWith(SCORE_PREFIX) && !k.includes('#')) stale.push(k)
+    }
+    for (const k of stale) window.localStorage.removeItem(k)
+  } catch {
+    // localStorage 不可用就没有可清的
+  }
+}
+
+export function readScore(paperKey: string, passageId: string): TrainScore | null {
   let raw: string | null = null
   try {
-    raw = window.localStorage.getItem(SCORE_PREFIX + passageId)
+    raw = window.localStorage.getItem(SCORE_PREFIX + scoreKey(paperKey, passageId))
   } catch {
     return null
   }
@@ -75,9 +95,12 @@ export function readScore(passageId: string): TrainScore | null {
   }
 }
 
-export function saveScore(passageId: string, score: TrainScore): void {
+export function saveScore(paperKey: string, passageId: string, score: TrainScore): void {
   try {
-    window.localStorage.setItem(SCORE_PREFIX + passageId, JSON.stringify(score))
+    window.localStorage.setItem(
+      SCORE_PREFIX + scoreKey(paperKey, passageId),
+      JSON.stringify(score),
+    )
   } catch {
     // 配额满 / 隐私模式：成绩丢了不影响做题，不打扰用户
   }
