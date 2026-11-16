@@ -73,13 +73,16 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
   const [showZh, setShowZh] = useState(false)
   const [sizePanel, setSizePanel] = useState(false)
   const [sheetWord, setSheetWord] = useState<string | null>(null)
-  /** 手动高亮的词（小写）。换篇目时组件会重挂载，自然清空 */
+  /**
+   * 手动高亮：键是「段-句-片段-词序号」而不是词文本 —— 标记绑定位置，
+   * 同一个词在别处的出现不跟着亮。换篇目时组件会重挂载，自然清空。
+   */
   const [marks, setMarks] = useState<string[]>([])
+  /** 当前词卡绑定的实例键：在词卡里点变形换词后，高亮仍落在最初点中的位置 */
+  const [markKey, setMarkKey] = useState('')
   const markSet = useMemo(() => new Set(marks), [marks])
-  const toggleMark = (w: string) => {
-    const key = w.toLowerCase()
+  const toggleMark = (key: string) =>
     setMarks((prev) => (prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]))
-  }
 
   /** 题号 → 选项字母 */
   const [answers, setAnswers] = useState<Record<number, string>>({})
@@ -189,11 +192,6 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
               译文
             </button>
           )}
-          {marks.length > 0 && (
-            <button type="button" className={styles.action} onClick={() => setMarks([])}>
-              清除高亮
-            </button>
-          )}
           <button
             type="button"
             className={styles.action}
@@ -267,8 +265,13 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
                               <button
                                 type="button"
                                 className={styles.word}
-                                data-mark={markSet.has(part.text.toLowerCase()) ? 'true' : undefined}
-                                onClick={() => setSheetWord(part.text)}
+                                data-mark={
+                                  markSet.has(`${pi}-${si}-${ci}-${j}`) ? 'true' : undefined
+                                }
+                                onClick={() => {
+                                  setMarkKey(`${pi}-${si}-${ci}-${j}`)
+                                  setSheetWord(part.text)
+                                }}
                               >
                                 {part.text}
                               </button>
@@ -348,8 +351,8 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
       {sheetWord && (
         <WordSheet
           word={sheetWord}
-          marked={markSet.has(sheetWord.toLowerCase())}
-          onHighlight={() => toggleMark(sheetWord)}
+          marked={markSet.has(markKey)}
+          onHighlight={() => toggleMark(markKey)}
           onClose={() => setSheetWord(null)}
           onPick={(next) => setSheetWord(next)}
         />
