@@ -8,12 +8,12 @@
 基于墨墨背单词开放 API 的 Android 应用，数据只存在本机。
 
 <p align="center">
-  <img src="screenshots/today.jpg?v=0237" width="16%" alt="今日" />
-  <img src="screenshots/history.jpg?v=0237" width="16%" alt="历史" />
-  <img src="screenshots/reading.jpg?v=0237" width="16%" alt="阅读" />
-  <img src="screenshots/generate.jpg?v=0237" width="16%" alt="生成文章" />
-  <img src="screenshots/stats.jpg?v=0237" width="16%" alt="统计" />
-  <img src="screenshots/settings.jpg?v=0237" width="16%" alt="设置" />
+  <img src="screenshots/today.jpg?v=02410" width="16%" alt="今日" />
+  <img src="screenshots/history.jpg?v=02410" width="16%" alt="历史" />
+  <img src="screenshots/reading.jpg?v=02410" width="16%" alt="阅读" />
+  <img src="screenshots/training.png?v=02410" width="16%" alt="训练" />
+  <img src="screenshots/generate.jpg?v=02410" width="16%" alt="生成文章" />
+  <img src="screenshots/settings.jpg?v=02410" width="16%" alt="设置" />
 </p>
 
 ---
@@ -24,12 +24,16 @@
   一次并行写四稿，按「审计硬伤 + 与真题的句长/难度距离」挑最像真题的一篇，通常几秒出稿
 - **点词加深**：文章里的目标词带虚线标记，点词即查释义，并显示该词在墨墨的学习状态；计划外的词可一键加入学习计划
 - **文章库**：每篇生成过都自动留档，按日期回看、删除，随时重读
+- **真题训练**：四级 / 六级 / 考研三档，共 144 套真题（2010–2026）。按题型逐篇练：
+  正文与阅读页同一套排版（每词可点、可开译文、可高亮），选项条浮在底栏上方随时可答，
+  **答完点「提交答卷」才判分**，之后逐题展开解析——答案、判题、拆句、原文定位、每个干扰项的错因。
+  选词填空是卷面形态：空位嵌在文章里，点空位再点词库填入，空位显示单词而不是字母
 
 ## 配套功能
 
 - **每日采集**：自动拉取当天在墨墨的学习记录，按 新学 / 模糊 / 忘记 归档（一个词可多归属）
-- **遗忘曲线**：统计页堆叠柱状图（近 30 天），反复忘记的词单独列出
-- **阅读计时**：自动记录每天阅读时长，统计页独立图表
+- **遗忘曲线**：历史页右上「统计」进入，堆叠柱状图（近 30 天），反复忘记的词单独列出
+- **阅读计时**：自动记录每天阅读时长，统计页有独立图表
 
 ## 大模型配置
 
@@ -117,11 +121,12 @@ src/
 ├── store/        状态层（Zustand）：session / today / llm / prefs / theme / glass / ui / backstack / toast
 ├── lib/          零依赖工具：date / text / scroll / async
 └── ui/
-    ├── pages/      今日 / 历史 / 阅读 / 统计 / 设置
-    ├── components/ TabBar / WordSheet / ArticleLibrary / GenerateArticle / ModelProfiles / settings
-    ├── hooks/      useSubView / useReadingClock / useGlossToggle / useScrollStuck
+    ├── pages/      今日 / 历史（含统计）/ 阅读 / 训练 / 设置
+    ├── components/ TabBar / WordSheet / ArticleLibrary / GenerateArticle / TrainingDoc / BackButton / settings
+    ├── hooks/      useSubView / useReadingClock / useGlossToggle / useScrollStuck / useScrollLock
     └── styles/     tokens.css（设计令牌）+ global.css
-scripts/          长期工具：生成文章与真题对比 / 造数据 / 截图
+scripts/          长期工具：生成文章与真题对比 / 造数据 / 截图 / 训练题库导入
+public/training/  训练题库 JSON（index.json + 每套一个文件），**不入库**，见下
 android/          Capacitor Android 工程（含 AppearancePlugin 自研原生插件）
 ```
 
@@ -148,6 +153,18 @@ android/          Capacitor Android 工程（含 AppearancePlugin 自研原生�
 **文章库。** 入口在阅读页标题行，点开是阅读页内的一个子视图（不是新 Tab）：
 按日期分组、时间倒序，可打开可删除（删除要点两次）。删除当前正在读的那篇时，
 自动换成剩下最新的一篇；返回阅读页会回到进入前的滚动位置。
+
+**训练。** 底栏第四格。三层：档位（四级 / 六级 / 考研）→ 套卷（按年份分组）→ 篇目。
+做题时正文在上、答题条浮在底栏上方（与词卡同位），滑到文章任何位置都能答：
+
+- 一次一题，`‹ ›` 翻页，选项常驻；**作答不泄露对错**，点「提交」才判分并展开解析
+- 长篇阅读的 A–O 段号是排他的：一段被用过，其它题里就置灰
+- 选词填空：空位在文章里可点，词库常驻下方，点空位再点词（也可以直接点词，落到第一个空位）
+- 听力没有音频（题库包不含），原文默认折叠，点右上「原文」展开逐句中英
+- 交过的卷子在题型行右侧留下「正确率 20% 1/5 / 11月16日 21:30」，**只在本次会话内**
+
+**高亮。** 阅读页与做题页点词后，词卡右上多一个「高亮」，按下这个词在全文被标成荧光笔色；
+标题栏出现「清除高亮」，一次清掉本篇所有标记。换文章 / 换篇目自动清空。
 
 **阅读计时。** 停留在阅读页且打开着文章时自动计时（文章库/生成页/词卡不算），
 切后台不计入。计时数字常驻顶栏（不走按钮逻辑），攒 15 秒批量落盘一次，
@@ -187,6 +204,10 @@ CSV 支持带表头 / 不带表头（按导出列序）、BOM、CRLF、引号内
 - **只记录打开 App 的那天**：接口没有日期参数，某天没打开，那天的反馈就取不回来了。
 - **历史"模糊/忘记"是近似值**：`query_study_records` 只留 `last_response`，之后复习过就会被覆盖。历史的"新学"是精确的（`first_study_date` 固定）。
 - **无 CORS 头**：浏览器直连会被拦，所以开发时走 Vite 代理，真机走 CapacitorHttp。
+- **训练题库不在仓库里**：真题与解析属第三方整理的内容，`public/training/` 已被 gitignore。
+  克隆下来直接构建，训练页会显示「训练题库还没有导入」；需要自备题库包后跑 `scripts/import-training.py` 重新生成。
+- **训练做题进度不保存**：中途退出再进是空白（试过两版持久化都没扛住「从最近任务划掉」，见开发手册第 10 章）。
+- **听力只有原文没有音频**：题库的音频包另发（787MB），本项目未引入。
 - **备份与导出仍在调整**：导出的文件可能缺字段、导入可能失败，暂不保证可用，别当作唯一的数据保障。
 
 ## 许可
