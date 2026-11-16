@@ -4,6 +4,9 @@
   --rd-fs: 17px;
   --rd-zh-fs: 13px;
   --rd-lh: 1.72;
+  /* 吸顶工具栏的实际高度（8px 上内边距 + 一行操作按钮 + 16px 下内边距 + 分隔线），
+     字号档位条要贴在它下面 */
+  --tr-head: 50px;
 }
 
 .doc[data-size='s'] {
@@ -25,12 +28,20 @@
 }
 
 .toolbar {
+  /* 吸顶：计时 / 译文 / 字号要一直够得着（与阅读页标题同一套手法：
+     负 margin 抵消补进来的上内边距，静止时的视觉位置不变） */
+  position: sticky;
+  top: calc(var(--safe-top) - var(--sp-2));
+  z-index: 3;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: var(--sp-3);
+  padding-top: var(--sp-2);
   padding-bottom: var(--sp-4);
+  margin-top: calc(-1 * var(--sp-2));
   border-bottom: 1px solid var(--rule);
+  background: var(--paper);
 }
 
 .meta {
@@ -72,8 +83,14 @@
 }
 
 .sizePanel {
+  /* 打开字号档位后，滑到哪儿都能调；紧贴吸顶工具栏的底边（同阅读页）。
+     工具栏带不透明底色，正文从它底下穿过；面板不吸顶就会被它盖掉 */
+  position: sticky;
+  top: calc(var(--safe-top) - var(--sp-2) + var(--tr-head));
+  z-index: 2;
   display: flex;
   margin-top: var(--sp-3);
+  background: var(--paper);
   border: 1px solid var(--rule-strong);
   border-radius: 2px;
   overflow: hidden;
