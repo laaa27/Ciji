@@ -706,8 +706,9 @@
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
   /* 进场：页面先推入，答题条错峰 80ms 再从底边浮起（backwards 让延迟期
-     保持隐藏帧），上浮距离加大到 20px——叠在页面滑动里也看得出来 */
-  animation: qbar-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) 0.08s backwards;
+     保持隐藏帧），上浮距离加大到 20px——叠在页面滑动里也看得出来。
+     0.3s：用户反馈太快看不出，从 0.26s 放慢约 15% */
+  animation: qbar-in 0.3s cubic-bezier(0.22, 1, 0.36, 1) 0.08s backwards;
 }
 
 @keyframes qbar-in {
@@ -759,7 +760,8 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 上一题 / 下一题：换成箭头，标题行才放得下「提交」与「收起」 */
+/* 上一题 / 下一题：箭头用 CSS 边框画（与 BackButton 同一套画法）——
+   字符 › 的字形墨迹压在基线上，flex 居中的是文字框，看起来总是偏下 */
 .navArrow {
   flex: none;
   width: 28px;
@@ -769,9 +771,25 @@
   justify-content: center;
   border: 1px solid var(--rule-strong);
   border-radius: 2px;
-  font-size: 15px;
-  line-height: 1;
   color: var(--ink-2);
+}
+
+.navChev {
+  flex: none;
+  width: 9px;
+  height: 9px;
+}
+
+.navChev[data-dir='right'] {
+  border-top: 1.6px solid currentColor;
+  border-right: 1.6px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.navChev[data-dir='left'] {
+  border-bottom: 1.6px solid currentColor;
+  border-left: 1.6px solid currentColor;
+  transform: rotate(45deg);
 }
 
 .navArrow:disabled {

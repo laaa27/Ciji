@@ -434,7 +434,7 @@ function QuestionBar({
             onClick={onPrev}
             aria-label="上一题"
           >
-            ‹
+            <span className={styles.navChev} data-dir="left" aria-hidden="true" />
           </button>
           <button
             type="button"
@@ -443,7 +443,7 @@ function QuestionBar({
             onClick={onNext}
             aria-label="下一题"
           >
-            ›
+            <span className={styles.navChev} data-dir="right" aria-hidden="true" />
           </button>
         </div>
         <div className={styles.qbarNav}>
