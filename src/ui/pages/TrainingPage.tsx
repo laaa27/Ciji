@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { loadTrainingIndex, loadTrainingPaper } from '@/data/training'
+import {
+  loadTrainingIndex,
+  loadTrainingPaper,
+  readScore,
+  saveScore,
+  type TrainScore,
+} from '@/data/training'
+import { fmtDuration } from '@/lib/date'
 import {
   LEVELS,
   type TrainingIndexItem,
   type TrainingLevel,
   type TrainingPaper,
-  type TrainingPassage,
 } from '@/domain/training'
 
 import { findScrollParent } from '../hooks/useScrollStuck'
@@ -26,12 +32,7 @@ import styles from './TrainingPage.module.css'
  * 都由 hook 接管，后进先出正好是「先退做题、再退套卷」。
  */
 /** 题型行右侧的成绩：没交过就不显示，交过才占位 */
-function PassageScore({
-  score,
-}: {
-  passage: TrainingPassage
-  score?: { right: number; total: number; at: string }
-}) {
+function PassageScore({ score }: { score?: TrainScore }) {
   if (!score) return null
   const rate = score.total > 0 ? Math.round((100 * score.right) / score.total) : 0
   return (
@@ -42,7 +43,10 @@ function PassageScore({
           {score.right}/{score.total}
         </em>
       </span>
-      <span className={styles.rowTime}>{clockLabel(score.at)}</span>
+      <span className={styles.rowTime}>
+        {score.secs !== undefined ? `用时 ${fmtDuration(score.secs)} · ` : ''}
+        {clockLabel(score.at)}
+      </span>
     </span>
   )
 }
@@ -70,10 +74,12 @@ export default function TrainingPage() {
   const [error, setError] = useState<string | null>(null)
 
   const [paper, setPaper] = useState<TrainingPaper | null>(null)
-  /** 本次会话里各篇的提交成绩（列表右侧显示）；退出 App 即清空 */
-  const [scores, setScores] = useState<
-    Record<string, { right: number; total: number; at: string }>
-  >({})
+  /**
+   * 各篇的最近一次成绩（列表右侧显示）。
+   * 落盘在 data/training（提交瞬间同步写 localStorage，重启后还在）；
+   * 这份 state 是展示用的缓存，进一套卷时把磁盘上的历史成绩铺进来。
+   */
+  const [scores, setScores] = useState<Record<string, TrainScore>>({})
   const [paperError, setPaperError] = useState<string | null>(null)
 
   const pageRef = useRef<HTMLDivElement>(null)
@@ -128,7 +134,20 @@ export default function TrainingPage() {
     paperNav.open(key)
     toTop()
     void loadTrainingPaper(key)
-      .then(setPaper)
+      .then((p) => {
+        // 这套卷的历史成绩铺进来（上次会话提交过的那些）
+        const cached: Record<string, TrainScore> = {}
+        for (const sec of p.sections) {
+          for (const pg of sec.passages) {
+            const s = readScore(pg.id)
+            if (s) cached[pg.id] = s
+          }
+        }
+        if (Object.keys(cached).length > 0) {
+          setScores((prev) => ({ ...cached, ...prev }))
+        }
+        setPaper(p)
+      })
       .catch((e: unknown) => setPaperError(e instanceof Error ? e.message : '套卷读取失败'))
   }
 
@@ -222,7 +241,11 @@ export default function TrainingPage() {
                   ? pi + 1
                   : 0
             }
-            onScore={(sc) => setScores((prev) => ({ ...prev, [sc.passageId]: sc }))}
+            onScore={(sc) => {
+              const score: TrainScore = { right: sc.right, total: sc.total, at: sc.at, secs: sc.secs }
+              saveScore(sc.passageId, score)
+              setScores((prev) => ({ ...prev, [sc.passageId]: score }))
+            }}
           />
         </div>
       )
@@ -267,7 +290,7 @@ export default function TrainingPage() {
                         {sec.id === 'listening' ? ' · 音频暂缺' : ''}
                       </span>
                     </span>
-                    <PassageScore passage={p} score={scores[p.id]} />
+                    <PassageScore score={scores[p.id]} />
                     <span className={styles.chevron} aria-hidden="true" />
                   </button>
                 </li>

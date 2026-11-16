@@ -32,8 +32,8 @@ type Props = {
   passage: TrainingPassage
   /** 第几篇（阅读按题型族连续编号，见 TrainingPage 的 ordinals）；0 表示单篇题型，不标 */
   ordinal: number
-  /** 提交后把本场成绩交给列表页（仅本次会话） */
-  onScore: (s: { passageId: string; right: number; total: number; at: string }) => void
+  /** 提交后把本场成绩交给列表页（落盘 + 列表显示都在那边） */
+  onScore: (s: { passageId: string; right: number; total: number; at: string; secs: number }) => void
 }
 
 /** 一段文字切成「普通文字 / 填空位」两种片段 */
@@ -142,8 +142,8 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
   function submit() {
     const at = new Date().toISOString()
     setSubmitted(true)
-    // 会话内的一次性成绩：交给列表页显示，退出 App 就没了
-    onScore({ passageId: passage.id, right: rightCount, total: judged.length, at })
+    // 成绩交回列表页：落盘（data/training 的 saveScore）与显示都在那边
+    onScore({ passageId: passage.id, right: rightCount, total: judged.length, at, secs: elapsed })
   }
   /** 选词填空：字母 → 单词。卷面上显示词，不显示字母 */
   const wordOf = (key?: string) => (key ? bank.find((b) => b.key === key)?.text : undefined)

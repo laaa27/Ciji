@@ -38,3 +38,47 @@ export async function loadTrainingPaper(key: string): Promise<TrainingPaper> {
   paperCache.set(key, paper)
   return paper
 }
+
+/* ── 每篇的最近一次成绩（localStorage，同步落盘） ────────────── */
+
+/**
+ * 为什么是 localStorage 而不是 Preferences：成绩在「点提交」的瞬间写入，
+ * App 必在前台，同步写完才返回，进程随后被杀也不会丢。
+ * 做题进度持久化两次失败的正是「进程被杀时异步写入还没落盘」——
+ * 成绩的写入时机天然不存在这个窗口，所以敢用同步存储。
+ */
+const SCORE_PREFIX = 'cjt.score.'
+
+export type TrainScore = {
+  right: number
+  total: number
+  /** 提交时刻（ISO） */
+  at: string
+  /** 本次做题用时（秒）。早期数据没有这个字段 */
+  secs?: number
+}
+
+export function readScore(passageId: string): TrainScore | null {
+  let raw: string | null = null
+  try {
+    raw = window.localStorage.getItem(SCORE_PREFIX + passageId)
+  } catch {
+    return null
+  }
+  if (!raw) return null
+  try {
+    const s = JSON.parse(raw) as TrainScore
+    if (typeof s.right !== 'number' || typeof s.total !== 'number' || !s.at) return null
+    return s
+  } catch {
+    return null
+  }
+}
+
+export function saveScore(passageId: string, score: TrainScore): void {
+  try {
+    window.localStorage.setItem(SCORE_PREFIX + passageId, JSON.stringify(score))
+  } catch {
+    // 配额满 / 隐私模式：成绩丢了不影响做题，不打扰用户
+  }
+}
