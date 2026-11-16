@@ -1,6 +1,7 @@
 import { useRef, useState, type ChangeEvent } from 'react'
 
 import { clearGlossCache } from '@/data/gloss'
+import { clearArticles, listArticles, saveArticle } from '@/data/article'
 import { clearAll, listDays, writeDays } from '@/data/store'
 import {
   parseImportText,
@@ -9,6 +10,7 @@ import {
   type ImportMode,
   type ImportSource,
 } from '@/domain/backup'
+import type { Article } from '@/domain/article'
 import type { TodaySnapshot } from '@/domain/collect'
 import { exportAll, exportBackup } from '@/domain/export'
 import { useToday } from '@/store/today'
@@ -24,6 +26,10 @@ type PickedFile = {
   name: string
   source: ImportSource
   days: TodaySnapshot[]
+  /** v2 备份携带的生成文章（CSV 没有）；导入时跳过本地已有 id */
+  articles: Article[]
+  /** 其中本地没有的篇数（导入时会写入的） */
+  newArticles: number
   notes: string[]
   existing: Set<string>
 }
@@ -41,6 +47,8 @@ export default function DataPrefs() {
   const [dataFeedback, setDataFeedback] = useState<Feedback>(null)
   /** 清释义缓存要点两次：第一次只把按钮变成「确认清空」（与词卡加词同一模式） */
   const [glossConfirming, setGlossConfirming] = useState(false)
+  /** 清生成文章要点两次，且警告语气比释义缓存重（不可再生） */
+  const [articleConfirming, setArticleConfirming] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function handleExport(format: ExportFormat) {
@@ -72,10 +80,13 @@ export default function DataPrefs() {
       const text = await file.text()
       const parsed = parseImportText(file.name, text)
       const existing = new Set(await listDays())
+      const existingArticles = new Set((await listArticles()).map((a) => a.id))
       setPicked({
         name: file.name,
         source: parsed.source,
         days: parsed.days,
+        articles: parsed.articles,
+        newArticles: parsed.articles.filter((a) => a.id && !existingArticles.has(a.id)).length,
         notes: parsed.notes,
         existing,
       })
@@ -104,6 +115,14 @@ export default function DataPrefs() {
       }
 
       await writeDays(plan.write)
+      // 文章按 id 去重后逐篇恢复（fill 语义：本地已有的不动）
+      let importedArticles = 0
+      for (const art of picked.articles) {
+        const existingIds = new Set((await listArticles()).map((a) => a.id))
+        if (!art.id || existingIds.has(art.id)) continue
+        await saveArticle(art)
+        importedArticles += 1
+      }
       // 今天的数据可能就在这次导入里，界面上的今日页要跟着变
       await useToday.getState().loadFromStorage()
 
@@ -111,6 +130,7 @@ export default function DataPrefs() {
       if (plan.added > 0) parts.push(`新增 ${plan.added} 天`)
       if (plan.replaced > 0) parts.push(`覆盖 ${plan.replaced} 天`)
       if (plan.kept > 0) parts.push(`保留本地 ${plan.kept} 天`)
+      if (picked.articles.length > 0) parts.push(`文章 ${importedArticles} 篇`)
 
       setDataFeedback({ kind: 'ok', text: `导入完成：${parts.join('，')}` })
       setPicked(null)
@@ -128,6 +148,27 @@ export default function DataPrefs() {
     await clearAll()
     resetToday()
     setDataFeedback({ kind: 'ok', text: '本地记录已清空' })
+  }
+
+  async function handleClearArticles() {
+    if (!articleConfirming) {
+      setArticleConfirming(true)
+      setDataFeedback(null)
+      return
+    }
+    setArticleConfirming(false)
+    try {
+      const n = await clearArticles()
+      setDataFeedback({
+        kind: 'ok',
+        text: `已清空 ${n} 篇生成文章。它们不可再生——如果还没导出备份，请先导出一份再继续使用。`,
+      })
+    } catch (e) {
+      setDataFeedback({
+        kind: 'err',
+        text: e instanceof Error ? e.message : '清空失败',
+      })
+    }
   }
 
   async function handleClearGloss() {
@@ -227,6 +268,15 @@ export default function DataPrefs() {
               {pickedSummary.first} — {pickedSummary.last}
             </p>
 
+            {picked.articles.length > 0 && (
+              <p className={styles.previewMeta}>
+                备份含生成文章 {picked.articles.length} 篇
+                {picked.articles.length - picked.newArticles > 0
+                  ? `（本地已有 ${picked.articles.length - picked.newArticles} 篇，导入时跳过）`
+                  : '（全部为新增）'}
+              </p>
+            )}
+
             {conflicts > 0 && (
               <p className={styles.previewMeta} data-warn="true">
                 其中 {conflicts} 天本地已有记录
@@ -290,6 +340,22 @@ export default function DataPrefs() {
           {dataFeedback.text}
         </p>
       )}
+
+      <h3 className={styles.subLabel}>生成文章</h3>
+      <p className={styles.about}>
+        生成的文章存在本机，且<strong>不在自动备份的内容里</strong>——换手机前请务必先点「导出备份」
+        （备份已包含文章全文），再清空或卸载。
+      </p>
+
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className={styles.secondary}
+          onClick={() => void handleClearArticles()}
+        >
+          {articleConfirming ? '确认清空全部生成文章？' : '清空生成文章'}
+        </button>
+      </div>
 
       <h3 className={styles.subLabel}>释义缓存</h3>
       <p className={styles.about}>

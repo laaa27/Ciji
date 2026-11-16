@@ -1,4 +1,5 @@
 import type { StudyResponse } from '@/api/types'
+import type { Article } from '@/domain/article'
 import type { CollectedWord, TodaySnapshot, WordState } from '@/domain/collect'
 
 /**
@@ -13,7 +14,8 @@ import type { CollectedWord, TodaySnapshot, WordState } from '@/domain/collect'
  */
 
 export const BACKUP_FORMAT = 'ciji-backup'
-export const BACKUP_VERSION = 1
+/** v2：加入 `articles`（生成的文章全文）。v1 备份没有该字段，导入时当空处理 */
+export const BACKUP_VERSION = 2
 
 export interface BackupFile {
   format: string
@@ -22,9 +24,11 @@ export interface BackupFile {
   exportedAt: string
   count: number
   days: TodaySnapshot[]
+  /** v2 起携带：生成的文章全文。文章不可再生，备份必须带走 */
+  articles?: Article[]
 }
 
-export function buildBackup(days: TodaySnapshot[]): BackupFile {
+export function buildBackup(days: TodaySnapshot[], articles: Article[] = []): BackupFile {
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
@@ -32,6 +36,7 @@ export function buildBackup(days: TodaySnapshot[]): BackupFile {
     exportedAt: new Date().toISOString(),
     count: days.length,
     days,
+    ...(articles.length > 0 ? { articles } : {}),
   }
 }
 
@@ -310,13 +315,38 @@ export interface ImportPreview {
   source: ImportSource
   /** 按日期升序，重复日期已合并 */
   days: TodaySnapshot[]
+  /** v2 备份携带的生成文章（CSV 没有这部分） */
+  articles: Article[]
   /** 被丢弃的行数 / 条目数 */
   skipped: number
   /** 需要让用户知道的情况，不阻断导入 */
   notes: string[]
 }
 
-function importJson(text: string): { days: TodaySnapshot[]; skipped: number; notes: string[] } {
+/**
+ * 文章条目规范化。只做结构校验（id / 标题 / 正文存在），其余字段原样保留——
+ * 文章是不可再生的用户数据，宁可全盘带回来，也不能因为某个可选字段不对就丢弃。
+ */
+function normalizeArticle(raw: unknown): Article | null {
+  if (!raw || typeof raw !== 'object') return null
+  const a = raw as Record<string, unknown>
+  const id = typeof a.id === 'string' && a.id.trim() ? a.id : null
+  const title = typeof a.title === 'string' && a.title.trim() ? a.title : null
+  const sentences = Array.isArray(a.sentences)
+    ? a.sentences.filter(
+        (s) => s && typeof s === 'object' && typeof (s as { en?: unknown }).en === 'string',
+      )
+    : []
+  if (!id || !title || sentences.length === 0) return null
+  return a as unknown as Article
+}
+
+function importJson(text: string): {
+  days: TodaySnapshot[]
+  articles: Article[]
+  skipped: number
+  notes: string[]
+} {
   let data: unknown
   try {
     data = JSON.parse(text.replace(/^\uFEFF/, ''))
@@ -326,6 +356,7 @@ function importJson(text: string): { days: TodaySnapshot[]; skipped: number; not
 
   const notes: string[] = []
   let rawDays: unknown[] = []
+  let rawArticles: unknown[] = []
 
   if (Array.isArray(data)) {
     rawDays = data
@@ -340,13 +371,27 @@ function importJson(text: string): { days: TodaySnapshot[]; skipped: number; not
       if (Number.isFinite(version) && version > BACKUP_VERSION) {
         notes.push(`备份来自更新版本（v${version}），部分字段可能读不到`)
       }
+      if (Array.isArray(obj.articles)) {
+        rawArticles = obj.articles
+      } else if (Number.isFinite(Number(obj.version)) && Number(obj.version) < 2) {
+        notes.push('这份备份早于文章纳入备份（v2），不含生成文章')
+      }
     } else if ('date' in obj || 'words' in obj) {
       // 单日快照，或者用户手工拼的单天对象
       rawDays = [obj]
     }
   }
 
-  if (rawDays.length === 0) {
+  const articles: Article[] = []
+  let artSkipped = 0
+  for (const item of rawArticles) {
+    const art = normalizeArticle(item)
+    if (art) articles.push(art)
+    else artSkipped += 1
+  }
+  if (artSkipped > 0) notes.push(`${artSkipped} 篇文章数据不完整，已跳过`)
+
+  if (rawDays.length === 0 && articles.length === 0) {
     throw new Error('文件里没有可导入的学习记录')
   }
 
@@ -371,6 +416,7 @@ function importJson(text: string): { days: TodaySnapshot[]; skipped: number; not
 
   return {
     days: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
+    articles,
     skipped,
     notes,
   }
@@ -386,7 +432,7 @@ export function parseImportText(filename: string, text: string): ImportPreview {
 
   if (looksJson) {
     const res = importJson(body)
-    return { source: 'json', ...res }
+    return { source: 'json', ...res, articles: res.articles }
   }
   if (looksCsv) {
     const res = importCsv(body)
@@ -394,6 +440,7 @@ export function parseImportText(filename: string, text: string): ImportPreview {
     return {
       source: 'csv',
       days: res.days,
+      articles: [],
       skipped: res.skipped,
       notes: res.skipped > 0 ? [`${res.skipped} 行格式不对，已跳过`] : [],
     }

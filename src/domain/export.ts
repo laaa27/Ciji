@@ -3,6 +3,7 @@ import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
 import { Share } from '@capacitor/share'
 
 import { lookupWords } from '@/domain/lookup'
+import { listFullArticles } from '@/data/article'
 import { getAllDays } from '@/data/store'
 import { buildBackup } from '@/domain/backup'
 import type { TodaySnapshot, WordState } from '@/domain/collect'
@@ -131,10 +132,11 @@ export async function exportAll(format: 'csv' | 'md'): Promise<string> {
  */
 export async function exportBackup(): Promise<string> {
   const days = await getAllDays()
-  const backup = buildBackup(days)
+  const articles = await listFullArticles()
+  const backup = buildBackup(days, articles)
   const stamp = new Date().toISOString().slice(0, 10)
   const content = JSON.stringify(backup, null, 2)
 
   await exportFile(`词迹备份-${stamp}.json`, content, 'application/json;charset=utf-8')
-  return `${days.length} 天的备份已导出`
+  return `${days.length} 天、${articles.length} 篇文章的备份已导出`
 }

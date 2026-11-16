@@ -7,6 +7,8 @@ const config: CapacitorConfig = {
   android: {
     // WebView 背景与纸色一致，避免冷启动白闪
     backgroundColor: '#F7F8F5',
+    // 临时打开：真机验证文章文件迁移（原生 Filesystem），验证完删掉
+    webContentsDebuggingEnabled: true,
   },
 }
 
