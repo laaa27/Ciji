@@ -17,6 +17,7 @@ import { usePrefs, type FontSize } from '@/store/prefs'
 
 import WordSheet from './WordSheet'
 import { useStopwatch } from '../hooks/useStopwatch'
+import { useWordSelection } from '../hooks/useWordSelection'
 import styles from './TrainingDoc.module.css'
 
 const FONT_SIZES: { key: FontSize; label: string }[] = [
@@ -72,7 +73,8 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
   const [showText, setShowText] = useState(section.id !== 'listening')
   const [showZh, setShowZh] = useState(false)
   const [sizePanel, setSizePanel] = useState(false)
-  const [sheetWord, setSheetWord] = useState<string | null>(null)
+  /** 点词查词 + 短语匹配 + 返回键关弹层：与阅读页同一套（见 hook 注释） */
+  const sel = useWordSelection()
   /**
    * 手动高亮：键是「段-句-片段-词序号」而不是词文本 —— 标记绑定位置，
    * 同一个词在别处的出现不跟着亮。换篇目时组件会重挂载，自然清空。
@@ -242,47 +244,50 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
                 {para.sents.map((s, si) => (
                   <span key={si} data-sentence="true">
                     {s.label && <span className={styles.paraLabel}>{s.label}</span>}
-                    {splitBlanks(s.en).map((chunk, ci) =>
-                      chunk.kind === 'blank' ? (
-                        <Blank
-                          key={`b${ci}`}
-                          no={chunk.no}
-                          chosen={answers[chunk.no]}
-                          word={wordOf(answers[chunk.no])}
-                          answer={questions.find((x) => x.no === chunk.no)?.answer}
-                          submitted={submitted}
-                          active={activeBlank === chunk.no}
-                          onClick={() => {
-                            if (submitted) return
-                            if (answers[chunk.no]) clearBlank(chunk.no)
-                            else setActiveBlank(chunk.no)
-                          }}
-                        />
-                      ) : (
-                        tokenize(chunk.text).map((part, j) =>
-                          part.isWord ? (
-                            <span key={`${ci}-${j}`} className={styles.glue}>
-                              <button
-                                type="button"
-                                className={styles.word}
-                                data-mark={
-                                  markSet.has(`${pi}-${si}-${ci}-${j}`) ? 'true' : undefined
-                                }
-                                onClick={() => {
-                                  setMarkKey(`${pi}-${si}-${ci}-${j}`)
-                                  setSheetWord(part.text)
-                                }}
-                              >
-                                {part.text}
-                              </button>
-                              {part.tail}
-                            </span>
-                          ) : (
-                            <span key={`${ci}-${j}`}>{part.text}</span>
-                          ),
+                    {splitBlanks(s.en).map((chunk, ci) => {
+                      if (chunk.kind === 'blank') {
+                        return (
+                          <Blank
+                            key={`b${ci}`}
+                            no={chunk.no}
+                            chosen={answers[chunk.no]}
+                            word={wordOf(answers[chunk.no])}
+                            answer={questions.find((x) => x.no === chunk.no)?.answer}
+                            submitted={submitted}
+                            active={activeBlank === chunk.no}
+                            onClick={() => {
+                              if (submitted) return
+                              if (answers[chunk.no]) clearBlank(chunk.no)
+                              else setActiveBlank(chunk.no)
+                            }}
+                          />
                         )
-                      ),
-                    )}
+                      }
+                      // 接住分词结果：点词时把整段上下文交给短语匹配
+                      const toks = tokenize(chunk.text)
+                      return toks.map((part, j) =>
+                        part.isWord ? (
+                          <span key={`${ci}-${j}`} className={styles.glue}>
+                            <button
+                              type="button"
+                              className={styles.word}
+                              data-mark={
+                                markSet.has(`${pi}-${si}-${ci}-${j}`) ? 'true' : undefined
+                              }
+                              onClick={() => {
+                                setMarkKey(`${pi}-${si}-${ci}-${j}`)
+                                sel.open(toks, j)
+                              }}
+                            >
+                              {part.text}
+                            </button>
+                            {part.tail}
+                          </span>
+                        ) : (
+                          <span key={`${ci}-${j}`}>{part.text}</span>
+                        ),
+                      )
+                    })}
                     {showZh && s.zh && <span className={styles.zh}>{s.zh}</span>}{' '}
                   </span>
                 ))}
@@ -348,13 +353,14 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
         />
       )}
 
-      {sheetWord && (
+      {sel.word && (
         <WordSheet
-          word={sheetWord}
+          word={sel.word}
+          phrase={sel.phrase}
           marked={markSet.has(markKey)}
           onHighlight={() => toggleMark(markKey)}
-          onClose={() => setSheetWord(null)}
-          onPick={(next) => setSheetWord(next)}
+          onClose={sel.close}
+          onPick={sel.pick}
         />
       )}
     </div>

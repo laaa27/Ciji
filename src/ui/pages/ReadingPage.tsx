@@ -10,8 +10,6 @@ import {
   type ArticleMeta,
 } from '@/data/article'
 import { lemmaCandidates } from '@/lib/lemma'
-import { lookupKnownPhrases } from '@/domain/memo'
-import { findPhraseAround, phraseCandidates, phraseVariants, type PhraseHit } from '@/domain/phrase'
 import {
   articleToText,
   generateArticle,
@@ -28,16 +26,15 @@ import { dateKey, fmtDuration, monthDay } from '@/lib/date'
 import { restoreScroll } from '@/lib/scroll'
 import { tokenize } from '@/lib/text'
 import { getLastLlmResponse } from '@/api/llm'
-import { pushBackHandler } from '@/store/backstack'
 import { useToast } from '@/store/toast'
 import { clearGenDraft, clearReadPos, readReadPos, readShowZh, saveReadPos, saveShowZh } from '@/store/ui'
 import { useLlm } from '@/store/llm'
 import { usePrefs, type FontSize } from '@/store/prefs'
-import { useSession } from '@/store/session'
 
 import { findScrollParent, useScrollStuck } from '../hooks/useScrollStuck'
 import { useReadingClock } from '../hooks/useReadingClock'
 import { useSubView } from '../hooks/useSubView'
+import { useWordSelection } from '../hooks/useWordSelection'
 import ArticleLibrary from '../components/ArticleLibrary'
 import GenerateArticle, { type GenerateRequest } from '../components/GenerateArticle'
 import WordSheet from '../components/WordSheet'
@@ -88,7 +85,6 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   const [genStage, setGenStage] = useState<GenProgress | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [missing, setMissing] = useState<string[]>([])
-  const [sheetWord, setSheetWord] = useState<string | null>(null)
   /**
    * 手动高亮：键是「段-句-词序号」而不是词文本 —— 标记绑定位置，
    * 同一个词在别处的出现不跟着亮。切换文章就清空（标记属于当前这一篇）。
@@ -99,57 +95,9 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
   const markSet = useMemo(() => new Set(marks), [marks])
   const toggleMark = (key: string) =>
     setMarks((prev) => (prev.includes(key) ? prev.filter((x) => x !== key) : [...prev, key]))
-  /** 点词后在上下文里匹配到的固定搭配；到货后弹层会自动切到短语视图 */
-  const [sheetPhrase, setSheetPhrase] = useState<PhraseHit | null>(null)
-  /** 防止上一次匹配的结果盖到刚点的另一个词上 */
-  const phraseForRef = useRef('')
 
-  /**
-   * 点词：立即按单词打开（本地词典通常在缓存里，几乎是瞬时的），
-   * 同时在这个位置找固定搭配；找到了弹层再补一个「短语」视图。
-   * 两段式是为了不让"匹配短语"拖慢本来很快的单词查询。
-   */
-  const openWord = (parts: { text: string; isWord: boolean }[], j: number) => {
-    const word = parts[j].text
-    phraseForRef.current = word
-    setSheetPhrase(null)
-    setSheetWord(word)
-
-    void (async () => {
-      // 快路径：本地词典命中就不用发请求
-      const local = await findPhraseAround(parts, j)
-      if (phraseForRef.current !== word) return
-      if (local) {
-        setSheetPhrase(local)
-        return
-      }
-
-      // 慢路径：本地没有就问墨墨（实测同样是 20 个高频搭配，本地命中 7 个、墨墨 14 个）
-      // 查询串做逐词还原：墨墨收录的是原形（rest on），文章里是变形（rests on）；
-      // 变体表同时记住「哪个变体属于哪个窗口」，命中后弹层显示还原出的原形
-      if (!useSession.getState().token) return
-      const cands = phraseCandidates(parts, j)
-      if (cands.length === 0) return
-
-      const variantOf = new Map<string, (typeof cands)[number]>()
-      for (const cand of cands) {
-        for (const v of phraseVariants(cand.words)) {
-          if (!variantOf.has(v)) variantOf.set(v, cand)
-        }
-      }
-
-      const known = await lookupKnownPhrases([...variantOf.keys()])
-      if (phraseForRef.current !== word) return
-      // 候选本来就是最长优先；命中时把弹层文本换成命中的那个原形变体
-      const hit = cands
-        .map((cand) => {
-          const matched = phraseVariants(cand.words).find((v) => known.has(v))
-          return matched ? { ...cand, text: matched } : null
-        })
-        .find(Boolean)
-      if (hit) setSheetPhrase(hit)
-    })()
-  }
+  /** 点词查词 + 短语匹配 + 返回键关弹层：与做题页同一套（见 hook 注释） */
+  const sel = useWordSelection()
 
   const fontSize = usePrefs((s) => s.readingFont)
   const [sizePanel, setSizePanel] = useState(false)
@@ -289,12 +237,6 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     setMissing([])
     sub.close()
   }
-
-  // 词卡是弹层不是二级视图（没有返回动画），返回键单独注册
-  useEffect(() => {
-    if (!sheetWord) return
-    return pushBackHandler(() => setSheetWord(null))
-  }, [sheetWord])
 
   function rememberScroll() {
     const scroller = findScrollParent(pageRef.current)
@@ -620,7 +562,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
                               data-mark={markSet.has(`${pi}-${si}-${j}`) ? 'true' : undefined}
                               onClick={() => {
                                 setMarkKey(`${pi}-${si}-${j}`)
-                                openWord(parts, j)
+                                sel.open(parts, j)
                               }}
                             >
                               {part.text}
@@ -654,22 +596,14 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
         </>
       )}
 
-      {sheetWord && (
+      {sel.word && (
         <WordSheet
-          word={sheetWord}
-          phrase={sheetPhrase}
+          word={sel.word}
+          phrase={sel.phrase}
           marked={markSet.has(markKey)}
           onHighlight={() => toggleMark(markKey)}
-          onClose={() => {
-            phraseForRef.current = ''
-            setSheetPhrase(null)
-            setSheetWord(null)
-          }}
-          onPick={(next) => {
-            phraseForRef.current = next
-            setSheetPhrase(null)
-            setSheetWord(next)
-          }}
+          onClose={sel.close}
+          onPick={sel.pick}
         />
       )}
     </div>
