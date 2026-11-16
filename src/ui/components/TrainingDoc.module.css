@@ -710,9 +710,12 @@
   overflow: visible;
 }
 
-/* 信息匹配只有一排字母方块，撑到 36vh 会空出大半屏 —— 按内容收缩 */
+/* 信息匹配只有一排字母方块，撑到 36vh 会空出大半屏 —— 按内容收缩。
+   但提交后解析也在这具壳里，只写 height:auto 会让它跟着解析长到满屏
+   （0.24.9~0.24.14 的 bug），所以封顶 36vh，装不下的部分在条内滚 */
 .qbar[data-compact='true'] {
   height: auto;
+  max-height: 36vh;
 }
 
 .qbarHead {

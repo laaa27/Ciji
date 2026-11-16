@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   BLANK_RE,
@@ -416,8 +416,16 @@ function QuestionBar({
   const options: TrainingOption[] =
     q.options && q.options.length > 0 ? q.options : matchKeys.map((k) => ({ key: k, text: '' }))
 
+  /** 答题条自身是滚动容器（解析装不下时在条内滚）：切题后回到顶部，
+      不然上一题解析滚到半截的位置会套在新题上 */
+  const barRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    barRef.current?.scrollTo(0, 0)
+  }, [q.no, submitted])
+
   return (
     <div
+      ref={barRef}
       className={styles.qbar}
       data-collapsed={collapsed ? 'true' : 'false'}
       data-compact={exclusive ? 'true' : 'false'}
