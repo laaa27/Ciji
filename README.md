@@ -34,6 +34,7 @@
 - **每日采集**：自动拉取当天在墨墨的学习记录，按 新学 / 模糊 / 忘记 归档（一个词可多归属）
 - **遗忘曲线**：历史页右上「统计」进入，堆叠柱状图（近 30 天），反复忘记的词单独列出
 - **阅读计时**：自动记录每天阅读时长，统计页有独立图表
+- **做题计时**：进入试题即计时（查词也算在做题里），提交后停表，用时随成绩留在套卷列表
 
 ## 大模型配置
 
@@ -122,8 +123,8 @@ src/
 ├── lib/          零依赖工具：date / text / scroll / async
 └── ui/
     ├── pages/      今日 / 历史（含统计）/ 阅读 / 训练 / 设置
-    ├── components/ TabBar / WordSheet / ArticleLibrary / GenerateArticle / TrainingDoc / BackButton / settings
-    ├── hooks/      useSubView / useReadingClock / useGlossToggle / useScrollStuck / useScrollLock
+    ├── components/ TabBar / WordSheet / ArticleLibrary / GenerateArticle / TrainingDoc（做题页四件套 TrainingReader / ChoiceBar / ClozeBar / Analysis）/ BackButton / settings
+    ├── hooks/      useSubView / useReadingClock / useGlossToggle / useScrollStuck / useScrollLock / useStopwatch / useWordSelection
     └── styles/     tokens.css（设计令牌）+ global.css
 scripts/          长期工具：生成文章与真题对比 / 造数据 / 截图 / 训练题库导入
 public/training/  训练题库 JSON（index.json + 每套一个文件），**不入库**，见下
@@ -161,7 +162,9 @@ android/          Capacitor Android 工程（含 AppearancePlugin 自研原生�
 - 长篇阅读的 A–O 段号是排他的：一段被用过，其它题里就置灰
 - 选词填空：空位在文章里可点，词库常驻下方，点空位再点词（也可以直接点词，落到第一个空位）
 - 没有听力：没有音频做不了「听→答」的闭环，四六级卷子里的听力节已整体去掉
+- 工具栏吸顶：做题计时（进入即计、提交即停）/ 译文 / 字号钉在面板顶部，文章随便滚都够得着
 - 交过的卷子在题型行右侧留下「正确率 · 用时 · 提交时间」，**重启后还在**（每篇记最新一次）
+- 做题中按系统返回或左上角箭头：第一次只提示，2 秒内再按才退出（答题记录不落盘，防误触丢进度）
 
 **高亮。** 阅读页与做题页点词后，词卡右上多一个「高亮」，按下后**只有点中的那个词**被标成荧光笔色
 （同一个词在别处的出现不跟着亮；再按一次取消）。换文章 / 换篇目自动清空。
