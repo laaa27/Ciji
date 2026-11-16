@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 
 import {
   BLANK_RE,
@@ -416,16 +416,8 @@ function QuestionBar({
   const options: TrainingOption[] =
     q.options && q.options.length > 0 ? q.options : matchKeys.map((k) => ({ key: k, text: '' }))
 
-  /** 答题条自身是滚动容器（解析装不下时在条内滚）：切题后回到顶部，
-      不然上一题解析滚到半截的位置会套在新题上 */
-  const barRef = useRef<HTMLDivElement>(null)
-  useEffect(() => {
-    barRef.current?.scrollTo(0, 0)
-  }, [q.no, submitted])
-
   return (
     <div
-      ref={barRef}
       className={styles.qbar}
       data-collapsed={collapsed ? 'true' : 'false'}
       data-compact={exclusive ? 'true' : 'false'}
@@ -434,7 +426,7 @@ function QuestionBar({
         <span className={styles.qbarTitle}>
           第 {current + 1} / {total} 题
         </span>
-        <div className={styles.qbarNav}>
+        <div className={styles.qbarCenter}>
           <button
             type="button"
             className={styles.navArrow}
@@ -453,6 +445,8 @@ function QuestionBar({
           >
             ›
           </button>
+        </div>
+        <div className={styles.qbarNav}>
           {!submitted && (
             <button type="button" className={styles.qbarSubmit} onClick={onSubmit}>
               提交
@@ -464,7 +458,7 @@ function QuestionBar({
         </div>
       </div>
 
-      {!collapsed && (
+      <div className={styles.bodyClip}>
         <div key={q.no} className={`${styles.qbarBody} ${styles.qSwitch}`}>
           <p className={styles.stem}>
             <span className={styles.qNo}>{q.no}</span>
@@ -531,7 +525,7 @@ function QuestionBar({
             </p>
           )}
         </div>
-      )}
+      </div>
     </div>
   )
 }
@@ -578,7 +572,7 @@ function ClozeBar({
         </div>
       </div>
 
-      {!collapsed && (
+      <div className={styles.bodyClip}>
         <div className={styles.qbarBody}>
           <ul className={styles.bank}>
             {bank.map((b) => {
@@ -600,7 +594,7 @@ function ClozeBar({
           </ul>
 
         </div>
-      )}
+      </div>
     </div>
   )
 }

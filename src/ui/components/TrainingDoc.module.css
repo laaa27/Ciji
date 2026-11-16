@@ -691,11 +691,13 @@
   right: 10px;
   bottom: calc(var(--tabbar-h) + var(--safe-bottom) + 8px);
   z-index: 30;
-  /* 固定高度：所有题型同一副身板，够不够都在这个框里滚，页面不会因为
-     选项多寡而上下跳。34vh 是权衡后的值：能装下四个换行的选项，又只占
-     约三分之一屏，不至于把文章挡死。收起时回到内容高度 */
-  height: 36vh;
-  overflow-y: auto;
+  /* 弹层高度：最高 36vh，内容少时按内容收缩（按题型收缩统一进这一条）。
+     装不下时滚动发生在 .qbarBody 内部——头部（题号 / 提交 / 收起）始终可见 */
+  display: flex;
+  flex-direction: column;
+  height: auto;
+  max-height: 36vh;
+  overflow: hidden;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   padding: 7px var(--sp-4) 10px;
@@ -703,26 +705,46 @@
   border: 1px solid var(--rule);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
+  /* 进场：从底边浮上来，与页面推入动画同一节奏 */
+  animation: qbar-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.qbar[data-collapsed='true'] {
-  height: auto;
-  overflow: visible;
+@keyframes qbar-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
 }
 
-/* 信息匹配只有一排字母方块，撑到 36vh 会空出大半屏 —— 按内容收缩。
-   但提交后解析也在这具壳里，只写 height:auto 会让它跟着解析长到满屏
-   （0.24.9~0.24.14 的 bug），所以封顶 36vh，装不下的部分在条内滚 */
-.qbar[data-compact='true'] {
-  height: auto;
-  max-height: 36vh;
+/* 收起 / 展开：grid 行 1fr→0fr 过渡。壳子高度是 auto，跟不了一个定值做
+   height 过渡，但 grid 行高可以——壳子随之平滑缩放，0.24s 与换题动画同曲线 */
+.bodyClip {
+  display: grid;
+  grid-template-rows: 1fr;
+  min-height: 0;
+  transition: grid-template-rows 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.qbar[data-collapsed='true'] .bodyClip {
+  grid-template-rows: 0fr;
 }
 
 .qbarHead {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
+}
+
+/* 翻页箭头钉在头部正中间：标题居左、提交与收起居右，互不挤占 */
+.qbarCenter {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  gap: 6px;
 }
 
 .qbarTitle {
@@ -761,6 +783,10 @@
 }
 
 .qbarBody {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   margin-top: 8px;
 }
 
