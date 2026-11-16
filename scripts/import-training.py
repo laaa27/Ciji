@@ -24,7 +24,6 @@ import sys
 
 # 题型展示名。顺序即页面里的顺序
 SECTION_LABEL = {
-    'listening': '听力',
     'cloze': '完形填空',
     'matching': '长篇阅读',
     'reading1': '阅读理解',
@@ -32,8 +31,9 @@ SECTION_LABEL = {
     'writing': '写作',
     'translation': '翻译',
 }
-# 写作与翻译是主观题：判分只能靠范文对照，做题闭环价值低，先不做
-SECTION_ORDER = ['listening', 'cloze', 'matching', 'reading1', 'reading2']
+# 写作与翻译是主观题：判分只能靠范文对照，做题闭环价值低，先不做。
+# 听力也没有导入：没有音频做不了「听→答」的闭环，2026-11-16 按用户要求整个去掉
+SECTION_ORDER = ['cloze', 'matching', 'reading1', 'reading2']
 
 # 句末标点后接空格，才算一个句子边界。缩写单独排掉，否则 Mr. Smith 会被切开
 ABBREV = {'mr', 'mrs', 'ms', 'dr', 'prof', 'st', 'jr', 'sr', 'vs', 'etc', 'e.g', 'i.e', 'no', 'fig', 'al'}
@@ -204,24 +204,6 @@ def material_passages(row, section):
     except json.JSONDecodeError:
         return [], ''
     brief = (data.get('prompt') or '').strip()
-
-    # 听力：groups[].lines[{speaker,en,cn}]，本身就是逐句中英
-    if section == 'listening':
-        paras = []
-        for g in data.get('groups') or []:
-            sents = []
-            for line in g.get('lines') or []:
-                en = (line.get('en') or '').strip()
-                if not en:
-                    continue
-                item = {'en': (line.get('speaker') + ': ' if line.get('speaker') else '') + en}
-                cn = (line.get('cn') or '').strip()
-                if cn:
-                    item['zh'] = cn
-                sents.append(item)
-            if sents:
-                paras.append({'sents': sents})
-        return paras, brief
 
     # 信息匹配：段落带 A/B/C… 标号，一段一段给
     if isinstance(data.get('paragraphs'), list):

@@ -69,8 +69,6 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
   const cloze = isCloze(passage)
   const hasZh = useMemo(() => hasTranslation(passage), [passage])
 
-  /** 听力默认不摊开原文（听着原文做听力等于做阅读） */
-  const [showText, setShowText] = useState(section.id !== 'listening')
   const [showZh, setShowZh] = useState(false)
   const [sizePanel, setSizePanel] = useState(false)
   /** 点词查词 + 短语匹配 + 返回键关弹层：与阅读页同一套（见 hook 注释） */
@@ -174,17 +172,7 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
           >
             {fmtDuration(elapsed)}
           </span>
-          {section.id === 'listening' && (
-            <button
-              type="button"
-              className={styles.action}
-              data-on={showText}
-              onClick={() => setShowText((v) => !v)}
-            >
-              原文
-            </button>
-          )}
-          {hasZh && showText && (
+          {hasZh && (
             <button
               type="button"
               className={styles.action}
@@ -221,23 +209,9 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
         </div>
       )}
 
-      {section.id === 'listening' && (
-        <div className={styles.audioGap}>
-          <p className={styles.audioTitle}>音频暂缺</p>
-          <p className={styles.audioText}>
-            这份题库包不含听力音频。先按题目选，需要原文时点右上「原文」。
-          </p>
-        </div>
-      )}
+      {passage.brief && <p className={styles.brief}>{passage.brief}</p>}
 
-      {passage.brief && showText && <p className={styles.brief}>{passage.brief}</p>}
-
-      {!showText && (
-        <p className={styles.hiddenHint}>原文已隐藏 · 点右上「原文」展开（带逐句中译）</p>
-      )}
-
-      {showText && (
-        <article className={styles.body}>
+      <article className={styles.body}>
           {passage.paras.map((para, pi) => (
             <div key={pi} className={styles.paraWrap}>
               <p className={`${styles.para} ${styles.en}`}>
@@ -296,7 +270,6 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
             </div>
           ))}
         </article>
-      )}
 
       {(passage.notes ?? []).map((note, i) => (
         <p key={i} className={styles.note}>

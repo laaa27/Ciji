@@ -322,7 +322,6 @@ export default function TrainingPage() {
                       </span>
                       <span className={styles.passageMeta}>
                         {p.questions.length} 题
-                        {sec.id === 'listening' ? ' · 音频暂缺' : ''}
                       </span>
                     </span>
                     <PassageScore score={scores[p.id]} />

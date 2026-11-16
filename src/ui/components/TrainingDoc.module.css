@@ -96,28 +96,6 @@
   color: var(--on-accent);
 }
 
-/* 听力没有音频：明说，不要让用户以为是自己没点对 */
-.audioGap {
-  margin-top: var(--sp-4);
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px dashed var(--rule-strong);
-  border-radius: 2px;
-}
-
-.audioTitle {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  color: var(--ink-2);
-}
-
-.audioText {
-  margin-top: 5px;
-  font-size: var(--fs-xs);
-  color: var(--ink-3);
-  line-height: 1.65;
-}
-
 .brief {
   margin-top: var(--sp-4);
   padding: var(--sp-3) var(--sp-4);
@@ -461,14 +439,6 @@
   color: var(--ink-3);
   line-height: 1.8;
   letter-spacing: 0.01em;
-}
-
-.hiddenHint {
-  margin-top: var(--sp-5);
-  padding: var(--sp-5) 0;
-  text-align: center;
-  font-size: var(--fs-sm);
-  color: var(--ink-3);
 }
 
 /* ---------- 选词填空 ---------- */
