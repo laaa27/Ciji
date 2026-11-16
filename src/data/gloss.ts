@@ -15,6 +15,8 @@ interface GlossEntry {
   gloss: string
   /** 这条释义是不是 AI 产生的（本地词典 / MyMemory 都是 false） */
   ai: boolean
+  /** 落盘时刻（毫秒）。磁盘软上限按它淘汰最旧的；旧数据没有此字段，视为最早 */
+  t?: number
 }
 
 const GLOSS_MEMORY = new Map<string, GlossEntry>()
@@ -48,9 +50,13 @@ export async function cachedGloss(word: string): Promise<GlossEntry | null> {
 function parseGlossEntry(raw: string): GlossEntry {
   if (raw.startsWith('{')) {
     try {
-      const data = JSON.parse(raw) as { gloss?: unknown; ai?: unknown }
+      const data = JSON.parse(raw) as { gloss?: unknown; ai?: unknown; t?: unknown }
       if (typeof data.gloss === 'string' && data.gloss) {
-        return { gloss: data.gloss, ai: data.ai === true }
+        return {
+          gloss: data.gloss,
+          ai: data.ai === true,
+          ...(typeof data.t === 'number' ? { t: data.t } : {}),
+        }
       }
     } catch {
       // 内容不合法就落到下面：原样当释义返回，至少不丢已缓存的文字
@@ -78,9 +84,70 @@ function keepInMemory(word: string, entry: GlossEntry): void {
  * 写不进去只降级成「本次会话有效」，不影响这一次显示。
  */
 export function rememberGloss(word: string, gloss: string, ai: boolean): void {
-  const entry: GlossEntry = { gloss, ai }
+  const entry: GlossEntry = { gloss, ai, t: Date.now() }
   keepInMemory(word, entry)
   void Preferences.set({ key: GLOSS_PREFIX + word, value: JSON.stringify(entry) }).catch(() => {})
+  void maybePruneDisk()
+}
+
+/* ── 磁盘容量治理（0.24.21）────────────────── */
+
+/**
+ * 磁盘软上限：`gloss:<词>` 键超过这个数就按落盘时刻淘汰最旧的。
+ *
+ * 为什么内存的 2000 条上限不够：那只是热缓存，磁盘键没有任何淘汰，
+ * 而 SharedPreferences 是「所有键共用一个 XML、每次写全量重写」——
+ * 不封顶的话，文件会随着查过的词无限变大，拖慢所有键的读写。
+ *
+ * 只淘汰 `gloss:<词>`：主释义可再生（重查一次就回来）；
+ * `gloss_alt:` 不动——那里有用户自填的释义，丢了就是真丢数据。
+ * 旧数据没有 `t` 字段，按最早处理（它们本来就是最早写进去的）。
+ */
+const GLOSS_DISK_MAX = 3000
+
+/** 每个会话只跑一次：磁盘没超限的话这次启动就不再扫描 */
+let prunedThisSession = false
+
+async function maybePruneDisk(): Promise<void> {
+  if (prunedThisSession) return
+  prunedThisSession = true
+  try {
+    const { keys } = await Preferences.keys()
+    const diskKeys = keys.filter((k) => k.startsWith(GLOSS_PREFIX))
+    if (diskKeys.length <= GLOSS_DISK_MAX) return
+
+    const stamped = await Promise.all(
+      diskKeys.map(async (k) => {
+        const { value } = await Preferences.get({ key: k })
+        const entry = value ? parseGlossEntry(value) : null
+        return { key: k, t: entry?.t ?? 0 }
+      }),
+    )
+    stamped.sort((a, b) => a.t - b.t)
+    const victims = stamped.slice(0, stamped.length - GLOSS_DISK_MAX)
+    await Promise.all(victims.map((v) => Preferences.remove({ key: v.key }).catch(() => {})))
+    for (const v of victims) GLOSS_MEMORY.delete(v.key.slice(GLOSS_PREFIX.length))
+  } catch {
+    // 淘汰失败不影响任何功能，下次启动再试
+    prunedThisSession = false
+  }
+}
+
+/**
+ * 清空全部释义缓存：`gloss:<词>` 与 `gloss_alt:<词>` 两族都删，给设置页用。
+ *
+ * 为什么不用 Preferences.clear()：那个会把同文件里的文章、每日记录、成绩一起清掉。
+ * 必须按前缀逐键删。返回删掉的总条数（主释义 + 备选）。
+ */
+export async function clearGlossCache(): Promise<number> {
+  const { keys } = await Preferences.keys()
+  const victims = keys.filter(
+    (k) => k.startsWith(GLOSS_PREFIX) || k.startsWith(ALT_PREFIX),
+  )
+  await Promise.all(victims.map((k) => Preferences.remove({ key: k }).catch(() => {})))
+  GLOSS_MEMORY.clear()
+  prunedThisSession = false
+  return victims.length
 }
 
 /* ── 备选释义：与主释义并存，只在词卡里展示 ─────────── */

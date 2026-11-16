@@ -14,6 +14,16 @@ import type { TodaySnapshot } from '@/domain/collect'
 
 const DAY_PREFIX = 'day:'
 
+/**
+ * 日期索引：已记录日期的升序列表，单独一个键。
+ *
+ * 为什么要有它：`listDays()` 原先走 `keys()`——在安卓上 `keys()` 会把整个
+ * SharedPreferences 文件反序列化一遍，文件越大（释义缓存、文章都在同一个文件里）
+ * 每次列日期越慢。索引只有一年 365 条，读它就不用碰全文件。
+ * 老安装没有这个键：第一次 `listDays()` 扫一遍 keys() 建出来，之后只维护增量。
+ */
+const K_DAY_INDEX = 'day_index'
+
 function dayKey(date: string): string {
   return DAY_PREFIX + date
 }
@@ -70,6 +80,7 @@ export async function saveDay(snapshot: TodaySnapshot): Promise<void> {
     key: dayKey(snapshot.date),
     value: JSON.stringify(snapshot),
   })
+  await indexAdd(snapshot.date)
 }
 
 /**
@@ -94,12 +105,39 @@ export async function getDay(date: string): Promise<TodaySnapshot | null> {
 
 /** 所有已记录的日期，按倒序（最新在前） */
 export async function listDays(): Promise<string[]> {
+  const index = await readDayIndex()
+  if (index) return [...index].reverse()
+
+  // 没有索引（老安装 / 索引损坏）：全量扫一遍建出来，之后增量维护
   const { keys } = await Preferences.keys()
-  return keys
+  const dates = keys
     .filter((k) => k.startsWith(DAY_PREFIX))
     .map((k) => k.slice(DAY_PREFIX.length))
     .sort()
-    .reverse()
+  await writeDayIndex(dates)
+  return [...dates].reverse()
+}
+
+async function readDayIndex(): Promise<string[] | null> {
+  const { value } = await Preferences.get({ key: K_DAY_INDEX })
+  if (!value) return null
+  try {
+    const list = JSON.parse(value) as unknown
+    if (!Array.isArray(list) || !list.every((d) => typeof d === 'string')) return null
+    return list as string[]
+  } catch {
+    return null
+  }
+}
+
+async function writeDayIndex(dates: string[]): Promise<void> {
+  await Preferences.set({ key: K_DAY_INDEX, value: JSON.stringify(dates) }).catch(() => {})
+}
+
+async function indexAdd(date: string): Promise<void> {
+  const index = (await readDayIndex()) ?? []
+  if (index.includes(date)) return
+  await writeDayIndex([...index, date].sort())
 }
 
 /** 读取全部历史快照，最新在前 */
@@ -115,10 +153,13 @@ export async function getAllDays(): Promise<TodaySnapshot[]> {
 
 export async function deleteDay(date: string): Promise<void> {
   await Preferences.remove({ key: dayKey(date) })
+  const index = await readDayIndex()
+  if (index) await writeDayIndex(index.filter((d) => d !== date))
 }
 
 /** 清空全部历史 */
 export async function clearAll(): Promise<void> {
   const days = await listDays()
-  await Promise.all(days.map((d) => deleteDay(d)))
+  await Promise.all(days.map((d) => Preferences.remove({ key: dayKey(d) })))
+  await writeDayIndex([])
 }

@@ -1,5 +1,6 @@
 import { useRef, useState, type ChangeEvent } from 'react'
 
+import { clearGlossCache } from '@/data/gloss'
 import { clearAll, listDays, writeDays } from '@/data/store'
 import {
   parseImportText,
@@ -38,6 +39,8 @@ export default function DataPrefs() {
   const [picked, setPicked] = useState<PickedFile | null>(null)
   const [importing, setImporting] = useState<ImportMode | null>(null)
   const [dataFeedback, setDataFeedback] = useState<Feedback>(null)
+  /** 清释义缓存要点两次：第一次只把按钮变成「确认清空」（与词卡加词同一模式） */
+  const [glossConfirming, setGlossConfirming] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   async function handleExport(format: ExportFormat) {
@@ -125,6 +128,27 @@ export default function DataPrefs() {
     await clearAll()
     resetToday()
     setDataFeedback({ kind: 'ok', text: '本地记录已清空' })
+  }
+
+  async function handleClearGloss() {
+    if (!glossConfirming) {
+      setGlossConfirming(true)
+      setDataFeedback(null)
+      return
+    }
+    setGlossConfirming(false)
+    try {
+      const n = await clearGlossCache()
+      setDataFeedback({
+        kind: 'ok',
+        text: `已清空 ${n} 条释义缓存。它们都能在下次点词时重新生成，文章与学习记录不受影响。`,
+      })
+    } catch (e) {
+      setDataFeedback({
+        kind: 'err',
+        text: e instanceof Error ? e.message : '清空失败',
+      })
+    }
   }
 
   const pickedSummary = picked ? summarize(picked.days) : null
@@ -266,6 +290,22 @@ export default function DataPrefs() {
           {dataFeedback.text}
         </p>
       )}
+
+      <h3 className={styles.subLabel}>释义缓存</h3>
+      <p className={styles.about}>
+        点词查过的释义会一直留着（全部键共用一个存储文件，堆多了读写都会变慢）。
+        清空后文章与学习记录不受影响，释义在下次点词时按需重新生成。
+      </p>
+
+      <div className={styles.actions}>
+        <button
+          type="button"
+          className={styles.secondary}
+          onClick={() => void handleClearGloss()}
+        >
+          {glossConfirming ? '确认清空释义缓存？' : '清空释义缓存'}
+        </button>
+      </div>
 
       <button type="button" className={styles.danger} onClick={() => void handleClearAll()}>
         清空全部记录
