@@ -705,14 +705,15 @@
   border: 1px solid var(--rule);
   border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14);
-  /* 进场：从底边浮上来，与页面推入动画同一节奏 */
-  animation: qbar-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  /* 进场：页面先推入，答题条错峰 80ms 再从底边浮起（backwards 让延迟期
+     保持隐藏帧），上浮距离加大到 20px——叠在页面滑动里也看得出来 */
+  animation: qbar-in 0.26s cubic-bezier(0.22, 1, 0.36, 1) 0.08s backwards;
 }
 
 @keyframes qbar-in {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(20px);
   }
 }
 
@@ -722,7 +723,8 @@
   display: grid;
   grid-template-rows: 1fr;
   min-height: 0;
-  transition: grid-template-rows 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+  /* 0.264s：0.24s 放慢 10% */
+  transition: grid-template-rows 0.264s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .qbar[data-collapsed='true'] .bodyClip {
