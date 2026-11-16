@@ -20,6 +20,12 @@ export type SubViewOptions = {
   onEnter?: () => void
   /** 退出二级视图后（比如恢复滚动位置） */
   onExit?: () => void
+  /**
+   * 返回键按下时先问这一票：返回 false 就不关（调用方一般先提示一次，
+   * 窗口内再按才放行，用来做「两次返回才退出」的防误触）。
+   * 只拦返回键触发的那次关闭；直接调 close() 不受影响。
+   */
+  shouldClose?: () => boolean
 }
 
 export function useSubView<T>(opts: SubViewOptions = {}) {
@@ -37,10 +43,12 @@ export function useSubView<T>(opts: SubViewOptions = {}) {
    */
   const enterRef = useRef(opts.onEnter)
   const exitRef = useRef(opts.onExit)
+  const shouldCloseRef = useRef(opts.shouldClose)
   useEffect(() => {
     enterRef.current = opts.onEnter
     exitRef.current = opts.onExit
-  }, [opts.onEnter, opts.onExit])
+    shouldCloseRef.current = opts.shouldClose
+  }, [opts.onEnter, opts.onExit, opts.shouldClose])
 
   const open = useCallback((next: T) => {
     enterRef.current?.()
@@ -61,7 +69,10 @@ export function useSubView<T>(opts: SubViewOptions = {}) {
   /** 有二级视图就自动接管返回键，调用方不用记着注册 */
   useEffect(() => {
     if (view === null) return
-    return pushBackHandler(close)
+    return pushBackHandler(() => {
+      if (shouldCloseRef.current && !shouldCloseRef.current()) return
+      close()
+    })
   }, [view, close])
 
   return { view, returning, open, close, isOpen: view !== null }

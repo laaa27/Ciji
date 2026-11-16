@@ -17,10 +17,17 @@ import {
 
 import { findScrollParent } from '../hooks/useScrollStuck'
 import { useSubView } from '../hooks/useSubView'
+import { useToast } from '@/store/toast'
 import BackButton from '../components/BackButton'
 import EmptyState from '../components/EmptyState'
 import TrainingDoc from '../components/TrainingDoc'
 import styles from './TrainingPage.module.css'
+
+/**
+ * 做题中的防误退窗口：第一次返回只提示，窗口内按第二次才真正退出。
+ * 与 App 级「再按一次回到桌面」同一档时长。
+ */
+const DOC_EXIT_CONFIRM_MS = 2200
 
 /**
  * 训练页：档位 → 套卷 → 篇目 → 做题。
@@ -87,8 +94,40 @@ export default function TrainingPage() {
   const rootScroll = useRef(0)
   const paperScroll = useRef(0)
 
-  const paperNav = useSubView<string>()
-  const docNav = useSubView<string>()
+  const lastDocBackRef = useRef(0)
+
+  /** 系统返回键与左上角箭头共用的确认：第一次提示，窗口内第二次放行 */
+  function docBackConfirm(): boolean {
+    const now = Date.now()
+    if (now - lastDocBackRef.current < DOC_EXIT_CONFIRM_MS) {
+      lastDocBackRef.current = 0
+      return true
+    }
+    lastDocBackRef.current = now
+    useToast.getState().show('再按一次退出做题')
+    return false
+  }
+
+  const paperNav = useSubView<string>({
+    onEnter: () => {
+      const s = scroller()
+      if (s) rootScroll.current = s.scrollTop
+    },
+    onExit: () => restore(rootScroll),
+  })
+  /**
+   * 做题是可能丢进度的一层（答题记录不落盘，见训练进度持久化的历史），
+   * 所以退它要两次确认；滚动记忆走 onEnter/onExit，让系统返回键
+   * 与箭头按钮行为完全一致（以前返回键路径是不恢复滚动的）。
+   */
+  const docNav = useSubView<string>({
+    onEnter: () => {
+      const s = scroller()
+      if (s) paperScroll.current = s.scrollTop
+    },
+    onExit: () => restore(paperScroll),
+    shouldClose: docBackConfirm,
+  })
 
   useEffect(() => {
     let alive = true
@@ -127,8 +166,6 @@ export default function TrainingPage() {
   }
 
   function openPaper(key: string) {
-    const s = scroller()
-    if (s) rootScroll.current = s.scrollTop
     setPaper(null)
     setPaperError(null)
     paperNav.open(key)
@@ -153,19 +190,17 @@ export default function TrainingPage() {
 
   function closePaper() {
     paperNav.close()
-    restore(rootScroll)
   }
 
   function openDoc(passageId: string) {
-    const s = scroller()
-    if (s) paperScroll.current = s.scrollTop
     docNav.open(passageId)
     toTop()
   }
 
-  function closeDoc() {
+  /** 左上角箭头：与系统返回键走同一道确认 */
+  function docBack() {
+    if (!docBackConfirm()) return
     docNav.close()
-    restore(paperScroll)
   }
 
   const list = index.filter((p) => p.level === level)
@@ -227,7 +262,7 @@ export default function TrainingPage() {
       return (
         <div key={`doc-${docNav.view}`} className={styles.page} data-view="doc" ref={pageRef}>
           <header className={styles.subHead}>
-            <BackButton onClick={closeDoc} />
+            <BackButton onClick={docBack} />
             <h1 className={styles.subTitle}>{section.label}</h1>
           </header>
           <TrainingDoc
