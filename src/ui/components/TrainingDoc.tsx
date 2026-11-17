@@ -54,9 +54,12 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
   const fontSize = usePrefs((s) => s.readingFont)
   const cloze = isCloze(passage)
   const hasZh = useMemo(() => hasTranslation(passage), [passage])
-  /** 新题型变体：排序题走链图 UI；其余 matching 变体共享选项池互斥（抢占换选） */
-  const kind = passage.kind ?? 'matching'
+  /** 新题型变体：仅 matching 节有；阅读理解（reading1/2）不设 kind，选项可随意重复选择 */
+  const isMatchingSection = section.id === 'matching'
+  const kind = isMatchingSection ? (passage.kind ?? 'matching') : undefined
   const ordering = kind === 'ordering' && Boolean(passage.chain?.length)
+  /** 共享选项池互斥（抢占换选）：只作用于新题型；判断题 T/F 每题独立，不抢占 */
+  const sharedPool = isMatchingSection && kind !== 'tf'
 
   const [showZh, setShowZh] = useState(false)
   const [sizePanel, setSizePanel] = useState(false)
@@ -132,8 +135,9 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
         next[no] = ''
         return next
       }
-      // 抢占换选：该选项被别的题占用时，那题自动清空回未答（判断题 T/F 不共享，不抢占）
-      if (kind !== 'tf') {
+      // 抢占换选：该选项被别的题占用时，那题自动清空回未答。
+      // 只在共享选项池（新题型）里生效；阅读理解各题独立，同一选项可重复选
+      if (sharedPool) {
         for (const [otherNo, otherKey] of Object.entries(prev)) {
           if (otherKey === key) next[Number(otherNo)] = ''
         }
@@ -325,6 +329,7 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
           submitted={submitted}
           exclusive={exclusive}
           kind={kind}
+          sharedPool={sharedPool}
           matchKeys={matchKeys}
           usedLetters={usedLetters}
           rightCount={rightCount}

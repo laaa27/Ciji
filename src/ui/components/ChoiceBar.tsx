@@ -10,8 +10,10 @@ type Props = {
   answers: Record<number, string>
   submitted: boolean
   exclusive: boolean
-  /** 新题型变体：判断题的 T/F 每题独立，不做共享互斥标记 */
-  kind: MatchingKind
+  /** 新题型变体（仅 matching 节有；阅读理解不传） */
+  kind?: MatchingKind
+  /** 共享选项池互斥：置灰 + 抢占只在此模式下出现（阅读理解各题独立，不置灰） */
+  sharedPool: boolean
   matchKeys: string[]
   usedLetters: Map<string, number>
   rightCount: number
@@ -34,6 +36,7 @@ export function ChoiceBar({
   submitted,
   exclusive,
   kind,
+  sharedPool,
   matchKeys,
   usedLetters,
   rightCount,
@@ -131,7 +134,7 @@ export function ChoiceBar({
               {options.map((o) => {
                 const chosen = picked === o.key
                 const usedElsewhere =
-                  kind !== 'tf' &&
+                  sharedPool &&
                   Object.entries(answers).some(([no, v]) => v === o.key && Number(no) !== q.no)
                 let state: string | undefined
                 if (submitted) {
