@@ -220,13 +220,36 @@ def material_passages(row, section):
                 paras.append({'sents': sents})
         return paras, brief
 
-    # 文章：优先用解析页的逐段中译定段落边界
+    # 文章：优先用结构化的逐段中译定段落边界
     text = (data.get('passage') or '').strip()
     if text:
         try:
-            tr = json.loads(row['translation_json'] or '{}').get('passage_translation') or ''
+            tr_data = json.loads(row['translation_json'] or '{}')
         except (json.JSONDecodeError, AttributeError):
-            tr = ''
+            tr_data = {}
+
+        # 考研的形状：中文段、英文段各一个数组，段数 1:1（懒笔记 .lt-zh 段落译文）。
+        # 四六级是 passage_translation 排版块，脚本不认这个形状会把考研静默导成无译 + 假分段。
+        tr_paras = tr_data.get('paragraphs')
+        src_paras = data.get('source_paragraphs')
+        if (isinstance(tr_paras, list) and isinstance(src_paras, list)
+                and len(tr_paras) == len(src_paras)):
+            paras = []
+            for en_p, zh in zip(src_paras, tr_paras):
+                en = (en_p.get('text') or '').strip() if isinstance(en_p, dict) else ''
+                zh = (zh or '').strip()
+                sents = [{'en': s} for s in split_sentences(en)]
+                if not sents:
+                    continue
+                para = {'sents': sents}
+                if zh:
+                    para['zh'] = zh
+                paras.append(para)
+            if paras:
+                return paras, brief
+
+        # 四六级：解析页「P1..Pn 段号、逐段附中文翻译」块
+        tr = tr_data.get('passage_translation') or ''
         blocks = parse_passage_translation(tr)
         if blocks:
             paras = []
