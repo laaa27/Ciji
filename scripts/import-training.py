@@ -35,6 +35,25 @@ SECTION_LABEL = {
 # 听力也没有导入：没有音频做不了「听→答」的闭环，2026-11-16 按用户要求整个去掉
 SECTION_ORDER = ['cloze', 'matching', 'reading1', 'reading2']
 
+# 考研新题型（matching）变体 → 展示名。判定规则见 matching_variant()
+MATCHING_LABELS = {
+    'matching': '信息匹配',
+    'ordering': '排序题',
+    'headings': '小标题',
+    'gapfill': '七选五',
+    'opinions': '观点概括',
+    'tf': '判断题',
+}
+# 小标题（2007）与早期七选五（2005–2009）在「考研从 2010 起」的下限之外，
+# 但这些变体只有那些年份才有 —— 新题型节单独放宽到 2005，整卷其余题型不动。
+MATCHING_FROM = 2005
+
+# 人名-空位两种排版：观点概括的题干要从段文本里提取人名（2024 英语二是名字在后）
+NAME_BEFORE_RE = re.compile(r'^\s*([^:：\n]{2,40}?):\s*__\(\d+\)__')
+NAME_AFTER_RE = re.compile(r'^\s*__\(\d+\)__\s*([^:：\n]{1,40})$')
+# 名字行不含句读 —— 七选五的段也可能以空位开头，靠这条把两种排版区分开
+NAME_PUNCT_RE = re.compile(r'[.!?。！？；;，,]')
+
 # 句末标点后接空格，才算一个句子边界。缩写单独排掉，否则 Mr. Smith 会被切开
 ABBREV = {'mr', 'mrs', 'ms', 'dr', 'prof', 'st', 'jr', 'sr', 'vs', 'etc', 'e.g', 'i.e', 'no', 'fig', 'al'}
 
@@ -304,9 +323,104 @@ def build_question(row):
     return q
 
 
-def collect_section(conn, paper_id, section):
+def _is_person_name(s):
+    """题干是不是纯人名：短、无句读、每个词首字母大写。
+
+    用于区分「人名-观点匹配」（2024 英语二：题干就是人名）与普通信息匹配
+    （题干是陈述句，如 'Andrew Lansley held that …'，句中有小写词）。
+    """
+    if not s or len(s) > 40:
+        return False
+    if NAME_PUNCT_RE.search(s):
+        return False
+    words = s.split()
+    if not 1 <= len(words) <= 4:
+        return False
+    # 人名里的小写连接词（Marx and Engels / von Neumann）不算破绽
+    small = {'and', 'of', 'the', 'de', 'von', 'van'}
+    return all(w[:1].isupper() or w.lower() in small for w in words)
+
+
+def matching_variant(mat, questions):
+    """结构化判定考研新题型变体。返回 (kind, label)。
+
+    判定顺序：T/F 选项 → 判断题；given_chain → 排序题；段落带空位 →
+    小标题（Directions 提 headings）/ 观点概括（空位段是人名行）/ 七选五；
+    无空位 → 信息匹配（含观点例证类：题干是陈述句，答案是段落字母）。
+    """
+    if not mat:
+        return 'matching', MATCHING_LABELS['matching']
+    try:
+        cj = json.loads(mat['content_json'] or '{}')
+    except json.JSONDecodeError:
+        cj = {}
+    paras = cj.get('paragraphs') or []
+    blanked = [p for p in paras if '__(' in (p.get('text') or '')]
+
+    first_opts = []
+    if questions:
+        try:
+            first_opts = json.loads(questions[0]['options_json'] or '[]')
+        except json.JSONDecodeError:
+            first_opts = []
+    if first_opts and first_opts[0].get('key') in ('T', 'F'):
+        return 'tf', MATCHING_LABELS['tf']
+    if cj.get('given_chain'):
+        return 'ordering', MATCHING_LABELS['ordering']
+    if blanked:
+        if 'headings' in (mat['directions'] or ''):
+            return 'headings', MATCHING_LABELS['headings']
+        named = sum(
+            1
+            for p in blanked
+            if _blank_name(paras, _blank_no(p.get('text') or '')) is not None
+        )
+        if named >= max(1, int(len(blanked) * 0.8)):
+            return 'opinions', MATCHING_LABELS['opinions']
+        return 'gapfill', MATCHING_LABELS['gapfill']
+    # 无空位：题干全是人名 → 观点概括（人名-段落匹配）；否则信息匹配
+    stems = [(q['stem'] or '').strip() for q in questions]
+    if stems and all(_is_person_name(s) for s in stems):
+        return 'opinions', MATCHING_LABELS['opinions']
+    return 'matching', MATCHING_LABELS['matching']
+
+
+def _blank_no(text):
+    """段文本里第一个空位的题号，没有则 None。"""
+    m = re.search(r'__\((\d+)\)__', text)
+    return int(m.group(1)) if m else None
+
+
+def _blank_name(paras, no):
+    """从含 __(no)__ 的段落提取人名；两种排版（名在前 / 名在后）都认。
+
+    名字行必须短且不含句读 —— 七选五的段也可能以空位开头，靠这条区分。
+    """
+    if no is None:
+        return None
+    marker = '__(%d)__' % no
+    for p in paras:
+        t = (p.get('text') or '').strip()
+        if marker not in t:
+            continue
+        m = NAME_BEFORE_RE.match(t)
+        if m:
+            name = m.group(1).strip()
+        else:
+            m = NAME_AFTER_RE.match(t)
+            if not m:
+                return None
+            name = m.group(1).strip()
+        if name and len(name) <= 40 and not NAME_PUNCT_RE.search(name):
+            return name
+        return None
+    return None
+
+
+def collect_section(conn, paper_id, section, level=''):
     materials = conn.execute(
-        """SELECT group_key, content_json, translation_json, analysis_text FROM section_materials
+        """SELECT group_key, content_json, translation_json, analysis_text, directions
+           FROM section_materials
            WHERE paper_id=? AND section=? ORDER BY id""",
         (paper_id, section),
     ).fetchall()
@@ -345,6 +459,7 @@ def collect_section(conn, paper_id, section):
                 groups.append(('', left))
 
     passages = []
+    sec_label = None
     for gi, (gkey, qs) in enumerate(groups):
         mat = next((m for m in materials if m['group_key'] == gkey), None)
         paras, brief = material_passages(mat, section) if mat else ([], '')
@@ -353,6 +468,34 @@ def collect_section(conn, paper_id, section):
             'paras': paras,
             'questions': [build_question(q) for q in qs],
         }
+        if section == 'matching' and mat:
+            kind, vlabel = matching_variant(mat, qs)
+            item['kind'] = kind
+            # 变体名只用于考研；四六级 Part B 惯称「长篇阅读」，保持不变
+            sec_label = sec_label or (vlabel if level == 'kaoyan' else '长篇阅读')
+            try:
+                mcj = json.loads(mat['content_json'] or '{}')
+            except json.JSONDecodeError:
+                mcj = {}
+            chain = mcj.get('given_chain') or []
+            if kind == 'ordering' and chain:
+                item['chain'] = [
+                    {'given': c['given']} if 'given' in c else {'no': c['question']}
+                    for c in chain
+                    if 'given' in c or 'question' in c
+                ]
+            if kind == 'opinions':
+                paras_raw = mcj.get('paragraphs') or []
+                for q in item['questions']:
+                    stem = (q.get('stem') or '').strip()
+                    if stem:
+                        # 题干已是人名（2024 英语二排版）：补「的观点」
+                        if _is_person_name(stem):
+                            q['stem'] = '%s 的观点' % stem
+                        continue
+                    name = _blank_name(paras_raw, q['no'])
+                    if name:
+                        q['stem'] = '%s 的观点' % name
         if brief:
             item['brief'] = brief
         if section == 'cloze' and mat:
@@ -377,7 +520,7 @@ def collect_section(conn, paper_id, section):
     notes = [m['analysis_text'].strip() for m in materials if (m['analysis_text'] or '').strip()]
     article = {
         'id': section,
-        'label': SECTION_LABEL.get(section, section),
+        'label': sec_label or SECTION_LABEL.get(section, section),
         'passages': passages,
     }
     if notes:
@@ -436,16 +579,19 @@ def main():
             continue
         floor = args.kaoyan_since if level == 'kaoyan' else args.since
         if row['year'] < floor:
+            # 考研 2005–2009：整卷结构太老，只导新题型节（小标题 / 早期七选五只在这几里有）
+            if not (level == 'kaoyan' and row['year'] >= MATCHING_FROM):
+                continue
+            sections = [a for a in (collect_section(conn, row['id'], 'matching', level),) if a]
+        else:
+            sections = []
+            for sec in SECTION_ORDER:
+                art = collect_section(conn, row['id'], sec, level)
+                if art:
+                    sections.append(art)
+        if not sections:
             continue
         if args.limit and taken[level] >= args.limit:
-            continue
-
-        sections = []
-        for sec in SECTION_ORDER:
-            art = collect_section(conn, row['id'], sec)
-            if art:
-                sections.append(art)
-        if not sections:
             continue
 
         paper = {

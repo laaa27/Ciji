@@ -1,4 +1,4 @@
-import type { TrainingOption, TrainingQuestion } from '@/domain/training'
+import type { MatchingKind, TrainingOption, TrainingQuestion } from '@/domain/training'
 
 import { Analysis } from './Analysis'
 import styles from './TrainingDoc.module.css'
@@ -10,6 +10,8 @@ type Props = {
   answers: Record<number, string>
   submitted: boolean
   exclusive: boolean
+  /** 新题型变体：判断题的 T/F 每题独立，不做共享互斥标记 */
+  kind: MatchingKind
   matchKeys: string[]
   usedLetters: Map<string, number>
   rightCount: number
@@ -31,6 +33,7 @@ export function ChoiceBar({
   answers,
   submitted,
   exclusive,
+  kind,
   matchKeys,
   usedLetters,
   rightCount,
@@ -112,7 +115,9 @@ export function ChoiceBar({
                       type="button"
                       className={styles.letter}
                       data-state={state}
-                      disabled={submitted || usedElsewhere}
+                      // 被占用的选项置灰但仍可点：点了就是抢占（原题自动清空）
+                      data-used={usedElsewhere ? 'true' : undefined}
+                      disabled={submitted}
                       onClick={() => onPick(q.no, o.key)}
                     >
                       {o.key}
@@ -125,6 +130,9 @@ export function ChoiceBar({
             <ul className={styles.opts}>
               {options.map((o) => {
                 const chosen = picked === o.key
+                const usedElsewhere =
+                  kind !== 'tf' &&
+                  Object.entries(answers).some(([no, v]) => v === o.key && Number(no) !== q.no)
                 let state: string | undefined
                 if (submitted) {
                   if (o.key === q.answer) state = 'right'
@@ -136,6 +144,7 @@ export function ChoiceBar({
                       type="button"
                       className={styles.opt}
                       data-state={state}
+                      data-used={usedElsewhere ? 'true' : undefined}
                       onClick={() => onPick(q.no, o.key)}
                     >
                       <span className={styles.optKey}>{o.key}</span>

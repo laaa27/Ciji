@@ -13,6 +13,8 @@ import { usePrefs, type FontSize } from '@/store/prefs'
 
 import { ChoiceBar } from './ChoiceBar'
 import { ClozeBar, ClozeResult } from './ClozeBar'
+import { OrderChain } from './OrderChain'
+import { OrderingBar } from './OrderingBar'
 import { TrainingReader } from './TrainingReader'
 import WordSheet from './WordSheet'
 import { useStopwatch } from '../hooks/useStopwatch'
@@ -42,7 +44,8 @@ type Props = {
  * 四条规则，都跟阅读页不同：
  * 1. 选项条跟词卡一样浮在底栏上方 —— 滑到文章任何位置都能答题，不用来回滚。
  * 2. 答完不判对错，点「提交答卷」才出答案与解析。当场判分等于边做边看答案。
- * 3. 阅读 / 长篇阅读一次一题，可上一题下一题；长篇阅读的段号是排他的，用过就不能再用。
+ * 3. 阅读 / 新题型一次一题，可上一题下一题；新题型共享选项池互斥——选项被占用时
+ *    置灰可点，点了即抢占（原题自动清空）。排序题例外：链图一次全览，无逐题切换。
  * 4. 选词填空把空位做进文章里，待选词库常驻下方。
  *
  * 正文渲染在 TrainingReader，选择题答题条在 ChoiceBar，选词填空条与逐空结果在 ClozeBar，
@@ -52,6 +55,9 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
   const fontSize = usePrefs((s) => s.readingFont)
   const cloze = isCloze(passage)
   const hasZh = useMemo(() => hasTranslation(passage), [passage])
+  /** 新题型变体：排序题走链图 UI；其余 matching 变体共享选项池互斥（抢占换选） */
+  const kind = passage.kind ?? 'matching'
+  const ordering = kind === 'ordering' && Boolean(passage.chain?.length)
 
   const [showZh, setShowZh] = useState(false)
   const [sizePanel, setSizePanel] = useState(false)
@@ -87,6 +93,19 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
   /** 本次做题用时：进入即计时，提交后停表；开着词卡查词也算在做题里 */
   const elapsed = useStopwatch(!submitted)
 
+  /** 共享选项池：新题型各题的选项相同（A–G），任取一题的即可 */
+  const pool = useMemo(
+    () => questions.find((q) => q.options?.length)?.options ?? [],
+    [questions],
+  )
+  /** 原文空位回填的内容：小标题回填标题文本，其余回填大写字母 */
+  const blankDisplay = (no: number): string | undefined => {
+    const key = answers[no]
+    if (!key) return undefined
+    if (kind === 'headings') return pool.find((o) => o.key === key)?.text ?? key
+    return key
+  }
+
   /**
    * 信息匹配没有选项，用它自己的段号 A..O 当选项。
    * 这类题的段号是排他的：一段只能被一句选一次，所以整个题型共享一个已用集合。
@@ -105,7 +124,23 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
 
   function pick(no: number, key: string) {
     if (submitted) return
-    setAnswers((prev) => ({ ...prev, [no]: prev[no] === key ? '' : key }))
+    setAnswers((prev) => {
+      const next = { ...prev }
+      if (next[no] === key) {
+        // 再点一次同一选项：清空本题
+        next[no] = ''
+        return next
+      }
+      // 抢占换选：该选项被别的题占用时，那题自动清空回未答（判断题 T/F 不共享，不抢占）
+      if (kind !== 'tf') {
+        for (const [otherNo, otherKey] of Object.entries(prev)) {
+          if (otherKey === key) next[Number(otherNo)] = ''
+        }
+      }
+      next[no] = key
+      return next
+    })
+    setActiveBlank(null)
   }
 
   function fillBlank(bankKey: string) {
@@ -204,16 +239,37 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
         activeBlank={activeBlank}
         markSet={markSet}
         wordOf={wordOf}
+        blankDisplay={blankDisplay}
+        blankIsHeading={kind === 'headings'}
         onBlank={(no) => {
           if (submitted) return
-          if (answers[no]) clearBlank(no)
-          else setActiveBlank(no)
+          if (cloze) {
+            // 完形：已填点开即清空
+            if (answers[no]) clearBlank(no)
+            else setActiveBlank(no)
+            return
+          }
+          // 新题型：空位点开即换选——切到对应题并弹出候选条
+          const idx = questions.findIndex((q) => q.no === no)
+          if (idx >= 0) setCurrent(idx)
+          setActiveBlank(no)
         }}
         onWordTap={(key, parts, j) => {
           setMarkKey(key)
           sel.open(parts, j)
         }}
       />
+
+      {ordering && passage.chain && (
+        <OrderChain
+          chain={passage.chain}
+          answers={answers}
+          submitted={submitted}
+          questions={questions}
+          activeSlot={activeBlank}
+          onSlot={(no) => setActiveBlank(no)}
+        />
+      )}
 
       {(passage.notes ?? []).map((note, i) => (
         <p key={i} className={styles.note}>
@@ -248,7 +304,25 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
         />
       )}
 
-      {!cloze && q && (
+      {ordering && passage.chain && (
+        <OrderingBar
+          pool={matchKeys}
+          given={passage.chain.filter((c) => c.given).map((c) => c.given as string)}
+          answers={answers}
+          submitted={submitted}
+          activeSlot={activeBlank}
+          onPick={pick}
+          onSubmit={submit}
+          answeredCount={answeredCount}
+          total={questions.length}
+          rightCount={rightCount}
+          judgedCount={judged.length}
+          collapsed={barCollapsed}
+          onToggle={() => setBarCollapsed((v) => !v)}
+        />
+      )}
+
+      {!cloze && !ordering && q && (
         <ChoiceBar
           q={q}
           current={current}
@@ -256,6 +330,7 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
           answers={answers}
           submitted={submitted}
           exclusive={exclusive}
+          kind={kind}
           matchKeys={matchKeys}
           usedLetters={usedLetters}
           rightCount={rightCount}

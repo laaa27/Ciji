@@ -54,6 +54,22 @@ export type TrainingPara = {
   zh?: string
 }
 
+/**
+ * 新题型变体（考研 matching 按结构化判定，见 import-training.py 的 matching_variant）。
+ * matching = 信息匹配；gapfill = 七选五；headings = 小标题；opinions = 观点概括；
+ * ordering = 排序题；tf = 判断正误。
+ */
+export type MatchingKind =
+  | 'matching'
+  | 'ordering'
+  | 'tf'
+  | 'headings'
+  | 'opinions'
+  | 'gapfill'
+
+/** 排序题的链槽：原卷已给定的段落（given）或待答槽位（no = 题号） */
+export type ChainSlot = { given?: string; no?: number }
+
 export type TrainingPassage = {
   id: string
   paras: TrainingPara[]
@@ -64,6 +80,10 @@ export type TrainingPassage = {
   brief?: string
   /** 附注（写作范文的中译等） */
   notes?: string[]
+  /** 新题型变体（仅 matching 节有） */
+  kind?: MatchingKind
+  /** 排序题的固定链（given 槽与待答槽的排布顺序） */
+  chain?: ChainSlot[]
 }
 
 export type TrainingSection = {

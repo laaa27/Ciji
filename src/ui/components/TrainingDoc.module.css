@@ -1012,3 +1012,124 @@
 .letters {
   animation: q-in 0.16s cubic-bezier(0.22, 1, 0.36, 1);
 }
+
+/* ---------- 新题型：排序题链图 ---------- */
+
+/* 链图横排自动换行；盒子竖排（题号在上、字母在下），盒子之间箭头相连。
+   灰盒 = 原卷已给定（不可点）；实线 = 已答；虚线 = 待答 —— 对应用户给的样式稿 */
+.chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  row-gap: 14px;
+  margin: var(--sp-5) 0 0;
+}
+
+.chainItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  min-width: 64px;
+}
+
+.chainArrow {
+  align-self: flex-start;
+  margin-top: 22px;
+  padding: 0 6px;
+  font-size: 15px;
+  color: var(--ink-3);
+}
+
+.chainBox {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-width: 64px;
+  padding: 10px 14px;
+  border: 1.5px solid var(--rule-strong);
+  border-radius: 10px;
+  background: var(--surface);
+  font-family: var(--font-ui);
+}
+
+.chainNo {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.chainVal {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+}
+
+/* 原卷已给定：灰盒，不可点 */
+.chainGiven {
+  border-color: var(--rule);
+  background: var(--rule);
+  color: var(--ink-2);
+  cursor: default;
+}
+
+/* 待答槽位：虚线框 */
+.chainBox[data-slot='true'][data-answered='false'] {
+  border-style: dashed;
+}
+
+/* 选中中的槽位：主色实线 */
+.chainBox[data-slot='true'][data-active='true'] {
+  border-color: var(--accent);
+  border-style: solid;
+  box-shadow: 0 0 0 1.5px var(--accent);
+}
+
+.chainBox[data-slot='true'][data-right='true'] {
+  border-color: var(--state-new);
+}
+
+.chainBox[data-slot='true'][data-right='true'] .chainVal {
+  color: var(--state-new);
+}
+
+.chainBox[data-slot='true'][data-right='false'] {
+  border-color: var(--state-forget);
+}
+
+.chainBox[data-slot='true'][data-right='false'] .chainVal {
+  color: var(--state-forget);
+}
+
+.chainCap {
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/* ---------- 共享选项池：被别的题占用的选项置灰但仍可点（点了就是抢占） ---------- */
+
+.letter[data-used='true'] {
+  opacity: 0.38;
+}
+
+.opt[data-used='true'] {
+  opacity: 0.45;
+}
+
+/* ---------- 新题型空位回填 ---------- */
+
+/* 小标题回填：标题文本较长，盒子放开换行、加粗，像段落标题 */
+.blank[data-heading='true'] {
+  display: inline-block;
+  min-width: 0;
+  max-width: 100%;
+  white-space: normal;
+  text-align: left;
+  font-size: 0.82em;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--ink);
+}
