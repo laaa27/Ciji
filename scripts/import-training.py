@@ -44,9 +44,6 @@ MATCHING_LABELS = {
     'opinions': '观点概括',
     'tf': '判断题',
 }
-# 小标题（2007）与早期七选五（2005–2009）在「考研从 2010 起」的下限之外，
-# 但这些变体只有那些年份才有 —— 新题型节单独放宽到 2005，整卷其余题型不动。
-MATCHING_FROM = 2005
 
 # 人名-空位两种排版：观点概括的题干要从段文本里提取人名（2024 英语二是名字在后）
 NAME_BEFORE_RE = re.compile(r'^\s*([^:：\n]{2,40}?):\s*__\(\d+\)__')
@@ -131,6 +128,10 @@ def parse_analysis(text):
     rest = '\n'.join(blocks.get('解析', [])).strip()
     if rest:
         out['note'] = rest
+    if not out:
+        # 非标准分节（排序题的「正确段 B 【承接前一段】…」等）：整段挂 raw，
+        # 原样可读比丢掉强
+        return {'raw': text.strip()}
     return out
 
 
@@ -579,16 +580,13 @@ def main():
             continue
         floor = args.kaoyan_since if level == 'kaoyan' else args.since
         if row['year'] < floor:
-            # 考研 2005–2009：整卷结构太老，只导新题型节（小标题 / 早期七选五只在这几里有）
-            if not (level == 'kaoyan' and row['year'] >= MATCHING_FROM):
-                continue
-            sections = [a for a in (collect_section(conn, row['id'], 'matching', level),) if a]
-        else:
-            sections = []
-            for sec in SECTION_ORDER:
-                art = collect_section(conn, row['id'], sec, level)
-                if art:
-                    sections.append(art)
+            continue
+
+        sections = []
+        for sec in SECTION_ORDER:
+            art = collect_section(conn, row['id'], sec, level)
+            if art:
+                sections.append(art)
         if not sections:
             continue
         if args.limit and taken[level] >= args.limit:

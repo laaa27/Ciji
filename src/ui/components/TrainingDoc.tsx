@@ -14,7 +14,7 @@ import { usePrefs, type FontSize } from '@/store/prefs'
 import { ChoiceBar } from './ChoiceBar'
 import { ClozeBar, ClozeResult } from './ClozeBar'
 import { OrderChain } from './OrderChain'
-import { OrderingBar } from './OrderingBar'
+import { OrderResult, OrderingBar } from './OrderingBar'
 import { TrainingReader } from './TrainingReader'
 import WordSheet from './WordSheet'
 import { useStopwatch } from '../hooks/useStopwatch'
@@ -82,6 +82,8 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
   const [activeBlank, setActiveBlank] = useState<number | null>(null)
   /** 选词填空：展开了解析的空位 */
   const [openBlank, setOpenBlank] = useState<number | null>(null)
+  /** 排序题：展开了解析的槽位 */
+  const [openOrder, setOpenOrder] = useState<number | null>(null)
   /** 选项条收起：想把整屏留给文章时用 */
   const [barCollapsed, setBarCollapsed] = useState(false)
 
@@ -268,6 +270,15 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
           questions={questions}
           activeSlot={activeBlank}
           onSlot={(no) => setActiveBlank(no)}
+        />
+      )}
+
+      {ordering && submitted && (
+        <OrderResult
+          questions={questions}
+          answers={answers}
+          open={openOrder}
+          onOpen={setOpenOrder}
         />
       )}
 

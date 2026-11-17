@@ -1,3 +1,6 @@
+import type { TrainingQuestion } from '@/domain/training'
+
+import { Analysis } from './Analysis'
 import styles from './TrainingDoc.module.css'
 
 type Props = {
@@ -99,5 +102,44 @@ export function OrderingBar({
         </div>
       </div>
     </div>
+  )
+}
+
+/** 提交后逐槽的结果：你的答案、正确答案、可展开的解析（与完形结果同一模式） */
+export function OrderResult({
+  questions,
+  answers,
+  open,
+  onOpen,
+}: {
+  questions: TrainingQuestion[]
+  answers: Record<number, string>
+  open: number | null
+  onOpen: (no: number | null) => void
+}) {
+  return (
+    <ul className={styles.blankList}>
+      {questions.map((q) => {
+        const ok = answers[q.no] === q.answer
+        const isOpen = open === q.no
+        return (
+          <li key={q.no}>
+            <button
+              type="button"
+              className={styles.blankRow}
+              onClick={() => onOpen(isOpen ? null : q.no)}
+            >
+              <span className={styles.qNo}>{q.no}</span>
+              <span data-ok={ok ? 'true' : 'false'}>
+                {answers[q.no] ?? '未答'}
+                {ok ? ' ✓' : ` · 正确 ${q.answer ?? '—'}`}
+              </span>
+              <span className={styles.blankMore}>{isOpen ? '收起' : '解析'}</span>
+            </button>
+            {isOpen && <Analysis q={q} picked={answers[q.no]} compact />}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
