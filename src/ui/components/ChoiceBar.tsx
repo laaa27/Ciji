@@ -93,7 +93,7 @@ export function ChoiceBar({
         <div key={q.no} className={`${styles.qbarBody} ${styles.qSwitch}`}>
           <p className={styles.stem}>
             <span className={styles.qNo}>{q.no}</span>
-            {q.stem ?? '（听力题：无书面题干）'}
+            {q.stem ?? '（无书面题干）'}
           </p>
 
           {exclusive ? (

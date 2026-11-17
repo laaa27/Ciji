@@ -8,10 +8,9 @@
 
 export type TrainingLevel = 'cet4' | 'cet6' | 'kaoyan'
 
-/** 一句原文。听力带 zh（题库本来就给了逐句中英），阅读暂时没有 */
+/** 一句原文。题库只给段级中译（挂在段落上），句级对齐在渲染时按标点切（见 alignParaZh） */
 export type TrainingSentence = {
   en: string
-  zh?: string
   /** 信息匹配段落的 A/B/C 标号 */
   label?: string
 }
@@ -108,8 +107,33 @@ export function isObjective(q: TrainingQuestion): boolean {
 
 /** 这一篇里有没有中文（决定「译文」开关要不要出现） */
 export function hasTranslation(p: TrainingPassage): boolean {
-  if (p.paras.some((para) => Boolean(para.zh))) return true
-  return p.paras.some((para) => para.sents.some((s) => Boolean(s.zh)))
+  return p.paras.some((para) => Boolean(para.zh))
+}
+
+/**
+ * 段译里混进的解析页残渣：「Questions 46 to 50 are based on …」。
+ * 四六级的译文是从解析页排版里抠的，偶尔把下一题的引导句也带了进来。
+ */
+const ZH_JUNK_RE = /\s*Questions?\s+\d+[\s\S]*$/i
+
+/** 去掉段译尾部的解析残渣，返回干净的译文（可能为空串） */
+export function cleanParaZh(zh: string): string {
+  return zh.replace(ZH_JUNK_RE, '').trim()
+}
+
+/**
+ * 段译逐句对齐：把段译按中文句末标点切开，与段内英文句一一配对。
+ * 句数对不上（翻译把一句拆成两句、或几句并成一句）就放弃 —— 返回 null，
+ * 调用方回退到整段译文，宁可退回原样式，也不能把错位的译文扣到错误的句子上。
+ */
+export function alignParaZh(para: TrainingPara): string[] | null {
+  const zh = para.zh
+  if (!zh) return null
+  const parts = cleanParaZh(zh)
+    .split(/(?<=[。！？!?；;])/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return parts.length === para.sents.length ? parts : null
 }
 
 /** 选词填空：句子里带 `__(26)__` 空位 */

@@ -236,7 +236,7 @@ export default function TrainingPage() {
 
   /**
    * 阅读题型的篇目总数（四六级 2 篇、考研 4 篇）。
-   * 只有一篇的题型（听力 / 完形 / 长篇阅读）不标「第 1 篇」—— 那是噪音。
+   * 只有一篇的题型（完形 / 长篇阅读）不标「第 1 篇」—— 那是噪音。
    */
   const readingCount = useMemo(
     () =>

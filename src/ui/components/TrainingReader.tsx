@@ -1,4 +1,10 @@
-import { BLANK_RE, type TrainingPassage, type TrainingQuestion } from '@/domain/training'
+import {
+  alignParaZh,
+  BLANK_RE,
+  cleanParaZh,
+  type TrainingPassage,
+  type TrainingQuestion,
+} from '@/domain/training'
 import { tokenize } from '@/lib/text'
 
 import styles from './TrainingDoc.module.css'
@@ -39,7 +45,7 @@ type Props = {
   onWordTap: (key: string, parts: { text: string; isWord: boolean }[], j: number) => void
 }
 
-/** 文章正文：逐段逐句分词、可点词查词、完形填空的空位做进句子里 */
+/** 文章正文：逐段逐句分词、可点词查词、完形填空的空位做进句子里、译文逐句混排 */
 export function TrainingReader({
   passage,
   questions,
@@ -54,58 +60,64 @@ export function TrainingReader({
 }: Props) {
   return (
     <article className={styles.body}>
-      {passage.paras.map((para, pi) => (
-        <div key={pi} className={styles.paraWrap}>
-          <p className={`${styles.para} ${styles.en}`}>
-            {para.sents.map((s, si) => (
-              <span key={si} data-sentence="true">
-                {s.label && <span className={styles.paraLabel}>{s.label}</span>}
-                {splitBlanks(s.en).map((chunk, ci) => {
-                  if (chunk.kind === 'blank') {
-                    return (
-                      <Blank
-                        key={`b${ci}`}
-                        no={chunk.no}
-                        chosen={answers[chunk.no]}
-                        word={wordOf(answers[chunk.no])}
-                        answer={questions.find((x) => x.no === chunk.no)?.answer}
-                        submitted={submitted}
-                        active={activeBlank === chunk.no}
-                        onClick={() => onBlank(chunk.no)}
-                      />
+      {passage.paras.map((para, pi) => {
+        // 逐句对齐成功就一句原文一句译文；对不上（翻译拆并了句子）退回整段译文
+        const aligned = showZh ? alignParaZh(para) : null
+        return (
+          <div key={pi} className={styles.paraWrap}>
+            <p className={`${styles.para} ${styles.en}`}>
+              {para.sents.map((s, si) => (
+                <span key={si} data-sentence="true">
+                  {s.label && <span className={styles.paraLabel}>{s.label}</span>}
+                  {splitBlanks(s.en).map((chunk, ci) => {
+                    if (chunk.kind === 'blank') {
+                      return (
+                        <Blank
+                          key={`b${ci}`}
+                          no={chunk.no}
+                          chosen={answers[chunk.no]}
+                          word={wordOf(answers[chunk.no])}
+                          answer={questions.find((x) => x.no === chunk.no)?.answer}
+                          submitted={submitted}
+                          active={activeBlank === chunk.no}
+                          onClick={() => onBlank(chunk.no)}
+                        />
+                      )
+                    }
+                    // 接住分词结果：点词时把整段上下文交给短语匹配
+                    const toks = tokenize(chunk.text)
+                    return toks.map((part, j) =>
+                      part.isWord ? (
+                        <span key={`${ci}-${j}`} className={styles.glue}>
+                          <button
+                            type="button"
+                            className={styles.word}
+                            data-mark={
+                              markSet.has(`${pi}-${si}-${ci}-${j}`) ? 'true' : undefined
+                            }
+                            onClick={() => {
+                              onWordTap(`${pi}-${si}-${ci}-${j}`, toks, j)
+                            }}
+                          >
+                            {part.text}
+                          </button>
+                          {part.tail}
+                        </span>
+                      ) : (
+                        <span key={`${ci}-${j}`}>{part.text}</span>
+                      ),
                     )
-                  }
-                  // 接住分词结果：点词时把整段上下文交给短语匹配
-                  const toks = tokenize(chunk.text)
-                  return toks.map((part, j) =>
-                    part.isWord ? (
-                      <span key={`${ci}-${j}`} className={styles.glue}>
-                        <button
-                          type="button"
-                          className={styles.word}
-                          data-mark={
-                            markSet.has(`${pi}-${si}-${ci}-${j}`) ? 'true' : undefined
-                          }
-                          onClick={() => {
-                            onWordTap(`${pi}-${si}-${ci}-${j}`, toks, j)
-                          }}
-                        >
-                          {part.text}
-                        </button>
-                        {part.tail}
-                      </span>
-                    ) : (
-                      <span key={`${ci}-${j}`}>{part.text}</span>
-                    ),
-                  )
-                })}
-                {showZh && s.zh && <span className={styles.zh}>{s.zh}</span>}{' '}
-              </span>
-            ))}
-          </p>
-          {showZh && para.zh && <p className={styles.paraZh}>{para.zh}</p>}
-        </div>
-      ))}
+                  })}
+                  {aligned?.[si] && <span className={styles.zh}>{aligned[si]}</span>}{' '}
+                </span>
+              ))}
+            </p>
+            {showZh && para.zh && !aligned && (
+              <p className={styles.paraZh}>{cleanParaZh(para.zh)}</p>
+            )}
+          </div>
+        )
+      })}
     </article>
   )
 }
