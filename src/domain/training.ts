@@ -8,9 +8,11 @@
 
 export type TrainingLevel = 'cet4' | 'cet6' | 'kaoyan'
 
-/** 一句原文。题库只给段级中译（挂在段落上），句级对齐在渲染时按标点切（见 alignParaZh） */
+/** 一句原文。校准过的段每句带 zh（LLM 归属写入，见 scripts/calibrate-zh-align.mjs） */
 export type TrainingSentence = {
   en: string
+  /** 本句的中文译文（仅校准过的段落有；未校准的段译文在 para.zh） */
+  zh?: string
   /** 信息匹配段落的 A/B/C 标号 */
   label?: string
 }
@@ -107,7 +109,10 @@ export function isObjective(q: TrainingQuestion): boolean {
 
 /** 这一篇里有没有中文（决定「译文」开关要不要出现） */
 export function hasTranslation(p: TrainingPassage): boolean {
-  return p.paras.some((para) => Boolean(para.zh))
+  return (
+    p.paras.some((para) => Boolean(para.zh)) ||
+    p.paras.some((para) => para.sents.some((s) => Boolean(s.zh)))
+  )
 }
 
 /**
@@ -122,15 +127,26 @@ export function cleanParaZh(zh: string): string {
 }
 
 /**
- * 段译逐句对齐：把段译按中文句末标点切开，与段内英文句一一配对。
- * 句数对不上（翻译把一句拆成两句、或几句并成一句）就放弃 —— 返回 null，
+ * 段译切句。两个实测修出来的坑（全语料 2340 段，普通切法对齐率 82.8%，这套 93.8%）：
+ * - 引号闭合原子化：`……。”` 这种结构不能切在 。 后面，否则闭引号会掉出来成孤立碎片；
+ * - 分号不切：译者爱把一个英文长句拆成「A；B；C；D。」的分句串，按分号切句数必然膨胀。
+ */
+const ZH_SPLIT_RE = /(?<=[。！？!?])(?![”’"'])|(?<=[。！？!?][”’"'])/
+
+/**
+ * 段译逐句对齐：把段译按句切开，与段内英文句一一配对。
+ * 校准过的段（每句已带 zh）直接用句级译文；否则按标点切段译。
+ * 切完句数对不上（翻译把一句拆成两句、或几句并成一句）就放弃 —— 返回 null，
  * 调用方回退到整段译文，宁可退回原样式，也不能把错位的译文扣到错误的句子上。
  */
 export function alignParaZh(para: TrainingPara): string[] | null {
+  const perSent = para.sents.map((s) => s.zh)
+  if (perSent.every(Boolean)) return perSent.map((s) => s ?? '')
+
   const zh = para.zh
   if (!zh) return null
   const parts = cleanParaZh(zh)
-    .split(/(?<=[。！？!?；;])/)
+    .split(ZH_SPLIT_RE)
     .map((s) => s.trim())
     .filter(Boolean)
   return parts.length === para.sents.length ? parts : null
