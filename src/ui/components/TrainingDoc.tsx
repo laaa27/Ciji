@@ -13,8 +13,7 @@ import { usePrefs, type FontSize } from '@/store/prefs'
 
 import { ChoiceBar } from './ChoiceBar'
 import { ClozeBar, ClozeResult } from './ClozeBar'
-import { OrderChain } from './OrderChain'
-import { OrderResult, OrderingBar } from './OrderingBar'
+import { OrderingBar } from './OrderingBar'
 import { TrainingReader } from './TrainingReader'
 import WordSheet from './WordSheet'
 import { useStopwatch } from '../hooks/useStopwatch'
@@ -263,22 +262,24 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
       />
 
       {ordering && passage.chain && (
-        <OrderChain
+        <OrderingBar
           chain={passage.chain}
+          pool={matchKeys}
           answers={answers}
           submitted={submitted}
           questions={questions}
           activeSlot={activeBlank}
           onSlot={(no) => setActiveBlank(no)}
-        />
-      )}
-
-      {ordering && submitted && (
-        <OrderResult
-          questions={questions}
-          answers={answers}
-          open={openOrder}
-          onOpen={setOpenOrder}
+          onPick={pick}
+          onSubmit={submit}
+          answeredCount={answeredCount}
+          total={questions.length}
+          rightCount={rightCount}
+          judgedCount={judged.length}
+          openResult={openOrder}
+          onOpenResult={setOpenOrder}
+          collapsed={barCollapsed}
+          onToggle={() => setBarCollapsed((v) => !v)}
         />
       )}
 
@@ -312,24 +313,6 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
           onToggle={() => setBarCollapsed((v) => !v)}
           onFill={fillBlank}
           onSubmit={submit}
-        />
-      )}
-
-      {ordering && passage.chain && (
-        <OrderingBar
-          pool={matchKeys}
-          given={passage.chain.filter((c) => c.given).map((c) => c.given as string)}
-          answers={answers}
-          submitted={submitted}
-          activeSlot={activeBlank}
-          onPick={pick}
-          onSubmit={submit}
-          answeredCount={answeredCount}
-          total={questions.length}
-          rightCount={rightCount}
-          judgedCount={judged.length}
-          collapsed={barCollapsed}
-          onToggle={() => setBarCollapsed((v) => !v)}
         />
       )}
 

@@ -156,7 +156,7 @@ export function ChoiceBar({
             </ul>
           )}
 
-          {submitted && <Analysis q={q} picked={picked} />}
+          {submitted && <Analysis q={q} picked={picked} variant={kind} />}
 
           {submitted && (
             <p className={styles.qbarScore}>

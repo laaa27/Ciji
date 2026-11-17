@@ -1,6 +1,16 @@
-import type { TrainingQuestion } from '@/domain/training'
+import type { MatchingKind, TrainingQuestion } from '@/domain/training'
 
 import styles from './TrainingDoc.module.css'
+
+/** correct / gap / clue 三个字段的行标签：小标题与七选五的说法不同 */
+const FIELD_LABELS: Record<MatchingKind, { correct: string; gap: string; clue: string }> = {
+  headings: { correct: '小标题', gap: '主旨', clue: '依据' },
+  gapfill: { correct: '正确句', gap: '缺口', clue: '线索' },
+  matching: { correct: '正确句', gap: '缺口', clue: '线索' },
+  ordering: { correct: '正确句', gap: '缺口', clue: '线索' },
+  opinions: { correct: '正确句', gap: '缺口', clue: '线索' },
+  tf: { correct: '正确句', gap: '缺口', clue: '线索' },
+}
 
 /**
  * 逐题解析：判定、判型 / 拆句 / 定位三行、逐选项判定、补充说明。
@@ -10,10 +20,13 @@ import styles from './TrainingDoc.module.css'
 export function Analysis({
   q,
   picked,
+  variant,
   compact,
 }: {
   q: TrainingQuestion
   picked?: string
+  /** 新题型变体 —— 决定 correct / gap / clue 的行标签说法 */
+  variant?: MatchingKind
   compact?: boolean
 }) {
   const an = q.analysis
@@ -25,6 +38,7 @@ export function Analysis({
       </div>
     )
   }
+  const labels = (variant && FIELD_LABELS[variant]) ?? FIELD_LABELS.gapfill
   return (
     <div className={styles.analysis} data-compact={compact ? 'true' : undefined}>
       <p className={styles.anVerdict} data-right={ok ? 'true' : 'false'}>
@@ -47,6 +61,24 @@ export function Analysis({
         <p className={styles.anRow}>
           <span className={styles.anKey}>定位</span>
           <span className={styles.anBody}>{an.locate}</span>
+        </p>
+      )}
+      {an.correct && (
+        <p className={styles.anRow}>
+          <span className={styles.anKey}>{labels.correct}</span>
+          <span className={styles.anBody}>{an.correct}</span>
+        </p>
+      )}
+      {an.gap && (
+        <p className={styles.anRow}>
+          <span className={styles.anKey}>{labels.gap}</span>
+          <span className={styles.anBody}>{an.gap}</span>
+        </p>
+      )}
+      {an.clue && (
+        <p className={styles.anRow}>
+          <span className={styles.anKey}>{labels.clue}</span>
+          <span className={styles.anBody}>{an.clue}</span>
         </p>
       )}
       {(an.options ?? []).length > 0 && (

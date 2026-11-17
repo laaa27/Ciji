@@ -121,6 +121,20 @@ def parse_analysis(text):
         if v:
             out[dst] = v
 
+    # 七选五（【正确句】【缺口】【线索】）与小标题（【小标题】【主旨】【依据】）的
+    # 解析节名都映射到 correct / gap / clue 三个字段，前端按变体换标签
+    for src, dst in (
+        ('正确句', 'correct'),
+        ('缺口', 'gap'),
+        ('线索', 'clue'),
+        ('小标题', 'correct'),
+        ('主旨', 'gap'),
+        ('依据', 'clue'),
+    ):
+        v = '\n'.join(blocks.get(src, [])).strip()
+        if v:
+            out[dst] = v
+
     opts = parse_options(blocks.get('选项'))
     if opts:
         out['options'] = opts
@@ -485,6 +499,10 @@ def collect_section(conn, paper_id, section, level=''):
                     for c in chain
                     if 'given' in c or 'question' in c
                 ]
+            if kind == 'headings':
+                for q in item['questions']:
+                    if not q.get('stem'):
+                        q['stem'] = '第 %d 段的小标题' % q['no']
             if kind == 'opinions':
                 paras_raw = mcj.get('paragraphs') or []
                 for q in item['questions']:

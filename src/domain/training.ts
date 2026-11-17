@@ -30,6 +30,12 @@ export type TrainingAnalysis = {
   split?: string
   /** 定位：原文出处（部分条目带中英对照） */
   locate?: string
+  /** 七选五 / 小标题：补进空位的正确句（英文 + 中译） */
+  correct?: string
+  /** 七选五 / 小标题：这个空为什么存在（上下文缺口分析） */
+  gap?: string
+  /** 七选五 / 小标题：判断线索（代词指代、逻辑连接词等） */
+  clue?: string
   /** 逐选项归因：verdict 是「与原文相反 / 无中生有 / 以偏概全」这类判定 */
   options?: { key: string; verdict: string; note: string }[]
   note?: string
