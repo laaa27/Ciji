@@ -1,5 +1,8 @@
+import { useRef } from 'react'
+
 import { useSession } from '@/store/session'
 
+import { useScrollStuck } from '../hooks/useScrollStuck'
 import { useSubView } from '../hooks/useSubView'
 import ModelProfiles from '../components/ModelProfiles'
 import MemoAccount from '../components/settings/MemoAccount'
@@ -55,6 +58,9 @@ export default function SettingsPage() {
   const token = useSession((s) => s.token)
   /** 二级视图：六个设置栏目。返回动画、返回键都由 useSubView 接管 */
   const nav = useSubView<SubPage>()
+  /** 二级页标题吸顶：滚到下方时仍能看见标题与返回键 */
+  const headRef = useRef<HTMLElement>(null)
+  const headStuck = useScrollStuck(headRef)
 
   const activeCat = nav.view ? CATEGORIES.find((c) => c.id === nav.view) : null
 
@@ -91,7 +97,11 @@ export default function SettingsPage() {
         </>
       ) : (
         <>
-          <header className={styles.subHead}>
+          <header
+            className={styles.subHead}
+            ref={headRef}
+            data-stuck={headStuck ? 'true' : 'false'}
+          >
             <BackButton onClick={nav.close} />
             <h1 className={styles.subTitle}>{activeCat?.title}</h1>
           </header>

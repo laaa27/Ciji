@@ -17,7 +17,14 @@ import { useToday } from '@/store/today'
 
 import styles from '../../pages/SettingsPage.module.css'
 
-type Feedback = { kind: 'ok' | 'warn' | 'err'; text: string } | null
+type FeedbackScope = 'export' | 'import' | 'articles' | 'gloss' | 'all'
+/**
+ * 提示挂在哪一块下面。
+ *
+ * 页面拆成并列的 section 之后，一条固定在「导入」下面的提示会让「导出成功」
+ * 出现在隔壁区块里 —— 所以每条提示都标上它属于谁。
+ */
+type Feedback = { kind: 'ok' | 'warn' | 'err'; text: string; scope: FeedbackScope } | null
 
 type ExportFormat = 'csv' | 'md' | 'json'
 
@@ -36,7 +43,10 @@ type PickedFile = {
 
 /**
  * 设置二级页：数据。
- * 导出、导入、清空——原样从 SettingsPage 拆出，状态自持。
+ *
+ * 五块并列：备份与导出 / 导入 / 生成文章 / 释义缓存 / 全部记录。
+ * 用与其它设置页相同的 section + label 结构 —— 以前是「一个大 section 里塞四个
+ * h3 子块」，只有「导入」有一条虚线分隔，另外两块直接顶着上一块，读起来没有节奏。
  */
 export default function DataPrefs() {
   const resetToday = useToday((s) => s.reset)
@@ -56,11 +66,12 @@ export default function DataPrefs() {
     setDataFeedback(null)
     try {
       const msg = format === 'json' ? await exportBackup() : await exportAll(format)
-      setDataFeedback({ kind: 'ok', text: msg })
+      setDataFeedback({ kind: 'ok', text: msg, scope: 'export' })
     } catch (e) {
       setDataFeedback({
         kind: 'err',
         text: e instanceof Error ? e.message : '导出失败',
+        scope: 'export',
       })
     } finally {
       setExporting(null)
@@ -94,6 +105,7 @@ export default function DataPrefs() {
       setDataFeedback({
         kind: 'err',
         text: e instanceof Error ? e.message : '读取文件失败',
+        scope: 'import',
       })
     }
   }
@@ -110,6 +122,7 @@ export default function DataPrefs() {
         setDataFeedback({
           kind: 'warn',
           text: `文件里 ${picked.days.length} 天的记录本地都已存在，没有写入任何数据`,
+          scope: 'import',
         })
         return
       }
@@ -132,12 +145,13 @@ export default function DataPrefs() {
       if (plan.kept > 0) parts.push(`保留本地 ${plan.kept} 天`)
       if (picked.articles.length > 0) parts.push(`文章 ${importedArticles} 篇`)
 
-      setDataFeedback({ kind: 'ok', text: `导入完成：${parts.join('，')}` })
+      setDataFeedback({ kind: 'ok', text: `导入完成：${parts.join('，')}`, scope: 'import' })
       setPicked(null)
     } catch (e) {
       setDataFeedback({
         kind: 'err',
         text: e instanceof Error ? e.message : '导入失败',
+        scope: 'import',
       })
     } finally {
       setImporting(null)
@@ -147,7 +161,7 @@ export default function DataPrefs() {
   async function handleClearAll() {
     await clearAll()
     resetToday()
-    setDataFeedback({ kind: 'ok', text: '本地记录已清空' })
+    setDataFeedback({ kind: 'ok', text: '本地记录已清空', scope: 'all' })
   }
 
   async function handleClearArticles() {
@@ -162,11 +176,13 @@ export default function DataPrefs() {
       setDataFeedback({
         kind: 'ok',
         text: `已清空 ${n} 篇生成文章。它们不可再生——如果还没导出备份，请先导出一份再继续使用。`,
+        scope: 'articles',
       })
     } catch (e) {
       setDataFeedback({
         kind: 'err',
         text: e instanceof Error ? e.message : '清空失败',
+        scope: 'articles',
       })
     }
   }
@@ -183,11 +199,13 @@ export default function DataPrefs() {
       setDataFeedback({
         kind: 'ok',
         text: `已清空 ${n} 条释义缓存。它们都能在下次点词时重新生成，文章与学习记录不受影响。`,
+        scope: 'gloss',
       })
     } catch (e) {
       setDataFeedback({
         kind: 'err',
         text: e instanceof Error ? e.message : '清空失败',
+        scope: 'gloss',
       })
     }
   }
@@ -196,47 +214,66 @@ export default function DataPrefs() {
   const conflicts = picked ? picked.days.filter((d) => picked.existing.has(d.date)).length : 0
   const freshCount = pickedSummary ? pickedSummary.count - conflicts : 0
 
+  /** 每条提示只挂在它自己那一块下面，不跨区块串味 */
+  const feedbackOf = (scope: FeedbackScope) =>
+    dataFeedback && dataFeedback.scope === scope ? (
+      <p className={styles.feedback} data-kind={dataFeedback.kind}>
+        {dataFeedback.text}
+      </p>
+    ) : null
+
   return (
-    <section className={styles.section}>
-      <h2 className={styles.label}>备份与导出</h2>
-      <p className={styles.about}>
-        记录只存在这台设备上。换手机或重装前，先导出一份备份。
-      </p>
+    <>
+      <section className={styles.section}>
+        <h2 className={styles.label}>备份与导出</h2>
+        <p className={styles.about}>记录只存在这台设备上。换手机或重装前，先导出一份备份。</p>
 
-      <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.secondary}
-          onClick={() => void handleExport('json')}
-          disabled={exporting !== null}
-        >
-          {exporting === 'json' ? '导出中…' : '导出备份'}
-        </button>
-        <button
-          type="button"
-          className={styles.secondary}
-          onClick={() => void handleExport('csv')}
-          disabled={exporting !== null}
-        >
-          {exporting === 'csv' ? '导出中…' : '导出 CSV'}
-        </button>
-        <button
-          type="button"
-          className={styles.secondary}
-          onClick={() => void handleExport('md')}
-          disabled={exporting !== null}
-        >
-          {exporting === 'md' ? '导出中…' : '导出 Markdown'}
-        </button>
-      </div>
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={styles.secondary}
+            onClick={() => void handleExport('json')}
+            disabled={exporting !== null}
+          >
+            {exporting === 'json' ? '导出中…' : '导出备份'}
+          </button>
+          <button
+            type="button"
+            className={styles.secondary}
+            onClick={() => void handleExport('csv')}
+            disabled={exporting !== null}
+          >
+            {exporting === 'csv' ? '导出中…' : '导出 CSV'}
+          </button>
+          <button
+            type="button"
+            className={styles.secondary}
+            onClick={() => void handleExport('md')}
+            disabled={exporting !== null}
+          >
+            {exporting === 'md' ? '导出中…' : '导出 Markdown'}
+          </button>
+        </div>
 
-      <p className={styles.help}>
-        「导出备份」是 JSON，能原样导回；CSV 和 Markdown 用来给别人看，
-        只有日期和单词，导回来会丢学习时长与逐词反馈。
-      </p>
+        <p className={styles.help}>
+          「导出备份」是 JSON，能原样导回；CSV 和 Markdown 用来给别人看，
+          只有日期和单词，导回来会丢学习时长与逐词反馈。
+        </p>
 
-      <div className={styles.importBlock}>
-        <h3 className={styles.subLabel}>导入</h3>
+        {feedbackOf('export')}
+
+        <p className={styles.warnNote}>
+          提示：备份与导出功能目前仍在调整中，<strong>不保证可用</strong>。导出的文件可能缺字段或格式变动，
+          导入也可能失败；在功能稳定之前，请不要把它当作唯一的数据保障。
+        </p>
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.label}>导入</h2>
+        <p className={styles.about}>
+          从「导出备份」的 JSON 或导出过的 CSV 恢复记录。CSV 只有日期、单词与分组，
+          学习时长和逐词反馈补不回来。
+        </p>
 
         <input
           ref={fileRef}
@@ -248,14 +285,16 @@ export default function DataPrefs() {
           onChange={(e) => void handlePickFile(e)}
         />
 
-        <button
-          type="button"
-          className={styles.secondary}
-          onClick={() => fileRef.current?.click()}
-          disabled={importing !== null}
-        >
-          {picked ? '换一个文件…' : '选择文件…'}
-        </button>
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={styles.secondary}
+            onClick={() => fileRef.current?.click()}
+            disabled={importing !== null}
+          >
+            {picked ? '换一个文件…' : '选择文件…'}
+          </button>
+        </div>
 
         {picked && pickedSummary && (
           <div className={styles.preview}>
@@ -333,54 +372,62 @@ export default function DataPrefs() {
             </div>
           </div>
         )}
-      </div>
 
-      {dataFeedback && (
-        <p className={styles.feedback} data-kind={dataFeedback.kind}>
-          {dataFeedback.text}
+        {feedbackOf('import')}
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.label}>生成文章</h2>
+        <p className={styles.about}>
+          生成的文章存在本机，且<strong>不在自动备份的内容里</strong>——换手机前请务必先点「导出备份」
+          （备份已包含文章全文），再清空或卸载。
         </p>
-      )}
 
-      <h3 className={styles.subLabel}>生成文章</h3>
-      <p className={styles.about}>
-        生成的文章存在本机，且<strong>不在自动备份的内容里</strong>——换手机前请务必先点「导出备份」
-        （备份已包含文章全文），再清空或卸载。
-      </p>
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={styles.secondary}
+            onClick={() => void handleClearArticles()}
+          >
+            {articleConfirming ? '确认清空全部生成文章？' : '清空生成文章'}
+          </button>
+        </div>
 
-      <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.secondary}
-          onClick={() => void handleClearArticles()}
-        >
-          {articleConfirming ? '确认清空全部生成文章？' : '清空生成文章'}
+        {feedbackOf('articles')}
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.label}>释义缓存</h2>
+        <p className={styles.about}>
+          点词查过的释义会一直留着（全部键共用一个存储文件，堆多了读写都会变慢）。
+          清空后文章与学习记录不受影响，释义在下次点词时按需重新生成。
+        </p>
+
+        <div className={styles.actions}>
+          <button
+            type="button"
+            className={styles.secondary}
+            onClick={() => void handleClearGloss()}
+          >
+            {glossConfirming ? '确认清空释义缓存？' : '清空释义缓存'}
+          </button>
+        </div>
+
+        {feedbackOf('gloss')}
+      </section>
+
+      <section className={styles.section}>
+        <h2 className={styles.label}>全部记录</h2>
+        <p className={styles.about}>
+          删除本机保存的每日学习记录，不可恢复。生成文章与释义缓存不在此列，
+          需要在上面对应区块单独清空。
+        </p>
+
+        <button type="button" className={styles.danger} onClick={() => void handleClearAll()}>
+          清空全部记录
         </button>
-      </div>
-
-      <h3 className={styles.subLabel}>释义缓存</h3>
-      <p className={styles.about}>
-        点词查过的释义会一直留着（全部键共用一个存储文件，堆多了读写都会变慢）。
-        清空后文章与学习记录不受影响，释义在下次点词时按需重新生成。
-      </p>
-
-      <div className={styles.actions}>
-        <button
-          type="button"
-          className={styles.secondary}
-          onClick={() => void handleClearGloss()}
-        >
-          {glossConfirming ? '确认清空释义缓存？' : '清空释义缓存'}
-        </button>
-      </div>
-
-      <button type="button" className={styles.danger} onClick={() => void handleClearAll()}>
-        清空全部记录
-      </button>
-
-      <p className={styles.warnNote}>
-        提示：备份与导出功能目前仍在调整中，<strong>不保证可用</strong>。导出的文件可能缺字段或格式变动，
-        导入也可能失败；在功能稳定之前，请不要把它当作唯一的数据保障。
-      </p>
-    </section>
+        {feedbackOf('all')}
+      </section>
+    </>
   )
 }

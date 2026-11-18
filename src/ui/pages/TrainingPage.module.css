@@ -52,6 +52,24 @@
   overflow: hidden;
 }
 
+/* 档位吸顶：套卷按年份铺一百多行，滚到深处仍要能换档。
+   上下内边距对称，负 margin 抵消，静止位置与改之前一致；
+   吸住之后贴到 safe-top，上面那条缝由 App 的 .body::before 遮罩盖住 */
+.levelBar {
+  position: sticky;
+  top: calc(var(--safe-top) - var(--sp-2));
+  z-index: 3;
+  padding: var(--sp-2) 0;
+  margin-top: calc(-1 * var(--sp-2));
+  background: var(--paper);
+  transition: box-shadow 0.18s ease;
+}
+
+/* 只有真贴住了才画分隔线 */
+.levelBar[data-stuck='true'] {
+  box-shadow: 0 1px 0 var(--rule);
+}
+
 .segment {
   flex: 1;
   padding: 9px 6px;

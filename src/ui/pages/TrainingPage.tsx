@@ -17,7 +17,7 @@ import {
   type TrainingPaper,
 } from '@/domain/training'
 
-import { findScrollParent } from '../hooks/useScrollStuck'
+import { findScrollParent, useScrollStuck } from '../hooks/useScrollStuck'
 import { useSubView } from '../hooks/useSubView'
 import { useToast } from '@/store/toast'
 import BackButton from '../components/BackButton'
@@ -92,6 +92,9 @@ export default function TrainingPage() {
   const [paperError, setPaperError] = useState<string | null>(null)
 
   const pageRef = useRef<HTMLDivElement>(null)
+  /** 档位选择器吸顶：一百多套平铺下来，滚到深处还得能换档 */
+  const levelRef = useRef<HTMLDivElement>(null)
+  const levelStuck = useScrollStuck(levelRef)
   /** 进下一层之前列表停在哪 */
   const rootScroll = useRef(0)
   const paperScroll = useRef(0)
@@ -354,20 +357,26 @@ export default function TrainingPage() {
         <p className={styles.lede}>用真题练手：先自己做，再逐题看解析。</p>
       </header>
 
-      <div className={styles.segments} role="tablist" aria-label="训练档位">
-        {LEVELS.map((lv) => (
-          <button
-            key={lv.key}
-            type="button"
-            role="tab"
-            aria-selected={level === lv.key}
-            className={styles.segment}
-            data-on={level === lv.key}
-            onClick={() => setLevel(lv.key)}
-          >
-            {lv.label}
-          </button>
-        ))}
+      <div
+        className={styles.levelBar}
+        ref={levelRef}
+        data-stuck={levelStuck ? 'true' : 'false'}
+      >
+        <div className={styles.segments} role="tablist" aria-label="训练档位">
+          {LEVELS.map((lv) => (
+            <button
+              key={lv.key}
+              type="button"
+              role="tab"
+              aria-selected={level === lv.key}
+              className={styles.segment}
+              data-on={level === lv.key}
+              onClick={() => setLevel(lv.key)}
+            >
+              {lv.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && <p className={`${styles.hint} loading-pulse`}>读取中…</p>}

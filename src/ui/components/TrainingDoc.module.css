@@ -732,6 +732,13 @@
   grid-template-rows: 0fr;
 }
 
+/* 收起后壳子只剩头部：上下内边距必须对称。
+   展开时 7/10（上紧下松，让正文更贴头部），收起时上边沿用 7 就会让整行偏上；
+   这一条把上边补到 10，头部正好落在壳子的垂直中线上 */
+.qbar[data-collapsed='true'] {
+  padding-top: 10px;
+}
+
 .qbarHead {
   position: relative;
   display: flex;
@@ -808,6 +815,13 @@
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
   margin-top: 8px;
+  /* 与 grid 行高同步：收起时这 8px 会留在壳子底部，导致头部看起来偏上 */
+  transition: margin-top 0.264s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 收起时连正文的上边距一起收掉，否则壳子底部会多出 8px 空白 */
+.qbar[data-collapsed='true'] .qbarBody {
+  margin-top: 0;
 }
 
 .qbarBody .stem {
