@@ -29,7 +29,23 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  margin-bottom: var(--sp-6);
+  /* 吸顶：日期能攒到一百多行，「统计 / 释义」两个入口滑到底也要够得着。
+     负 margin 抵消加进来的上内边距，静止时的视觉位置不变；
+     sticky 的 top 作用在 margin box 上，所以这里也要把那 8px 减掉，否则顶边漏缝
+     （与阅读页 header 同法，见 DEVELOPMENT 9.9 第 6 条） */
+  position: sticky;
+  top: calc(var(--safe-top) - var(--sp-2));
+  z-index: 3;
+  padding: var(--sp-2) 0;
+  margin-top: calc(-1 * var(--sp-2));
+  margin-bottom: calc(var(--sp-6) - var(--sp-2));
+  background: var(--paper);
+  transition: box-shadow 0.18s ease;
+}
+
+/* 只有真贴住了才画那条细线；没贴住时画会在标题下多一道横杠 */
+.titleRow[data-stuck='true'] {
+  box-shadow: 0 1px 0 var(--rule);
 }
 
 .title {

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { addToPlan, advanceWord, lookupMemoState, type MemoState } from '@/domain/memo'
 import type { PhraseHit } from '@/domain/phrase'
@@ -8,6 +8,7 @@ import { dateKey, diffDays, monthDay } from '@/lib/date'
 import { useSession } from '@/store/session'
 import { useGlossSource } from '../hooks/useGlossSource'
 import { useScrollLock } from '../hooks/useScrollLock'
+import { useSheetHeight } from '../hooks/useSheetHeight'
 import styles from './WordSheet.module.css'
 
 type Props = {
@@ -81,6 +82,10 @@ export default function WordSheet({ word, phrase, onHighlight, marked, onClose, 
   const [draft, setDraft] = useState('')
   /** 关闭时先播出场动画，播完再真正卸载 */
   const [closing, setClosing] = useState(false)
+  /** 高度动画的两个节点：壳子负责 height，内容负责被量（见 useSheetHeight） */
+  const shellRef = useRef<HTMLDivElement>(null)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const height = useSheetHeight(shellRef, contentRef, !closing)
 
   /** 墨墨状态：null 表示还没拿到（或没连墨墨） */
   const [memo, setMemo] = useState<MemoState | null>(null)
@@ -103,7 +108,8 @@ export default function WordSheet({ word, phrase, onHighlight, marked, onClose, 
   function requestClose() {
     if (closing) return
     setClosing(true)
-    setTimeout(onClose, 180)
+    // 与 CSS 的高度过渡同一时长（0.26s）：早了会截断收起动画，晚了弹层已经归零还挂着
+    setTimeout(onClose, 260)
   }
 
   // 释义先出，墨墨状态后补：网络慢不该挡住看释义
@@ -196,302 +202,306 @@ export default function WordSheet({ word, phrase, onHighlight, marked, onClose, 
     <div className={styles.mask} data-closing={closing} onClick={requestClose} role="presentation">
       <div
         className={styles.sheet}
+        ref={shellRef}
+        style={{ height }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-label={`${target} 的释义`}
       >
-        <div className={styles.handle} />
-        <div className={styles.head}>
-          <span className={styles.word}>{target}</span>
-          {onHighlight && (
-            <button
-              type="button"
-              className={styles.mark}
-              data-on={marked ? 'true' : 'false'}
-              onClick={onHighlight}
-            >
-              {marked ? '取消高亮' : '高亮'}
-            </button>
-          )}
-          <button type="button" className={styles.close} onClick={requestClose} aria-label="关闭">
-            关闭
-          </button>
-        </div>
-        {phrase && (
-          <div className={styles.views}>
-            <button
-              type="button"
-              className={styles.viewChip}
-              data-on={view === 'phrase'}
-              onClick={() => setView('phrase')}
-            >
-              短语
-            </button>
-            <button
-              type="button"
-              className={styles.viewChip}
-              data-on={view === 'word'}
-              onClick={() => setView('word')}
-            >
-              {word}
+        <div className={styles.inner} ref={contentRef}>
+          <div className={styles.handle} />
+          <div className={styles.head}>
+            <span className={styles.word}>{target}</span>
+            {onHighlight && (
+              <button
+                type="button"
+                className={styles.mark}
+                data-on={marked ? 'true' : 'false'}
+                onClick={onHighlight}
+              >
+                {marked ? '取消高亮' : '高亮'}
+              </button>
+            )}
+            <button type="button" className={styles.close} onClick={requestClose} aria-label="关闭">
+              关闭
             </button>
           </div>
-        )}
+          {phrase && (
+            <div className={styles.views}>
+              <button
+                type="button"
+                className={styles.viewChip}
+                data-on={view === 'phrase'}
+                onClick={() => setView('phrase')}
+              >
+                短语
+              </button>
+              <button
+                type="button"
+                className={styles.viewChip}
+                data-on={view === 'word'}
+                onClick={() => setView('word')}
+              >
+                {word}
+              </button>
+            </div>
+          )}
 
-        <p className={styles.gloss}>
-          {source.loading ? (
-            '查询中…'
-          ) : (
+          <p className={styles.gloss}>
+            {source.loading ? (
+              '查询中…'
+            ) : (
+              <>
+                {mainText || '没有查到这个词的释义'}
+                {mainTag && (
+                  <span className={styles.aiTag} data-testid="main-tag">
+                    {mainTag}
+                  </span>
+                )}
+              </>
+            )}
+          </p>
+
+          {/*
+            主释义永远在上面；AI 与自定义各占一行，**有内容才出现**。
+            主释义本身就是 AI 给的时候（本地没收录、由 AI 兜底），不再单独占一行 ——
+            那会和上面一字不差。
+          */}
+          {!source.loading && (
             <>
-              {mainText || '没有查到这个词的释义'}
-              {mainTag && (
-                <span className={styles.aiTag} data-testid="main-tag">
-                  {mainTag}
-                </span>
+              {altAi && (
+                <div className={styles.altRow}>
+                  <span className={styles.altLabel}>AI 释义</span>
+                  <span className={styles.altText} data-testid="alt-ai">
+                    {altAi}
+                  </span>
+                  <span className={styles.altActions}>
+                    <button
+                      type="button"
+                      className={styles.altAction}
+                      onClick={() => void source.requestAi()}
+                      disabled={source.aiBusy}
+                    >
+                      {source.aiBusy ? '生成中…' : '重新生成'}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.altAction}
+                      data-testid="drop-ai"
+                      onClick={() => void source.dropAi()}
+                    >
+                      删除
+                    </button>
+                  </span>
+                </div>
+              )}
+
+              {customRow && !editing && (
+                <div className={styles.altRow}>
+                  <span className={styles.altLabel}>自定义</span>
+                  <span className={styles.altText} data-testid="alt-custom">
+                    {customRow}
+                  </span>
+                  <span className={styles.altActions}>
+                    <button
+                      type="button"
+                      className={styles.altAction}
+                      data-testid="edit-custom"
+                      onClick={() => {
+                        setDraft(customRow)
+                        setEditing(true)
+                      }}
+                    >
+                      编辑
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.altAction}
+                      data-testid="drop-custom"
+                      onClick={() => void source.dropCustom()}
+                    >
+                      删除
+                    </button>
+                  </span>
+                </div>
+              )}
+
+              {editing && (
+                <div className={styles.editor}>
+                  <textarea
+                    className={styles.editorInput}
+                    data-testid="custom-input"
+                    value={draft}
+                    rows={2}
+                    maxLength={200}
+                    placeholder="写下你自己对这一条的理解"
+                    onChange={(e) => setDraft(e.target.value)}
+                  />
+                  <div className={styles.editorActions}>
+                    <button
+                      type="button"
+                      className={styles.altAction}
+                      onClick={() => {
+                        setEditing(false)
+                        setDraft('')
+                      }}
+                    >
+                      取消
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.altAction}
+                      data-testid="save-custom"
+                      onClick={() => void handleSaveCustom()}
+                    >
+                      保存
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* 某一项还没有内容时，给一个入口；两项都齐了就不占位置 */}
+              {!editing && (!altAi || !customRow) && (
+                <div className={styles.entryRow}>
+                  {!altAi && (
+                    <button
+                      type="button"
+                      className={styles.entryBtn}
+                      data-testid="ask-ai"
+                      onClick={() => void source.requestAi()}
+                      disabled={source.aiBusy || !source.hasModel}
+                    >
+                      {source.aiBusy ? '生成中…' : source.ai ? '重新生成 AI 释义' : 'AI 释义'}
+                    </button>
+                  )}
+                  {!customRow && (
+                    <button
+                      type="button"
+                      className={styles.entryBtn}
+                      data-testid="add-custom"
+                      onClick={() => {
+                        setDraft(custom ?? '')
+                        setEditing(true)
+                      }}
+                    >
+                      {custom ? '编辑释义' : '自定义释义'}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {source.aiNotice && <p className={styles.altNotice}>{source.aiNotice}</p>}
+              {!source.hasModel && !altAi && (
+                <p className={styles.altNotice}>AI 释义要先用设置里配置的大模型</p>
               )}
             </>
           )}
-        </p>
 
-        {/*
-          主释义永远在上面；AI 与自定义各占一行，**有内容才出现**。
-          主释义本身就是 AI 给的时候（本地没收录、由 AI 兜底），不再单独占一行 ——
-          那会和上面一字不差。
-        */}
-        {!source.loading && (
-          <>
-            {altAi && (
-              <div className={styles.altRow}>
-                <span className={styles.altLabel}>AI 释义</span>
-                <span className={styles.altText} data-testid="alt-ai">
-                  {altAi}
-                </span>
-                <span className={styles.altActions}>
-                  <button
-                    type="button"
-                    className={styles.altAction}
-                    onClick={() => void source.requestAi()}
-                    disabled={source.aiBusy}
-                  >
-                    {source.aiBusy ? '生成中…' : '重新生成'}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.altAction}
-                    data-testid="drop-ai"
-                    onClick={() => void source.dropAi()}
-                  >
-                    删除
-                  </button>
-                </span>
-              </div>
-            )}
+          {view === 'word' && forms.length > 1 && (
+            <div className={styles.forms}>
+              {forms.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  className={styles.form}
+                  data-on={f === word.toLowerCase()}
+                  onClick={() => onPick(f)}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+          )}
 
-            {customRow && !editing && (
-              <div className={styles.altRow}>
-                <span className={styles.altLabel}>自定义</span>
-                <span className={styles.altText} data-testid="alt-custom">
-                  {customRow}
-                </span>
-                <span className={styles.altActions}>
-                  <button
-                    type="button"
-                    className={styles.altAction}
-                    data-testid="edit-custom"
-                    onClick={() => {
-                      setDraft(customRow)
-                      setEditing(true)
-                    }}
-                  >
-                    编辑
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.altAction}
-                    data-testid="drop-custom"
-                    onClick={() => void source.dropCustom()}
-                  >
-                    删除
-                  </button>
-                </span>
-              </div>
-            )}
+          {token && (
+            <section className={styles.memo}>
+              {memoLoading && <p className={styles.memoMuted}>墨墨状态读取中…</p>}
 
-            {editing && (
-              <div className={styles.editor}>
-                <textarea
-                  className={styles.editorInput}
-                  data-testid="custom-input"
-                  value={draft}
-                  rows={2}
-                  maxLength={200}
-                  placeholder="写下你自己对这一条的理解"
-                  onChange={(e) => setDraft(e.target.value)}
-                />
-                <div className={styles.editorActions}>
-                  <button
-                    type="button"
-                    className={styles.altAction}
-                    onClick={() => {
-                      setEditing(false)
-                      setDraft('')
-                    }}
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.altAction}
-                    data-testid="save-custom"
-                    onClick={() => void handleSaveCustom()}
-                  >
-                    保存
-                  </button>
-                </div>
-              </div>
-            )}
+              {/* 原词不在词库里：先把这件事说明白，再说它的原形 —— 顺序反了就成了「猜的当事实」 */}
+              {missingExact && <p className={styles.memoMuted}>墨墨词库里没有「{target}」</p>}
 
-            {/* 某一项还没有内容时，给一个入口；两项都齐了就不占位置 */}
-            {!editing && (!altAi || !customRow) && (
-              <div className={styles.entryRow}>
-                {!altAi && (
-                  <button
-                    type="button"
-                    className={styles.entryBtn}
-                    data-testid="ask-ai"
-                    onClick={() => void source.requestAi()}
-                    disabled={source.aiBusy || !source.hasModel}
-                  >
-                    {source.aiBusy ? '生成中…' : source.ai ? '重新生成 AI 释义' : 'AI 释义'}
-                  </button>
-                )}
-                {!customRow && (
-                  <button
-                    type="button"
-                    className={styles.entryBtn}
-                    data-testid="add-custom"
-                    onClick={() => {
-                      setDraft(custom ?? '')
-                      setEditing(true)
-                    }}
-                  >
-                    {custom ? '编辑释义' : '自定义释义'}
-                  </button>
-                )}
-              </div>
-            )}
-
-            {source.aiNotice && <p className={styles.altNotice}>{source.aiNotice}</p>}
-            {!source.hasModel && !altAi && (
-              <p className={styles.altNotice}>AI 释义要先用设置里配置的大模型</p>
-            )}
-          </>
-        )}
-
-        {view === 'word' && forms.length > 1 && (
-          <div className={styles.forms}>
-            {forms.map((f) => (
-              <button
-                key={f}
-                type="button"
-                className={styles.form}
-                data-on={f === word.toLowerCase()}
-                onClick={() => onPick(f)}
-              >
-                {f}
-              </button>
-            ))}
-          </div>
-        )}
-
-        {token && (
-          <section className={styles.memo}>
-            {memoLoading && <p className={styles.memoMuted}>墨墨状态读取中…</p>}
-
-            {/* 原词不在词库里：先把这件事说明白，再说它的原形 —— 顺序反了就成了「猜的当事实」 */}
-            {missingExact && <p className={styles.memoMuted}>墨墨词库里没有「{target}」</p>}
-
-            {memo?.kind === 'in-plan' && (
-              <>
-                <p className={styles.memoHead}>
-                  {memo.exact ? '已在学习计划' : `${memo.record.voc_spelling} 已在学习计划`}
-                  {joinedDays !== null && joinedDays >= 0 && (
-                    <span className={styles.memoDim}>
-                      {' · '}
-                      {joinedDays === 0 ? '今天加入' : `加入 ${joinedDays} 天`}
-                    </span>
-                  )}
-                  {tag && <span className={styles.memoTag}>{tag}</span>}
-                </p>
-                <p className={styles.memoLine}>
-                  背过 {memo.record.study_count} 次
-                  {memo.record.last_response &&
-                    ` · 上次「${RESPONSE_LABEL[memo.record.last_response]}」`}
-                </p>
-                {memo.record.next_study_date && (
+              {memo?.kind === 'in-plan' && (
+                <>
+                  <p className={styles.memoHead}>
+                    {memo.exact ? '已在学习计划' : `${memo.record.voc_spelling} 已在学习计划`}
+                    {joinedDays !== null && joinedDays >= 0 && (
+                      <span className={styles.memoDim}>
+                        {' · '}
+                        {joinedDays === 0 ? '今天加入' : `加入 ${joinedDays} 天`}
+                      </span>
+                    )}
+                    {tag && <span className={styles.memoTag}>{tag}</span>}
+                  </p>
                   <p className={styles.memoLine}>
-                    下次复习 {dayLabel(memo.record.next_study_date) || '—'}
+                    背过 {memo.record.study_count} 次
+                    {memo.record.last_response &&
+                      ` · 上次「${RESPONSE_LABEL[memo.record.last_response]}」`}
                   </p>
-                )}
-
-                <button
-                  type="button"
-                  className={styles.memoButton}
-                  onClick={() => void handleAdvance()}
-                  disabled={advancing}
-                >
-                  {advancing ? '提前中…' : '提前复习'}
-                </button>
-              </>
-            )}
-
-            {memo?.kind === 'available' && (
-              <>
-                <p className={styles.memoHead}>
-                  {memo.exact ? (
-                    <>
-                      还没加入墨墨
-                      <span className={styles.memoDim}> · 词库里有这个词</span>
-                    </>
-                  ) : (
-                    <>
-                      词库里最接近的是 {memo.spelling}
-                      <span className={styles.memoDim}> · 加入的是它</span>
-                    </>
+                  {memo.record.next_study_date && (
+                    <p className={styles.memoLine}>
+                      下次复习 {dayLabel(memo.record.next_study_date) || '—'}
+                    </p>
                   )}
-                </p>
-                <button
-                  type="button"
-                  className={styles.memoButton}
-                  data-confirm={confirming}
-                  onClick={() => void handleAdd()}
-                  disabled={adding}
-                >
-                  {adding ? '加入中…' : confirming ? '确认加入？' : '加入学习计划'}
-                </button>
-                {confirming && (
-                  <p className={styles.memoMuted}>
-                    会占用今天的单词额度，加完按墨墨的排期复习。
+
+                  <button
+                    type="button"
+                    className={styles.memoButton}
+                    onClick={() => void handleAdvance()}
+                    disabled={advancing}
+                  >
+                    {advancing ? '提前中…' : '提前复习'}
+                  </button>
+                </>
+              )}
+
+              {memo?.kind === 'available' && (
+                <>
+                  <p className={styles.memoHead}>
+                    {memo.exact ? (
+                      <>
+                        还没加入墨墨
+                        <span className={styles.memoDim}> · 词库里有这个词</span>
+                      </>
+                    ) : (
+                      <>
+                        词库里最接近的是 {memo.spelling}
+                        <span className={styles.memoDim}> · 加入的是它</span>
+                      </>
+                    )}
                   </p>
-                )}
-              </>
-            )}
+                  <button
+                    type="button"
+                    className={styles.memoButton}
+                    data-confirm={confirming}
+                    onClick={() => void handleAdd()}
+                    disabled={adding}
+                  >
+                    {adding ? '加入中…' : confirming ? '确认加入？' : '加入学习计划'}
+                  </button>
+                  {confirming && (
+                    <p className={styles.memoMuted}>
+                      会占用今天的单词额度，加完按墨墨的排期复习。
+                    </p>
+                  )}
+                </>
+              )}
 
-            {memo?.kind === 'unknown' && (
-              <p className={styles.memoMuted}>墨墨词库里没有这个词，加不进去。</p>
-            )}
+              {memo?.kind === 'unknown' && (
+                <p className={styles.memoMuted}>墨墨词库里没有这个词，加不进去。</p>
+              )}
 
-            {memo?.kind === 'error' && (
-              <p className={styles.memoMuted}>墨墨状态读取失败：{memo.message}</p>
-            )}
+              {memo?.kind === 'error' && (
+                <p className={styles.memoMuted}>墨墨状态读取失败：{memo.message}</p>
+              )}
 
-            {notice && (
-              <p className={styles.memoNotice} data-ok={notice.ok}>
-                {notice.text}
-              </p>
-            )}
-          </section>
-        )}
+              {notice && (
+                <p className={styles.memoNotice} data-ok={notice.ok}>
+                  {notice.text}
+                </p>
+              )}
+            </section>
+          )}
+        </div>
       </div>
     </div>
   )

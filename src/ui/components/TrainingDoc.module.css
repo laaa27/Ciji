@@ -163,13 +163,6 @@
   box-shadow: 0 0 0 2px var(--mark);
 }
 
-/* 手动高亮：与阅读页同一套荧光笔效果 */
-.word[data-mark='true'] {
-  background: var(--mark);
-  border-radius: 2px;
-  box-shadow: 0 0 0 2px var(--mark);
-}
-
 .zh {
   margin-left: 4px;
   font-family: var(--font-ui);
@@ -600,13 +593,19 @@
   flex: none;
 }
 
+/* 与「提交」同尺寸：28px 高 / 12px 字 / 左右 12px。两个按钮并排，
+   矮一截或字号差 1px 一眼就看出来；标签都是两个字，宽度也随之对齐 */
 .navBtn {
   flex: none;
-  font-size: var(--fs-xs);
-  color: var(--ink-2);
-  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  padding: 0 12px;
   border: 1px solid var(--rule-strong);
   border-radius: 2px;
+  font-size: 12px;
+  color: var(--ink-2);
 }
 
 .navBtn:disabled {
@@ -911,63 +910,6 @@
 
 .doc[data-qbar='mini'] {
   padding-bottom: 76px;
-}
-
-
-/* ---------- 动画 ----------
-   与全 app 一套口径：0.18~0.22s、cubic-bezier(0.22, 1, 0.36, 1)、位移 4~6px。
-   训练页原先只有进出场有动画，点选项、换题、出解析都是硬切，看着生硬。 */
-
-.qSwitch {
-  animation: q-in 0.18s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes q-in {
-  from {
-    opacity: 0;
-    transform: translateY(5px);
-  }
-}
-
-.analysis {
-  animation: q-in 0.2s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.blank {
-  transition:
-    border-color 0.15s ease,
-    color 0.15s ease,
-    background 0.15s ease;
-}
-
-.blank[data-filled='true'] {
-  animation: blank-in 0.16s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-@keyframes blank-in {
-  from {
-    transform: scale(0.9);
-  }
-}
-
-.chip:active {
-  transform: scale(0.97);
-}
-
-.opt {
-  transition:
-    background 0.15s ease,
-    border-color 0.15s ease,
-    color 0.15s ease,
-    transform 0.12s ease;
-}
-
-.opt:active {
-  transform: scale(0.995);
-}
-
-.letters {
-  animation: q-in 0.16s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 

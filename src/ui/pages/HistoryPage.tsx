@@ -7,7 +7,7 @@ import { monthDay, weekday } from '@/lib/date'
 
 import { useGlossToggle } from '../hooks/useGlossToggle'
 import { useSubView } from '../hooks/useSubView'
-import { findScrollParent } from '../hooks/useScrollStuck'
+import { findScrollParent, useScrollStuck } from '../hooks/useScrollStuck'
 import WordRow from '../components/WordRow'
 import EmptyState from '../components/EmptyState'
 import StatsPage from './StatsPage'
@@ -131,6 +131,9 @@ export default function HistoryPage({ active }: { active: boolean }) {
   const pageRef = useRef<HTMLDivElement>(null)
   /** 进统计之前列表停在哪 —— 返回时要回到原处 */
   const listScroll = useRef(0)
+  /** 标题行吸顶：贴住了才画分隔线 */
+  const titleRef = useRef<HTMLElement>(null)
+  const titleStuck = useScrollStuck(titleRef)
 
   const sub = useSubView<Sub>({
     onEnter: () => {
@@ -184,7 +187,11 @@ export default function HistoryPage({ active }: { active: boolean }) {
 
   return (
     <div className={styles.page} data-return={sub.returning ? 'true' : 'false'} ref={pageRef}>
-      <header className={styles.titleRow}>
+      <header
+        className={styles.titleRow}
+        ref={titleRef}
+        data-stuck={titleStuck ? 'true' : 'false'}
+      >
         <h1 className={styles.title}>历史</h1>
 
         <div className={styles.actions}>
