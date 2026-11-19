@@ -234,7 +234,7 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
             {fmtDuration(elapsed)}
           </span>
           {/* 白天 / 深夜：贴着计时器右边，与阅读页、设置页同源 */}
-          <ThemeToggle />
+          <ThemeToggle className={styles.action} />
           {hasZh && (
             <button
               type="button"
