@@ -3,31 +3,61 @@ import { useTheme } from '@/store/theme'
 import styles from './ThemeToggle.module.css'
 
 type Props = {
-  /** 按钮本身长得像什么由调用方决定（文字按钮 / 方框按钮），这里只管画图标 */
-  className?: string
+  /** lg 用在标题行（按钮与标题同高），默认尺寸给工具栏那种小字行 */
+  size?: 'sm' | 'lg'
 }
+
+/**
+ * 太阳的八道射线。半径 5.3 → 7.0（viewBox 16 的坐标系，1 单位 = 1px），
+ * 每 45° 一道，圆头由 stroke-linecap 负责 —— 这也是它没法用 CSS 渐变画的原因：
+ * 渐变只有硬边，末端一定是方的，缩小后像准星。
+ */
+const RAYS = [
+  [13.3, 8, 15, 8],
+  [11.75, 11.75, 12.95, 12.95],
+  [8, 13.3, 8, 15],
+  [4.25, 11.75, 3.05, 12.95],
+  [2.7, 8, 1, 8],
+  [4.25, 4.25, 3.05, 3.05],
+  [8, 2.7, 8, 1],
+  [11.75, 4.25, 12.95, 3.05],
+]
 
 /**
  * 白天 / 深夜的切换键。
  *
- * 图标画的是**当前模式**（白天是个太阳、深夜是弯月亮）。选这个语义是因为它和
- * 设置页「外观」里那枚开关说的是同一件事 —— 看到什么就是现在是什么，不用反着想。
- *
- * 状态走 useTheme，与设置页同源：这里点了，设置页的开关立刻跟着变，反之亦然。
- * 图标是 CSS 画的（不引图标库）：太阳＝四道短射线 + 实心圆，月亮＝内阴影切出来的弯钩。
+ * 图标画的是**当前模式**（白天是个太阳、深夜是弯月亮）—— 看到什么就是现在是什么，
+ * 与设置页「外观」里那枚开关说的是同一件事。状态走 useTheme，两处天然同步。
+ * 按钮本体是细边方框，与阅读页标题右侧那颗「复制全文」同一套语言。
  */
-export default function ThemeToggle({ className }: Props) {
+export default function ThemeToggle({ size = 'sm' }: Props) {
   const theme = useTheme((s) => s.theme)
   const next = theme === 'dark' ? 'light' : 'dark'
 
   return (
     <button
       type="button"
-      className={className}
+      className={styles.btn}
+      data-size={size}
       onClick={() => void useTheme.getState().setTheme(next)}
       aria-label={next === 'dark' ? '切换到深夜模式' : '切换到白天模式'}
     >
-      <span className={styles.icon} data-kind={theme} aria-hidden="true" />
+      <svg className={styles.icon} viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+        {theme === 'light' ? (
+          <g fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+            <circle cx="8" cy="8" r="3.1" />
+            {RAYS.map(([x1, y1, x2, y2]) => (
+              <line key={`${x1}-${y1}`} x1={x1} y1={y1} x2={x2} y2={y2} />
+            ))}
+          </g>
+        ) : (
+          // 弯月：一段外弧 + 一段内弧合起来（Feather 那枚 moon 的轮廓）
+          <path
+            fill="currentColor"
+            d="M14.2 9.9A6.2 6.2 0 1 1 6.6 1.9a5 5 0 0 0 7.6 8z"
+          />
+        )}
+      </svg>
     </button>
   )
 }

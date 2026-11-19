@@ -22,7 +22,6 @@ import { useSubView } from '../hooks/useSubView'
 import { useToast } from '@/store/toast'
 import BackButton from '../components/BackButton'
 import EmptyState from '../components/EmptyState'
-import ThemeToggle from '../components/ThemeToggle'
 import TrainingDoc from '../components/TrainingDoc'
 import styles from './TrainingPage.module.css'
 
@@ -376,24 +375,20 @@ export default function TrainingPage() {
         ref={levelRef}
         data-stuck={levelStuck ? 'true' : 'false'}
       >
-        <div className={styles.levelRow}>
-          <div className={styles.segments} role="tablist" aria-label="训练档位">
-            {LEVELS.map((lv) => (
-              <button
-                key={lv.key}
-                type="button"
-                role="tab"
-                aria-selected={level === lv.key}
-                className={styles.segment}
-                data-on={level === lv.key}
-                onClick={() => setLevel(lv.key)}
-              >
-                {lv.label}
-              </button>
-            ))}
-          </div>
-          {/* 档位条也是吸顶处：这里没有计时器，就靠最右 */}
-          <ThemeToggle className={styles.themeBtn} />
+        <div className={styles.segments} role="tablist" aria-label="训练档位">
+          {LEVELS.map((lv) => (
+            <button
+              key={lv.key}
+              type="button"
+              role="tab"
+              aria-selected={level === lv.key}
+              className={styles.segment}
+              data-on={level === lv.key}
+              onClick={() => setLevel(lv.key)}
+            >
+              {lv.label}
+            </button>
+          ))}
         </div>
       </div>
 

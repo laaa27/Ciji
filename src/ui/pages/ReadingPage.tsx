@@ -407,8 +407,9 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
           >
             {fmtDuration(todaySeconds)}
           </span>
-          {/* 白天 / 深夜：放在计时器和译文中间，与设置页的外观开关同源 */}
-          <ThemeToggle className={styles.action} />
+          {/* 白天 / 深夜：放在计时器和译文中间，与设置页的外观开关同源。
+              方框撑到与标题同高，和标题右侧那颗「复制全文」是一套语言 */}
+          <ThemeToggle size="lg" />
           {hasArticle && (
             <>
               <button
