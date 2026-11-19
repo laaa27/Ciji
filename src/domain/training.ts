@@ -169,6 +169,10 @@ export function alignParaZh(para: TrainingPara): string[] | null {
   const perSent = para.sents.map((s) => s.zh)
   if (perSent.every(Boolean)) return perSent.map((s) => s ?? '')
 
+  // 只有部分句有译文：考研翻译就是这种 —— 英语一只有 5 个划线句有参考答案，
+  // 其余句子本来就不该有译文。有就显示、没有留空，别拿整段译文去凑
+  if (perSent.some(Boolean) && !para.zh) return perSent.map((s) => s ?? '')
+
   const zh = para.zh
   if (!zh) return null
   const parts = cleanParaZh(zh)

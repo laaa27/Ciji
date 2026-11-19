@@ -31,9 +31,12 @@ SECTION_LABEL = {
     'writing': '写作',
     'translation': '翻译',
 }
-# 写作与翻译是主观题：判分只能靠范文对照，做题闭环价值低，先不做。
-# 听力也没有导入：没有音频做不了「听→答」的闭环，2026-11-16 按用户要求整个去掉
+# 写作是主观题：判分只能靠范文对照，做题闭环价值低，不做。
+# 听力也没有导入：没有音频做不了「听→答」的闭环，2026-11-16 按用户要求整个去掉。
+# 翻译只给考研加：四六级的翻译是「汉译英」，考研是「英译汉 5 句（英语二整段）」，
+# 后者能当阅读材料对照参考译文用，前者只能靠和人比对，闭环更弱。
 SECTION_ORDER = ['cloze', 'matching', 'reading1', 'reading2']
+EXTRA_SECTIONS = {'kaoyan': ['translation']}
 
 # 考研新题型（matching）变体 → 展示名。判定规则见 matching_variant()
 MATCHING_LABELS = {
@@ -254,6 +257,21 @@ def material_passages(row, section):
                 paras.append({'sents': sents})
         return paras, brief
 
+    # 翻译：正文是 source_paragraphs 里的英文原文（逐段），题目要求进 brief。
+    # 不能落到下面那个 body 兜底 —— 那里的 reference_translation 是中文，
+    # 会把「翻译题」的正文导成中文（试导时正是这个坑）。
+    # brief 用 materials.directions 而不是 content_json.prompt：后者把整篇原文又抄了一遍，
+    # 页面上会出现「题目要求框里一篇文章 + 下面又是一篇」的重复。
+    if section == 'translation':
+        paras = []
+        for en_p in (data.get('source_paragraphs') or []):
+            en = (en_p.get('text') or '').strip() if isinstance(en_p, dict) else ''
+            sents = [{'en': s} for s in split_sentences(en)]
+            if sents:
+                paras.append({'sents': sents})
+        if paras:
+            return paras, ((row['directions'] or '').strip() or brief)
+
     # 文章：优先用结构化的逐段中译定段落边界
     text = (data.get('passage') or '').strip()
     if text:
@@ -301,8 +319,8 @@ def material_passages(row, section):
         sents = [{'en': s} for s in split_sentences(text)]
         return [{'sents': sents[i:i + 4]} for i in range(0, len(sents), 4)], brief
 
-    # 兜底：写作/翻译类材料的正文
-    body = data.get('model_essay') or data.get('reference_translation') or ''
+    # 兜底：写作类材料的正文（翻译已在上面单独处理：正文用 source_paragraphs 的英文原文）
+    body = data.get('model_essay') or ''
     if body.strip():
         sents = [{'en': s} for s in split_sentences(body)]
         return [{'sents': sents[i:i + 4]} for i in range(0, len(sents), 4)], brief
@@ -432,7 +450,87 @@ def _blank_name(paras, no):
     return None
 
 
-def collect_section(conn, paper_id, section, level=''):
+def load_zh_splits():
+    """英语二里「一句英文译成好几句中文」的段落，标点切不出等长段数。
+
+    `kaoyan2-zh-split.json` 是手工切好的清单：套卷 key → 段落序号 → 每句中文。
+    句子数对不上就忽略那一段（宁可退回整段译文，也不能把译文扣到别的句子上）。
+    """
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'kaoyan2-zh-split.json')
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+ZH_SPLITS = load_zh_splits()
+
+
+def attach_translation_zh(item, mat, qs, paper_key=''):
+    """给翻译篇补中文。两种卷面，取法不同：
+
+    - **英语一**：5 个划线句，题库里每题都带参考答案 → 直接贴到对应的那句英文上（句级，最准）。
+      对不上（题干被改写过）就跳过那一句，绝不猜。
+    - **英语二**：一整段英译汉，题库只给了逐段参考译文 → 落到 para.zh。
+      前端 alignParaZh 会尝试按句切开逐句显示，切不齐就整段显示 ——
+      宁可退回原样，也不能把译文错位到别的句子上。切不齐的那几段在
+      `kaoyan2-zh-split.json` 里手工补了逐句版本。
+    """
+    def norm(t):
+        return re.sub(r'\s+', ' ', t or '').strip()
+
+    # 手工切好的逐句译文优先（只认句子数对得上的）
+    for idx_s, parts in (ZH_SPLITS.get(paper_key) or {}).items():
+        idx = int(idx_s)
+        if 0 <= idx < len(item['paras']) and isinstance(parts, list) \
+                and len(parts) == len(item['paras'][idx]['sents']):
+            for s, zh in zip(item['paras'][idx]['sents'], parts):
+                s['zh'] = zh
+        else:
+            print('  ! %s 第 %s 段的手工切句对不上，已忽略' % (paper_key, idx_s))
+
+    sents = [s for p in item['paras'] for s in p['sents']]
+    answers = [(norm(q['stem']), norm(q['answer'])) for q in qs
+               if norm(q['stem']) and norm(q['answer'])]
+    if answers:
+        hit = 0
+        for stem, ans in answers:
+            for s in sents:
+                en = norm(s['en'])
+                if en == stem or stem in en or en in stem:
+                    s['zh'] = ans
+                    hit += 1
+                    break
+        return hit
+
+    try:
+        data = json.loads(mat['content_json'] or '{}')
+    except json.JSONDecodeError:
+        return 0
+    rt = (data.get('reference_translation') or '').strip()
+    if not rt:
+        return 0
+    if not re.search(r'\bP\d+\b', rt):
+        blocks = [rt] if len(item['paras']) == 1 else []
+    else:
+        blocks = [b.strip() for b in re.split(r'\bP\d+\b', rt)]
+        blocks = [b for b in blocks if b]
+    # 首块是一段「这译文怎么来的」说明（模板固定带「参考译文 / 复盘资产」字样），丢掉
+    if blocks and ('参考译文' in blocks[0] or '复盘' in blocks[0]):
+        blocks = blocks[1:]
+    # 末段常被后面的【衔接】讲解串在一起，从【 起全部切掉；
+    # 讲解区还会重新出现 P1/P2 这些标记，所以只认前 N 块（N = 段落数）
+    blocks = [re.split(r'【', b)[0].strip() for b in blocks]
+    blocks = [b for b in blocks if len(b) > 10][:len(item['paras'])]
+    if len(blocks) != len(item['paras']):
+        return 0
+    for para, zh in zip(item['paras'], blocks):
+        para['zh'] = zh
+    return len(blocks)
+
+
+def collect_section(conn, paper_id, section, level='', paper_key=''):
     materials = conn.execute(
         """SELECT group_key, content_json, translation_json, analysis_text, directions
            FROM section_materials
@@ -483,6 +581,8 @@ def collect_section(conn, paper_id, section, level=''):
             'paras': paras,
             'questions': [build_question(q) for q in qs],
         }
+        if section == 'translation' and mat:
+            attach_translation_zh(item, mat, qs, paper_key)
         if section == 'matching' and mat:
             kind, vlabel = matching_variant(mat, qs)
             item['kind'] = kind
@@ -601,8 +701,8 @@ def main():
             continue
 
         sections = []
-        for sec in SECTION_ORDER:
-            art = collect_section(conn, row['id'], sec, level)
+        for sec in SECTION_ORDER + EXTRA_SECTIONS.get(level, []):
+            art = collect_section(conn, row['id'], sec, level, row['paper_key'])
             if art:
                 sections.append(art)
         if not sections:
