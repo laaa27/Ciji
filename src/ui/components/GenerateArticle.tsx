@@ -19,8 +19,11 @@ import type { TodaySnapshot } from '@/domain/collect'
 import { monthDay } from '@/lib/date'
 import { readGenDraft, saveGenDraft } from '@/store/ui'
 
+import { findScrollParent } from '../hooks/useScrollStuck'
+import { useSubView } from '../hooks/useSubView'
 import styles from './GenerateArticle.module.css'
 import BackButton from './BackButton'
+import DateCalendar from './DateCalendar'
 
 /**
  * 生成文章（二级页面）。
@@ -110,6 +113,32 @@ export default function GenerateArticle({
   // 上次的选词草稿：进程被系统回收后回来，不用重新挑一遍
   const [draft] = useState(readGenDraft)
   const restored = useRef(false)
+
+  /** 选日期是这一页自己的二级视图：安卓返回键按栈先关它 */
+  const pageRef = useRef<HTMLDivElement>(null)
+  /** 进日历前排到哪儿了 —— 回来要接着看，别被弹回顶部 */
+  const listScroll = useRef(0)
+  const cal = useSubView<'calendar'>({
+    onEnter: () => {
+      const scroller = findScrollParent(pageRef.current)
+      if (scroller) listScroll.current = scroller.scrollTop
+    },
+  })
+
+  // 日历从顶部看；返回时恢复原来的位置（位置为 0 就不动，别抢 App 记的栏目位置）
+  useEffect(() => {
+    const scroller = findScrollParent(pageRef.current)
+    if (!scroller) return
+    if (cal.isOpen) {
+      scroller.scrollTop = 0
+      return
+    }
+    if (listScroll.current <= 0) return
+    const raf = requestAnimationFrame(() => {
+      scroller.scrollTop = listScroll.current
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [cal.isOpen])
 
   const [date, setDate] = useState(draft?.date ?? today)
   const [snapshot, setSnapshot] = useState<TodaySnapshot | null>(null)
@@ -262,6 +291,20 @@ export default function GenerateArticle({
     }
   }
 
+  /**
+   * 快捷条：最近 7 个有记录的日子（days 已是倒序）。
+   * 从日历选到更早的日期时把它补在末尾 —— 否则当前选中的那天在条上看不见，
+   * 用户会以为没选上。
+   */
+  const strip = useMemo(() => {
+    if (days.length === 0) return []
+    const near = days.slice(0, 7)
+    return near.includes(date) ? near : [...near, date]
+  }, [days, date])
+
+  /** 日历要按「有没有记录」决定哪格能点 */
+  const daySet = useMemo(() => new Set(days), [days])
+
   const visible = showUsed ? allCandidates : allCandidates.filter((c) => !c.used)
   const chosen = visible.filter((c) => selected.has(c.spelling.toLowerCase()))
   const rest = visible.filter((c) => !selected.has(c.spelling.toLowerCase()))
@@ -273,8 +316,26 @@ export default function GenerateArticle({
     await onGenerate({ date, words, kinds, level })
   }
 
+  // 选日期整棵子树换掉，而不是盖在上面：日历页下不该还留着词表和「已选 N」
+  if (cal.view === 'calendar') {
+    return (
+      <div className={styles.view} ref={pageRef} data-view="true">
+        <DateCalendar
+          value={date}
+          days={daySet}
+          today={today}
+          onPick={(next) => {
+            setDate(next)
+            cal.close()
+          }}
+          onBack={cal.close}
+        />
+      </div>
+    )
+  }
+
   return (
-    <div className={styles.page}>
+    <div className={styles.view} ref={pageRef} data-return={cal.returning ? 'true' : 'false'}>
       <header className={styles.header}>
         <BackButton onClick={onBack} />
         <h1 className={styles.title}>生成文章</h1>
@@ -282,9 +343,22 @@ export default function GenerateArticle({
       </header>
 
       <section className={styles.field}>
-        <h2 className={styles.fieldLabel}>哪一天</h2>
+        {/* 标题行右侧是日历入口：只用 CSS 画一个右箭头（与历史页「统计」那颗同款） */}
+        <div className={styles.fieldHead}>
+          <h2 className={styles.fieldLabel}>哪一天</h2>
+          {days.length > 0 && (
+            <button
+              type="button"
+              className={styles.calOpen}
+              onClick={() => cal.open('calendar')}
+              aria-label="打开日历选日期"
+            >
+              <span className={styles.calChev} aria-hidden="true" />
+            </button>
+          )}
+        </div>
         <div className={styles.days}>
-          {days.map((d) => (
+          {strip.map((d) => (
             <button
               key={d}
               type="button"

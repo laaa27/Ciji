@@ -80,6 +80,12 @@ ol {
   }
 }
 
+/* 注意：不要把次级页的 sub-in / back-in 提到这里。
+   CSS Modules 会把 module 里 `animation: sub-in` 的名字改成带哈希的 `_sub-in_xxx`，
+   而定义在这儿的 `@keyframes sub-in` 不会改名，两者对不上 → 动画直接不跑。
+   实测确认过（构建产物里 `animation: ... _sub-in_xxx` 但只有一份 `@keyframes sub-in`）。
+   所以推进动画只能在各 module 里各写一份，这是工具限制，不是偷懒。 */
+
 /* 加载中的文字：轻呼吸，暗示仍在工作 */
 .loading-pulse {
   animation: breathe 1.6s ease-in-out infinite;

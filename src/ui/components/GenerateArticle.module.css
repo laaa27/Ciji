@@ -1,5 +1,32 @@
 /* 生成文章二级页：外层 .page 的 padding 由阅读页提供，这里不管外边距 */
 
+/* 本页自己的两层：主视图 ↔ 选日期。
+   进退场与全 app 一套（关键帧在 global.css）：进去从右边推入，回来从左回一点。
+   data-view / data-return 挂在同一个节点上，animation-name 一变就重新起动画 */
+.view[data-view] {
+  animation: sub-in 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.view[data-return='true'] {
+  animation: back-in 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 关键帧必须写在本 module 里：CSS Modules 会把上面的 animation 名改成带哈希的，
+   只有同一文件里定义的关键帧会跟着改名。定义在 global.css 里对不上，动画不会跑 */
+@keyframes sub-in {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+}
+
+@keyframes back-in {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+}
+
 .header {
   position: sticky;
   /* sticky 的 top 作用在 margin box 上，而下面用了负 margin-top 抵消内边距，
@@ -37,6 +64,45 @@
 
 .field {
   margin-bottom: var(--sp-6);
+}
+
+/* 「哪一天」那一行：标题在左，日历入口在右 */
+.fieldHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.fieldHead .fieldLabel {
+  margin-bottom: 0;
+}
+
+/* 日历入口：只有一颗 CSS 画的右箭头，不额外加边框 —— 它和标题是一行，
+   加个方框会把这一行拆成两个视觉块 */
+.calOpen {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 22px;
+  margin-right: -6px;
+  color: var(--ink-3);
+  transition: color 0.15s ease;
+}
+
+.calOpen:active {
+  color: var(--ink);
+}
+
+.calChev {
+  width: 5px;
+  height: 5px;
+  border-right: 1.5px solid currentColor;
+  border-top: 1.5px solid currentColor;
+  transform: translateY(-1px) rotate(45deg);
 }
 
 .fieldLabel {

@@ -1,0 +1,161 @@
+/* 选日期：生成页的二级内容。视觉沿用「一页活着的词典」——细线、2px 圆角、纸色底。
+   外层容器（内边距、进退场动画）由生成页提供，这里只管内容 */
+
+/* 头部与生成页头部同一套：吸顶 + 同一条分隔线（两页是同一层的二级视图） */
+.header {
+  position: sticky;
+  top: calc(var(--safe-top) - var(--sp-2));
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-2) 0;
+  margin-top: calc(-1 * var(--sp-2));
+  margin-bottom: var(--sp-4);
+  background: var(--paper);
+  box-shadow: 0 1px 0 var(--rule);
+}
+
+/* 与生成页标题同字号：它俩是同一层的二级页 */
+.title {
+  font-family: var(--font-word);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.monthBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.monthLabel {
+  font-family: var(--font-word);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+
+.arrow {
+  flex: none;
+  width: 34px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  color: var(--ink-2);
+}
+
+.arrow:disabled {
+  opacity: 0.3;
+}
+
+/* 箭头用 CSS 边框画（与答题条的翻页箭头同一套画法）——
+   字符 › 的字形墨迹压在基线上，flex 居中的是文字框，看起来总是偏下 */
+.chev {
+  flex: none;
+  width: 8px;
+  height: 8px;
+}
+
+.chev[data-dir='left'] {
+  border-bottom: 1.6px solid currentColor;
+  border-left: 1.6px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.chev[data-dir='right'] {
+  border-top: 1.6px solid currentColor;
+  border-right: 1.6px solid currentColor;
+  transform: rotate(45deg);
+}
+
+.weekRow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  margin-top: var(--sp-4);
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--rule);
+}
+
+.weekName {
+  padding: 4px 0;
+  text-align: center;
+  font-size: var(--fs-xs);
+  color: var(--ink-3);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 2px;
+  margin-top: 4px;
+}
+
+/* 首行补齐的占位格：只占位，不画 */
+.blank {
+  height: 42px;
+}
+
+.cell {
+  position: relative;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 2px;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+/* 没有记录：置灰且不可点（disabled 由组件给）。灰色本身就在说「这天是空的」 */
+.cell[data-has='false'] {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+.cell[data-has='true']:active {
+  background: var(--tint);
+}
+
+/* 选中：与快捷日期条同一套实心底 */
+.cell[data-on='true'],
+.cell[data-on='true']:active {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+/* 今天：数字下面一个小点，不与选中态抢视觉 */
+.cell[data-today='true']::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 7px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translateX(-50%);
+}
+
+.cell[data-today='true'][data-has='false']::after {
+  background: var(--ink-3);
+}
+
+.cell[data-on='true'][data-today='true']::after {
+  background: var(--on-accent);
+}
+
+.hint {
+  margin-top: var(--sp-4);
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  color: var(--ink-3);
+}

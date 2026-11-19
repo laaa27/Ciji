@@ -44,6 +44,25 @@ export function diffDays(a: string, b: string): number {
   return Math.round((t1 - t2) / 86_400_000)
 }
 
+/** 某月共几天（month 从 1 起） */
+export function daysInMonth(year: number, month: number): number {
+  // 下个月的第 0 天 = 本月最后一天。锚在 UTC 04:00（北京 12:00），
+  // 这样任何时区下都不会被推到前一天或后一天
+  return new Date(Date.UTC(year, month, 0, 4)).getUTCDate()
+}
+
+/** 某月 1 号是周几（0 = 周日），日历算首行要空几格 */
+export function firstWeekday(year: number, month: number): number {
+  return new Date(Date.UTC(year, month - 1, 1, 4)).getUTCDay()
+}
+
+/** 2026年11月 */
+export function yearMonth(key: string): string {
+  const [y, m] = key.split('-').map(Number)
+  if (!y || !m) return key
+  return `${y}年${m}月`
+}
+
 /** 把秒数排成 05:24 / 1:02:03 这样的表盘格式 */
 export function fmtDuration(sec: number): string {
   const s = Math.max(0, Math.floor(sec))
