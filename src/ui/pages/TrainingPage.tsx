@@ -22,6 +22,7 @@ import { useSubView } from '../hooks/useSubView'
 import { useToast } from '@/store/toast'
 import BackButton from '../components/BackButton'
 import EmptyState from '../components/EmptyState'
+import ThemeToggle from '../components/ThemeToggle'
 import TrainingDoc from '../components/TrainingDoc'
 import styles from './TrainingPage.module.css'
 
@@ -43,14 +44,22 @@ const DOC_EXIT_CONFIRM_MS = 2200
 /** 题型行右侧的成绩：没交过就不显示，交过才占位 */
 function PassageScore({ score }: { score?: TrainScore }) {
   if (!score) return null
+  // 翻译题没有对错，记的是「上次读的时间 + 用时」（total=0）。别显示成「0/0」
+  const read = score.total === 0
   const rate = score.total > 0 ? Math.round((100 * score.right) / score.total) : 0
   return (
     <span className={styles.rowScore}>
       <span className={styles.rowRate}>
-        正确率 {rate}%
-        <em>
-          {score.right}/{score.total}
-        </em>
+        {read ? (
+          '已读'
+        ) : (
+          <>
+            正确率 {rate}%
+            <em>
+              {score.right}/{score.total}
+            </em>
+          </>
+        )}
       </span>
       <span className={styles.rowTime}>
         {score.secs !== undefined ? `用时 ${fmtDuration(score.secs)} · ` : ''}
@@ -334,7 +343,12 @@ export default function TrainingPage() {
                             : ''}
                       </span>
                       <span className={styles.passageMeta}>
-                        {p.questions.length} 题
+                        {/* 翻译数的是「句」：英语一 5 个划线句，英语二整段一篇 */}
+                        {sec.id === 'translation'
+                          ? p.questions.length > 1
+                            ? `${p.questions.length} 句`
+                            : '整段'
+                          : `${p.questions.length} 题`}
                       </span>
                     </span>
                     <PassageScore score={scores[scoreKey(paperKey, p.id)]} />
@@ -362,20 +376,24 @@ export default function TrainingPage() {
         ref={levelRef}
         data-stuck={levelStuck ? 'true' : 'false'}
       >
-        <div className={styles.segments} role="tablist" aria-label="训练档位">
-          {LEVELS.map((lv) => (
-            <button
-              key={lv.key}
-              type="button"
-              role="tab"
-              aria-selected={level === lv.key}
-              className={styles.segment}
-              data-on={level === lv.key}
-              onClick={() => setLevel(lv.key)}
-            >
-              {lv.label}
-            </button>
-          ))}
+        <div className={styles.levelRow}>
+          <div className={styles.segments} role="tablist" aria-label="训练档位">
+            {LEVELS.map((lv) => (
+              <button
+                key={lv.key}
+                type="button"
+                role="tab"
+                aria-selected={level === lv.key}
+                className={styles.segment}
+                data-on={level === lv.key}
+                onClick={() => setLevel(lv.key)}
+              >
+                {lv.label}
+              </button>
+            ))}
+          </div>
+          {/* 档位条也是吸顶处：这里没有计时器，就靠最右 */}
+          <ThemeToggle className={styles.themeBtn} />
         </div>
       </div>
 

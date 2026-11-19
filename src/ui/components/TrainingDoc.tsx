@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import {
   hasTranslation,
@@ -15,6 +15,7 @@ import { ChoiceBar } from './ChoiceBar'
 import { ClozeBar, ClozeResult } from './ClozeBar'
 import { OrderingBar } from './OrderingBar'
 import { TrainingReader } from './TrainingReader'
+import ThemeToggle from './ThemeToggle'
 import WordSheet from './WordSheet'
 import { useStopwatch } from '../hooks/useStopwatch'
 import { useWordSelection } from '../hooks/useWordSelection'
@@ -54,6 +55,11 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
   const fontSize = usePrefs((s) => s.readingFont)
   const cloze = isCloze(passage)
   const hasZh = useMemo(() => hasTranslation(passage), [passage])
+  /**
+   * 翻译题（考研 Part C）：没有可选项、没有对错，所以既没有答题条，也没有「提交」。
+   * 只有原文、题目要求和译文对照 —— 把整屏留给文章。
+   */
+  const isTranslation = section.id === 'translation'
   /** 新题型变体：仅 matching 节有；阅读理解（reading1/2）不设 kind，选项可随意重复选择 */
   const isMatchingSection = section.id === 'matching'
   const kind = isMatchingSection ? (passage.kind ?? 'matching') : undefined
@@ -96,6 +102,32 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
 
   /** 本次做题用时：进入即计时，提交后停表；开着词卡查词也算在做题里 */
   const elapsed = useStopwatch(!submitted)
+
+  /**
+   * 翻译题没有提交键，那「做完了」这件事只能靠离开这一节来判定。
+   * 卸载时记一条「已读」成绩（total=0），列表页据此显示上次做的日期与用时。
+   * onScore 是父组件的内联函数，每次渲染都换身份 —— 存进 ref，否则只要父组件重渲染
+   * 就触发一次 cleanup，会把假成绩提前写下去。
+   */
+  const elapsedRef = useRef(elapsed)
+  elapsedRef.current = elapsed
+  const scoreRef = useRef(onScore)
+  scoreRef.current = onScore
+  const scored = useRef(false)
+  useEffect(() => {
+    if (!isTranslation) return
+    return () => {
+      if (scored.current) return
+      scored.current = true
+      scoreRef.current({
+        passageId: passage.id,
+        right: 0,
+        total: 0,
+        at: new Date().toISOString(),
+        secs: elapsedRef.current,
+      })
+    }
+  }, [isTranslation, passage.id])
 
   /** 共享选项池：新题型各题的选项相同（A–G），任取一题的即可 */
   const pool = useMemo(
@@ -179,12 +211,17 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
     <div
       className={styles.doc}
       data-size={fontSize}
-      data-qbar={barCollapsed ? 'mini' : 'open'}
+      data-qbar={isTranslation ? undefined : barCollapsed ? 'mini' : 'open'}
     >
       <div className={styles.toolbar}>
         <span className={styles.meta}>
           {section.label}
-          {ordinal > 0 ? ` · 第 ${ordinal} 篇` : ''} · {questions.length} 题
+          {ordinal > 0 ? ` · 第 ${ordinal} 篇` : ''} ·{' '}
+          {isTranslation
+            ? questions.length > 1
+              ? `${questions.length} 句`
+              : '整段'
+            : `${questions.length} 题`}
         </span>
         <div className={styles.actions}>
           {/* 用时：不走按钮逻辑，始终显示；计计时中用主色提示「在计」 */}
@@ -196,6 +233,8 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
           >
             {fmtDuration(elapsed)}
           </span>
+          {/* 白天 / 深夜：贴着计时器右边，与阅读页、设置页同源 */}
+          <ThemeToggle className={styles.action} />
           {hasZh && (
             <button
               type="button"
@@ -305,7 +344,7 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
 
       <p className={styles.foot}>题源：{paper.label}</p>
 
-      {cloze && (
+      {cloze && !isTranslation && (
         <ClozeBar
           bank={bank}
           usedBy={usedLetters}
@@ -320,7 +359,8 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
         />
       )}
 
-      {!cloze && !ordering && q && (
+      {/* 翻译题不要答题条：没有选项、没有对错，弹一条空壳只会挡住文章 */}
+      {!cloze && !ordering && !isTranslation && q && (
         <ChoiceBar
           q={q}
           current={current}

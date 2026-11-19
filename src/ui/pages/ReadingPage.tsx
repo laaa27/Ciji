@@ -38,6 +38,7 @@ import { useWordSelection } from '../hooks/useWordSelection'
 import ArticleLibrary from '../components/ArticleLibrary'
 import GenerateArticle, { type GenerateRequest } from '../components/GenerateArticle'
 import WordSheet from '../components/WordSheet'
+import ThemeToggle from '../components/ThemeToggle'
 import styles from './ReadingPage.module.css'
 
 type Props = {
@@ -406,6 +407,8 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
           >
             {fmtDuration(todaySeconds)}
           </span>
+          {/* 白天 / 深夜：放在计时器和译文中间，与设置页的外观开关同源 */}
+          <ThemeToggle className={styles.action} />
           {hasArticle && (
             <>
               <button

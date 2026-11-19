@@ -1,0 +1,53 @@
+/*
+ * 主题切换的图标：只用 CSS 画，不引图标库。
+ * 「现在是什么模式」就画什么 —— 白天是太阳，深夜是弯月亮。
+ *
+ * 两者的画法都是「一个 16×16 的盒子 + 两层」：
+ *   太阳 = 横竖两道射线（中间用 mask 挖掉）+ 一个实心圆
+ *   月亮 = 内阴影切出来的弯钩（透明底，只留下阴影那一弯）
+ * mask 只挂在射线那一层上：挂在父元素上会把后画的圆一起挖空。
+ */
+
+.icon {
+  position: relative;
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  vertical-align: -3px;
+}
+
+/* ── 太阳 ─────────────────────────────── */
+
+.icon[data-kind='light']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(currentColor, currentColor) center / 1.5px 16px no-repeat,
+    linear-gradient(currentColor, currentColor) center / 16px 1.5px no-repeat;
+  -webkit-mask: radial-gradient(circle at 50% 50%, transparent 0 4px, #000 4px);
+  mask: radial-gradient(circle at 50% 50%, transparent 0 4px, #000 4px);
+}
+
+.icon[data-kind='light']::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin: -3.5px 0 0 -3.5px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ── 月亮 ─────────────────────────────── */
+
+.icon[data-kind='dark']::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 50%;
+  /* 向内偏移的阴影只在圆里留下一弯，另一侧是空的 */
+  box-shadow: inset -4px -2.5px 0 0 currentColor;
+}

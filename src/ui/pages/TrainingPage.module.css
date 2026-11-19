@@ -47,9 +47,34 @@
 /* 档位分段：与设置页的分段选择同形，三档等宽 */
 .segments {
   display: flex;
+  flex: 1;
+  min-width: 0;
   border: 1px solid var(--rule-strong);
   border-radius: 2px;
   overflow: hidden;
+}
+
+/* 档位条右边挂着主题键：档位格子占满剩下的宽度，这颗跟它们一样高 */
+.levelRow {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
+.themeBtn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  border: 1px solid var(--rule-strong);
+  border-radius: 2px;
+  color: var(--ink-2);
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.themeBtn:active {
+  background: var(--tint);
 }
 
 /* 档位吸顶：套卷按年份铺一百多行，滚到深处仍要能换档。
