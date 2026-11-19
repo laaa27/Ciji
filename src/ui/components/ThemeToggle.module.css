@@ -1,9 +1,11 @@
 /*
- * 主题切换键：细边方框 + 太阳 / 月亮图标。
- * 方框沿用阅读页标题右侧「复制全文」那颗（1px --rule、2px 圆角、--ink-3），
- * 默认 24px；标题行用 lg 撑到与标题同高（32px）。
+ * 主题切换键。
  *
- * 图标是在组件里手绘的内联 SVG（不引图标库，也就没有额外请求）：
+ * **不画边框**：按钮只是一个 26×26 的盒子，用来定住图标的尺寸与点按范围；
+ * 视觉上只看到图标本身（颜色走 currentColor，随两处吸顶的按钮色）。
+ * 之前给过细边框，但和旁边的 11px 小字一比，那个框反而比图标更抢眼。
+ *
+ * 图标是组件里手绘的内联 SVG（不引图标库，也就没有额外请求）：
  * 参考图那种「粗圆环 + 八道圆头射线」用 CSS 渐变画不出来 ——
  * 渐变只有硬边，射线的圆头必须靠 stroke-linecap 才能做对。
  */
@@ -13,19 +15,12 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* 两处宿主都是 baseline 对齐：方框按基线排会往下掉，改成在行内垂直居中 */
+  /* 两处宿主都是 baseline 对齐：盒子按基线排会往下掉，改成在行内垂直居中 */
   align-self: center;
-  width: var(--tg-size, 24px);
-  height: var(--tg-size, 24px);
+  width: 26px;
+  height: 26px;
   color: var(--ink-3);
-  border: 1px solid var(--rule);
-  border-radius: 2px;
-  transition: color 0.15s ease, border-color 0.15s ease, opacity 0.12s ease;
-}
-
-/* 标题行：与标题字号（32px）对齐 */
-.btn[data-size='lg'] {
-  --tg-size: 32px;
+  transition: color 0.15s ease, opacity 0.12s ease;
 }
 
 .btn:active {
@@ -34,13 +29,12 @@
 
 .btn:hover {
   color: var(--ink);
-  border-color: var(--rule-strong);
 }
 
-/* 图标比方框小一圈，四周留白；线条用 currentColor，跟着按钮的颜色走 */
+/* 13px：与 11px 的小字、22px 的计时数字同处一行时不显突兀 */
 .icon {
   display: block;
-  width: 16px;
-  height: 16px;
+  width: 13px;
+  height: 13px;
   overflow: visible;
 }

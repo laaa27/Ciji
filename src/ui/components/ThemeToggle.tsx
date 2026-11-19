@@ -2,14 +2,9 @@ import { useTheme } from '@/store/theme'
 
 import styles from './ThemeToggle.module.css'
 
-type Props = {
-  /** lg 用在标题行（按钮与标题同高），默认尺寸给工具栏那种小字行 */
-  size?: 'sm' | 'lg'
-}
-
 /**
- * 太阳的八道射线。半径 5.3 → 7.0（viewBox 16 的坐标系，1 单位 = 1px），
- * 每 45° 一道，圆头由 stroke-linecap 负责 —— 这也是它没法用 CSS 渐变画的原因：
+ * 太阳的八道射线。半径 5.3 → 7.0（viewBox 16 的坐标系），每 45° 一道，
+ * 圆头由 stroke-linecap 负责 —— 这也是它没法用 CSS 渐变画的原因：
  * 渐变只有硬边，末端一定是方的，缩小后像准星。
  */
 const RAYS = [
@@ -28,9 +23,11 @@ const RAYS = [
  *
  * 图标画的是**当前模式**（白天是个太阳、深夜是弯月亮）—— 看到什么就是现在是什么，
  * 与设置页「外观」里那枚开关说的是同一件事。状态走 useTheme，两处天然同步。
- * 按钮本体是细边方框，与阅读页标题右侧那颗「复制全文」同一套语言。
+ *
+ * 按钮**不画边框**：那个方框只用来定住图标的尺寸与点按范围（两处吸顶都用同一颗）。
+ * 图标本身 13px —— 和旁边的 11px 小字、22px 计时数字放在一行才不显突兀。
  */
-export default function ThemeToggle({ size = 'sm' }: Props) {
+export default function ThemeToggle() {
   const theme = useTheme((s) => s.theme)
   const next = theme === 'dark' ? 'light' : 'dark'
 
@@ -38,7 +35,6 @@ export default function ThemeToggle({ size = 'sm' }: Props) {
     <button
       type="button"
       className={styles.btn}
-      data-size={size}
       onClick={() => void useTheme.getState().setTheme(next)}
       aria-label={next === 'dark' ? '切换到深夜模式' : '切换到白天模式'}
     >
@@ -52,10 +48,7 @@ export default function ThemeToggle({ size = 'sm' }: Props) {
           </g>
         ) : (
           // 弯月：一段外弧 + 一段内弧合起来（Feather 那枚 moon 的轮廓）
-          <path
-            fill="currentColor"
-            d="M14.2 9.9A6.2 6.2 0 1 1 6.6 1.9a5 5 0 0 0 7.6 8z"
-          />
+          <path fill="currentColor" d="M14.2 9.9A6.2 6.2 0 1 1 6.6 1.9a5 5 0 0 0 7.6 8z" />
         )}
       </svg>
     </button>
