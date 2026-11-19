@@ -69,6 +69,14 @@ export default function AboutPanel() {
             <span className={styles.aboutKey}>版本</span>
             <span className={styles.aboutValue}>{__APP_VERSION__}</span>
           </div>
+          {/*
+            构建号：不跟着版本名走。同版本名重出一版包时，只有它能说明「装的是哪一次」——
+            核对装机结果看的就是这一行（版本名可以不变，versionCode 必须涨）
+          */}
+          <div className={styles.aboutRow}>
+            <span className={styles.aboutKey}>构建号</span>
+            <span className={styles.aboutValue}>{__APP_VERSION_CODE__ || '—'}</span>
+          </div>
           <div className={styles.aboutRow}>
             <span className={styles.aboutKey}>数据来源</span>
             <span className={styles.aboutValue}>墨墨开放 API（公测）</span>

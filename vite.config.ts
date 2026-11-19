@@ -8,6 +8,25 @@ const pkg = JSON.parse(
 ) as { version: string }
 
 /**
+ * 构建号（versionCode）只有 build.gradle 里有，而「关于」页要把它显示出来。
+ *
+ * 这里读一次注进界面，不让它在两处各写一份 —— 0.22.0 那次「已是最新仍提示更新」
+ * 就是版本字面量各写一份、其中一份忘了改造成的。
+ * 读不到原生工程（比如只 checkout 了 src）就退回空串，界面显示「—」，不编一个假的。
+ */
+function readVersionCode(): string {
+  try {
+    const gradle = readFileSync(
+      fileURLToPath(new URL('./android/app/build.gradle', import.meta.url)),
+      'utf-8',
+    )
+    return /versionCode\s+(\d+)/.exec(gradle)?.[1] ?? ''
+  } catch {
+    return ''
+  }
+}
+
+/**
  * 开发期的 LLM 转发中间件。
  *
  * 为什么不能用静态 server.proxy：Base URL 是用户在设置里自己填的，
@@ -69,6 +88,7 @@ export default defineConfig({
   define: {
     // 版本号只在这里维护，界面直接读，避免和 build.gradle 各写一份
     __APP_VERSION__: JSON.stringify(pkg.version),
+    __APP_VERSION_CODE__: JSON.stringify(readVersionCode()),
   },
   // Capacitor 从 file:// 加载，必须用相对路径
   base: './',
