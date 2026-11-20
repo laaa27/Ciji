@@ -1,22 +1,29 @@
 import { Preferences } from '@capacitor/preferences'
 
 import type { Article } from '@/domain/article'
-import { readJson, removeFile, writeJson } from '@/data/files'
+import { listFileNames, queueByKey, readJson, removeFile, writeJson } from '@/data/files'
 import { countWordsIn } from '@/lib/text'
 
 /**
  * 文章存储。每次生成都留档，不覆盖。
  *
- * 两个 key：
- * - article:<id>      全文，id 形如 2026-11-07#2
- * - article_index    元信息列表（日期/标题/词数），列表页只读这个
+ * 三处：
+ * - `articles/<id>.json`   全文，id 形如 2026-11-07#2
+ * - `articles/index.json`  元信息列表（日期 / 标题 / 词数），列表页只读它
+ * - `article:<id>` / `article_index`  旧键，只剩「迁移没跑完时」的读取兜底
  *
  * 为什么要索引：单篇约 5.5KB，一千篇就是 5MB，
- * 每次列表都把全文读出来解析会卡好几秒。索引只有一百多字节一条。
+ * 每次列表都把全文读出来解析会卡好几秒。索引只有二百多字节一条。
+ *
+ * 索引为什么也搬进文件（0.24.27）：它是 Preferences 里最后一块**会长大**的数据
+ * （每篇 +240 B，40 篇就 9.7 KB，占整个 XML 的 81%）。搬走之后 XML 只剩偏好与凭证，
+ * 且只在改设置时才重写。索引是可再生产物——目录扫一遍就能重建，所以迁移不用留副本。
  */
 
 const PREFIX = 'article:'
-const INDEX_KEY = 'article_index'
+const DIR = 'articles'
+const INDEX_FILE = 'articles/index.json'
+const LEGACY_INDEX_KEY = 'article_index'
 
 export interface ArticleMeta {
   id: string
@@ -32,44 +39,111 @@ function sortMetas(list: ArticleMeta[]): ArticleMeta[] {
   )
 }
 
-async function writeIndex(list: ArticleMeta[]): Promise<void> {
-  await Preferences.set({ key: INDEX_KEY, value: JSON.stringify(list) })
+function metaOf(id: string, a: Article): ArticleMeta {
+  return {
+    id,
+    date: a.date,
+    title: a.title,
+    wordCount: countWordsIn(a.sentences),
+    createdAt: a.createdAt,
+  }
+}
+
+function isMeta(x: unknown): x is ArticleMeta {
+  const m = x as ArticleMeta | null
+  return Boolean(m) && typeof m?.id === 'string' && typeof m?.date === 'string'
+}
+
+async function writeIndexFile(list: ArticleMeta[]): Promise<void> {
+  await writeJson(INDEX_FILE, list)
+}
+
+async function readIndexFile(): Promise<ArticleMeta[] | null> {
+  const raw = await readJson<unknown>(INDEX_FILE)
+  return Array.isArray(raw) ? raw.filter(isMeta) : null
+}
+
+/** 旧键里的索引（迁移没跑完 / 上次中断） */
+async function readLegacyIndex(): Promise<ArticleMeta[] | null> {
+  const { value } = await Preferences.get({ key: LEGACY_INDEX_KEY })
+  if (!value) return null
+  try {
+    const parsed = JSON.parse(value) as unknown
+    return Array.isArray(parsed) ? parsed.filter(isMeta) : null
+  } catch {
+    return null
+  }
 }
 
 /**
- * 读索引。索引不存在时（首次升级、或早期版本只存了 article:<date>），
- * 从现有的 article:* key 重建一次。
+ * 读索引：文件优先，其次旧键，两边都没有就重建一次。
+ *
+ * 重建从 `articles/` 目录（外加迁移前还留在 Preferences 的旧全文键）扫一遍，
+ * 所以索引丢了不是数据丢失，最多慢一次。
  */
 async function readIndex(): Promise<ArticleMeta[]> {
-  const { value } = await Preferences.get({ key: INDEX_KEY })
-  if (value) {
-    try {
-      const parsed = JSON.parse(value) as ArticleMeta[]
-      if (Array.isArray(parsed)) return parsed
-    } catch {
-      // 落到重建
-    }
-  }
+  const fromFile = await readIndexFile()
+  if (fromFile) return fromFile
 
+  const legacy = await readLegacyIndex()
+  if (legacy) return legacy
+
+  const rebuilt = await rebuildIndex()
+  if (rebuilt.length > 0) await writeIndexFile(rebuilt)
+  return rebuilt
+}
+
+async function rebuildIndex(): Promise<ArticleMeta[]> {
+  const ids = new Set(
+    (await listFileNames(DIR))
+      .filter((n) => n.endsWith('.json') && n !== 'index.json')
+      .map((n) => n.slice(0, -'.json'.length)),
+  )
   const { keys } = await Preferences.keys()
-  const ids = keys.filter((k) => k.startsWith(PREFIX)).map((k) => k.slice(PREFIX.length))
+  for (const k of keys) if (k.startsWith(PREFIX)) ids.add(k.slice(PREFIX.length))
 
   const list: ArticleMeta[] = []
   for (const id of ids) {
     const a = await getArticleById(id)
-    if (!a) continue
-    list.push({
-      id,
-      date: a.date,
-      title: a.title,
-      wordCount: countWordsIn(a.sentences),
-      createdAt: a.createdAt,
-    })
+    if (a) list.push(metaOf(id, a))
   }
+  return sortMetas(list)
+}
 
-  const sorted = sortMetas(list)
-  if (sorted.length > 0) await writeIndex(sorted)
-  return sorted
+/** 索引的「读-改-写」走同一个队列：同时保存两篇时不会互相覆盖 */
+function mutateIndex(fn: (list: ArticleMeta[]) => ArticleMeta[]): Promise<void> {
+  return queueByKey(INDEX_FILE, async () => {
+    const cur = await readIndex()
+    await writeIndexFile(fn(cur))
+  })
+}
+
+let indexEnsured = false
+
+/**
+ * 一次性迁移：`article_index` → `articles/index.json`。
+ *
+ * 写文件并读回校验（条数不少于旧键）才删旧键；失败就留着，下次启动重试。
+ * 索引是派生数据：真出问题也能从 `articles/` 目录重建，所以不需要额外留原件副本。
+ */
+export async function ensureArticleIndex(): Promise<void> {
+  if (indexEnsured) return
+  indexEnsured = true
+  try {
+    const legacy = await readLegacyIndex()
+    if (!legacy) return
+
+    const fromFile = await readIndexFile()
+    if (!fromFile) await writeIndexFile(legacy)
+
+    const back = await readIndexFile()
+    const expect = fromFile?.length ?? legacy.length
+    if (!back || back.length < expect) return
+
+    await Preferences.remove({ key: LEGACY_INDEX_KEY }).catch(() => {})
+  } catch {
+    indexEnsured = false
+  }
 }
 
 /* ── 文章正文的独立文件存储（0.24.22）──────────────────
@@ -80,7 +154,8 @@ async function readIndex(): Promise<ArticleMeta[]> {
  * 写一篇只写一个小文件，与释义、每日记录所在的存储彻底分家。
  *
  * Filesystem 的 web 实现走 IndexedDB，两端语义一致，不需要平台分支。
- * 索引（article_index）仍留在 Preferences——它很小，且列表页只读它。
+ * 索引一开始留在 Preferences（「它很小」），到 0.24.27 发现它已经涨到 9.7 KB、
+ * 占整个 XML 的 81%，所以也搬进了 `articles/index.json`。
  */
 
 const ART_SUBDIR = 'articles'
@@ -168,16 +243,8 @@ export async function saveArticle(article: Article): Promise<Article> {
   // 迁移残留：同名旧键还在就顺手清掉（没有也不报错）
   await Preferences.remove({ key: PREFIX + id }).catch(() => {})
 
-  const meta: ArticleMeta = {
-    id,
-    date: saved.date,
-    title: saved.title,
-    wordCount: countWordsIn(saved.sentences),
-    createdAt: saved.createdAt,
-  }
-
-  const next = sortMetas([meta, ...index.filter((a) => a.id !== id)])
-  await writeIndex(next)
+  const meta = metaOf(id, saved)
+  await mutateIndex((list) => sortMetas([meta, ...list.filter((a) => a.id !== id)]))
 
   return saved
 }
@@ -185,13 +252,13 @@ export async function saveArticle(article: Article): Promise<Article> {
 export async function deleteArticle(id: string): Promise<void> {
   await removeArticleFile(id)
   await Preferences.remove({ key: PREFIX + id }).catch(() => {})
-  const index = await readIndex()
-  await writeIndex(index.filter((a) => a.id !== id))
+  await mutateIndex((list) => list.filter((a) => a.id !== id))
 }
 
-/** 文章库列表，按日期与时间倒序。顺手把还在 Preferences 里的旧文章搬进文件 */
+/** 文章库列表，按日期与时间倒序。顺手把还在 Preferences 里的旧文章与索引搬进文件 */
 export async function listArticles(): Promise<ArticleMeta[]> {
   void sweepLegacyArticles()
+  void ensureArticleIndex()
   return readIndex()
 }
 
@@ -217,7 +284,8 @@ export async function clearArticles(): Promise<number> {
   const { keys } = await Preferences.keys()
   const legacyKeys = keys.filter((k) => k.startsWith(PREFIX))
   await Promise.all(legacyKeys.map((k) => Preferences.remove({ key: k }).catch(() => {})))
-  await writeIndex([])
+  await writeIndexFile([])
+  await Preferences.remove({ key: LEGACY_INDEX_KEY }).catch(() => {})
   return index.length
 }
 

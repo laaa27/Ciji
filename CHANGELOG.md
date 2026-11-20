@@ -21,6 +21,29 @@
 
 ---
 
+## 0.24.27 — 文章索引也搬进文件（Preferences 只剩偏好与凭证）
+
+> versionName 仍是 0.24.1，versionCode 106 → 107。
+
+### 为什么
+0.24.26 之后 XML 从 342.5 KB 降到 11.9 KB，但 `article_index` 一条就占 **9.7 KB（81%）**，
+而且是剩下唯一**会长大**的键（每篇 +240 B）。把偏好和凭证之外的最后一块挪走，
+XML 就只在改设置/换 token 时才重写。
+
+### 变更
+- `article_index` → **`articles/index.json`**（跟着文章正文放，同一个目录）。
+- `readIndex()` 的兜底顺序：文件 → 旧键 → 从 `articles/` 目录重建。
+  索引是**派生数据**（扫一遍目录就能重建），所以迁移不需要留原件副本，
+  只做「写文件 + 读回条数校验，通过才删旧键」。
+- 索引的「读-改-写」走同一个队列（`queueByKey`）：同时保存两篇不会互相覆盖。
+- 迁移在 `App.tsx` 启动 effect 里跑（`ensureArticleIndex()`），`listArticles()` 再推一次兜底。
+
+### 验收
+改后 XML 只剩 `llm_profiles` / `maimemo_token` / `day_index` / 偏好与迁移标记，**约 2.3 KB**。
+`verify-storage-migration` 补了两项断言（旧键清空 + 索引文件内容正确），25 项全绿。
+
+---
+
 ## 0.24.26 — 本地存储瘦身：每日记录与释义缓存搬进文件
 
 > versionName 仍是 0.24.1，versionCode 104 → 106。

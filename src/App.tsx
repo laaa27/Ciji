@@ -10,6 +10,7 @@ import ReadingPage from './ui/pages/ReadingPage'
 import TrainingPage from './ui/pages/TrainingPage'
 import SettingsPage from './ui/pages/SettingsPage'
 import { restoreScroll } from '@/lib/scroll'
+import { ensureArticleIndex } from '@/data/article'
 import { ensureDayFiles } from '@/data/dayFile'
 import { ensureGlossFiles } from '@/data/gloss'
 import { sweepDeadKeys } from '@/data/store'
@@ -79,6 +80,7 @@ export default function App() {
     void sweepDeadKeys()
     void ensureDayFiles()
     void ensureGlossFiles()
+    void ensureArticleIndex()
   }, [load, loadLlm, loadTheme, loadGlass, loadPrefs, hydrateToday])
 
   // 检查更新：延迟 3 秒再查，别跟启动时的墨墨采集抢网络；
