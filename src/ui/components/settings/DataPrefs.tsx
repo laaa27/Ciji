@@ -198,7 +198,7 @@ export default function DataPrefs() {
       const n = await clearGlossCache()
       setDataFeedback({
         kind: 'ok',
-        text: `已清空 ${n} 条释义缓存。它们都能在下次点词时重新生成，文章与学习记录不受影响。`,
+        text: `已清空 ${n} 条主释义缓存。它们都能在下次点词时重新生成，自定义释义、文章与学习记录不受影响。`,
         scope: 'gloss',
       })
     } catch (e) {
@@ -399,8 +399,8 @@ export default function DataPrefs() {
       <section className={styles.section}>
         <h2 className={styles.label}>释义缓存</h2>
         <p className={styles.about}>
-          点词查过的释义会一直留着（全部键共用一个存储文件，堆多了读写都会变慢）。
-          清空后文章与学习记录不受影响，释义在下次点词时按需重新生成。
+          点词查过的主释义会一直留着，存在本机的释义文件里。清空后文章与学习记录不受影响，
+          释义在下次点词时按需重新生成。<strong>你自己填的、AI 补的备选释义不会被清掉。</strong>
         </p>
 
         <div className={styles.actions}>
@@ -419,7 +419,7 @@ export default function DataPrefs() {
       <section className={styles.section}>
         <h2 className={styles.label}>全部记录</h2>
         <p className={styles.about}>
-          删除本机保存的每日学习记录，不可恢复。生成文章与释义缓存不在此列，
+          删除本机保存的每日学习记录与阅读时长，不可恢复。生成文章、释义缓存与训练成绩不在此列，
           需要在上面对应区块单独清空。
         </p>
 

@@ -1,32 +1,31 @@
 import { Preferences } from '@capacitor/preferences'
 
 import type { TodaySnapshot } from '@/domain/collect'
+import {
+  clearDaySnapshot,
+  ensureDayFiles,
+  legacyDayDates,
+  listDayDates,
+  listSnapshotDates,
+  readDayFile,
+  readLegacySnapshot,
+  removeDayFile,
+  removeLegacyDayKeys,
+  writeDaySnapshot,
+} from '@/data/dayFile'
 
 /**
- * 数据层：按天存一份快照。
+ * 数据层：按天存一份学习快照。
  *
- * 为什么不用 SQLite：一天一条记录，一年才 365 条，
- * 用 Preferences（原生走 SharedPreferences，web 走 localStorage）足够，
- * 且两个平台行为一致，不需要 wasm 和平台分支。
+ * 存储（0.24.26 起）：`Directory.Data/days/YYYY-MM-DD.json`，一天一个文件。
+ * 为什么从 Preferences 搬出来：所有键共用一个 XML、每次写全量重写，而 `day:` 曾占
+ * 那个文件的 92%（每天 23 KB、永不淘汰），阅读计时每 15 秒落盘一次就把它整份重写一遍。
+ * 文件格式与迁移规则见 `data/dayFile.ts`。
  *
- * 存储键：day:YYYY-MM-DD
- */
-
-const DAY_PREFIX = 'day:'
-
-/**
- * 日期索引：已记录日期的升序列表，单独一个键。
- *
- * 为什么要有它：`listDays()` 原先走 `keys()`——在安卓上 `keys()` 会把整个
- * SharedPreferences 文件反序列化一遍，文件越大（释义缓存、文章都在同一个文件里）
- * 每次列日期越慢。索引只有一年 365 条，读它就不用碰全文件。
- * 老安装没有这个键：第一次 `listDays()` 扫一遍 keys() 建出来，之后只维护增量。
+ * `day_index`（已记录日期的升序列表）仍留在 Preferences：323 B / 14 天，读它就不用
+ * 扫整个目录。老安装没有这个键时，第一次 `listDays()` 从文件目录 + 旧键重建一次。
  */
 const K_DAY_INDEX = 'day_index'
-
-function dayKey(date: string): string {
-  return DAY_PREFIX + date
-}
 
 type LegacyWord = Record<string, unknown> & {
   state?: 'new' | 'vague' | 'forget'
@@ -74,18 +73,15 @@ function normalize(raw: Record<string, unknown>): TodaySnapshot {
   }
 }
 
-/** 写入某天快照；同一天重复写入直接覆盖（天然幂等） */
+/** 写入某天快照；同一天重复写入直接覆盖（天然幂等），当天的阅读秒数保留 */
 export async function saveDay(snapshot: TodaySnapshot): Promise<void> {
-  await Preferences.set({
-    key: dayKey(snapshot.date),
-    value: JSON.stringify(snapshot),
-  })
+  await writeDaySnapshot(snapshot.date, snapshot)
   await indexAdd(snapshot.date)
 }
 
 /**
  * 批量写入（导入用）。语义与采集一致：同日期直接覆盖。
- * 串行写入，避免一次打太多请求到原生 Preferences 桥。
+ * 串行写入，避免一次打太多文件请求。
  */
 export async function writeDays(snapshots: TodaySnapshot[]): Promise<void> {
   for (const snap of snapshots) {
@@ -94,26 +90,24 @@ export async function writeDays(snapshots: TodaySnapshot[]): Promise<void> {
 }
 
 export async function getDay(date: string): Promise<TodaySnapshot | null> {
-  const { value } = await Preferences.get({ key: dayKey(date) })
-  if (!value) return null
-  try {
-    return normalize(JSON.parse(value) as Record<string, unknown>)
-  } catch {
-    return null
-  }
+  const file = await readDayFile(date)
+  if (file?.snapshot) return normalize(file.snapshot as unknown as Record<string, unknown>)
+
+  // 迁移还没轮到这一天（或迁移中断）：旧键里还有数据
+  const legacy = await readLegacySnapshot(date)
+  return legacy ? normalize(legacy) : null
 }
 
 /** 所有已记录的日期，按倒序（最新在前） */
 export async function listDays(): Promise<string[]> {
+  // 顺手推一把迁移，不阻塞列表（列表读的是索引，与文件无关）
+  void ensureDayFiles()
+
   const index = await readDayIndex()
   if (index) return [...index].reverse()
 
-  // 没有索引（老安装 / 索引损坏）：全量扫一遍建出来，之后增量维护
-  const { keys } = await Preferences.keys()
-  const dates = keys
-    .filter((k) => k.startsWith(DAY_PREFIX))
-    .map((k) => k.slice(DAY_PREFIX.length))
-    .sort()
+  // 没有索引（老安装 / 索引损坏）：从文件目录与旧键各扫一遍，重建后增量维护
+  const dates = [...new Set([...(await listSnapshotDates()), ...(await legacyDayDates())])].sort()
   await writeDayIndex(dates)
   return [...dates].reverse()
 }
@@ -151,15 +145,46 @@ export async function getAllDays(): Promise<TodaySnapshot[]> {
   return out
 }
 
+/**
+ * 删除某天的学习记录。当天的阅读秒数存在同一个文件里，不属于「学习记录」，保留。
+ */
 export async function deleteDay(date: string): Promise<void> {
-  await Preferences.remove({ key: dayKey(date) })
+  await clearDaySnapshot(date)
+  await Preferences.remove({ key: `day:${date}` }).catch(() => {})
   const index = await readDayIndex()
   if (index) await writeDayIndex(index.filter((d) => d !== date))
 }
 
-/** 清空全部历史 */
+/**
+ * 清空全部历史（含阅读时长）。
+ *
+ * 0.24.26 起阅读秒数与快照同文件，所以「清空记录」一并清掉——以前只删 `day:`，
+ * 用户以为清干净了文件其实没瘦。释义缓存、文章、成绩不在此列。
+ */
 export async function clearAll(): Promise<void> {
-  const days = await listDays()
-  await Promise.all(days.map((d) => Preferences.remove({ key: dayKey(d) })))
+  for (const date of await listDayDates()) await removeDayFile(date)
+  await removeLegacyDayKeys()
   await writeDayIndex([])
+}
+
+/* ── 死键清扫（0.24.26） ──────────────────────────
+ *
+ * 两组键在源码里零引用，永远不会被读、也不会被任何清理逻辑碰到，
+ * 就一直躺在共用 XML 里陪着每一次全量重写。每会话扫一次，清掉完事。
+ */
+const DEAD_PREFIXES = ['training_progress:', 'predictive_back']
+
+let deadSwept = false
+
+export async function sweepDeadKeys(): Promise<void> {
+  if (deadSwept) return
+  deadSwept = true
+  try {
+    const { keys } = await Preferences.keys()
+    const dead = keys.filter((k) => DEAD_PREFIXES.some((p) => k.startsWith(p)))
+    for (const key of dead) await Preferences.remove({ key }).catch(() => {})
+  } catch {
+    // 清不掉不影响任何功能，下个会话再试
+    deadSwept = false
+  }
 }

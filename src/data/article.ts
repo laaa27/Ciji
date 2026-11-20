@@ -1,7 +1,7 @@
-import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
 import { Preferences } from '@capacitor/preferences'
 
 import type { Article } from '@/domain/article'
+import { readJson, removeFile, writeJson } from '@/data/files'
 import { countWordsIn } from '@/lib/text'
 
 /**
@@ -85,43 +85,22 @@ async function readIndex(): Promise<ArticleMeta[]> {
 
 const ART_SUBDIR = 'articles'
 
-/** 文章正文放 App 私有文件区；Filesystem 的 web 实现走 IndexedDB，两端语义一致 */
-const ART_DIR = Directory.Data
-
 function articlePath(id: string): string {
   return `${ART_SUBDIR}/${id}.json`
 }
 
 async function writeArticleFile(id: string, article: Article): Promise<void> {
-  await Filesystem.writeFile({
-    path: articlePath(id),
-    directory: Directory.Data,
-    data: JSON.stringify(article),
-    encoding: Encoding.UTF8,
-    recursive: true,
-  })
+  await writeJson(articlePath(id), article)
 }
 
 async function readArticleFile(id: string): Promise<Article | null> {
-  try {
-    const { data } = await Filesystem.readFile({
-      path: articlePath(id),
-      directory: ART_DIR,
-      encoding: Encoding.UTF8,
-    })
-    const parsed = JSON.parse(data as string) as Article
-    return parsed.id === id ? parsed : null
-  } catch {
-    return null
-  }
+  const parsed = await readJson<Article>(articlePath(id))
+  // id 对不上说明文件串了（历史上有过按日期覆盖的写入），当作没读到
+  return parsed?.id === id ? parsed : null
 }
 
 async function removeArticleFile(id: string): Promise<void> {
-  try {
-    await Filesystem.deleteFile({ path: articlePath(id), directory: ART_DIR })
-  } catch {
-    // 文件不存在 = 目标状态已达成
-  }
+  await removeFile(articlePath(id))
 }
 
 /**
