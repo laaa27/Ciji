@@ -178,6 +178,62 @@ def parse_options(lines):
     return out
 
 
+def _is_zh_line(line):
+    """这一行是不是中文译文。
+
+    为什么不再用「这行有几个汉字」：四六级的英文正文里常带中文括注
+    （`(英国国家医疗服务体系)`、`(与腹泻相关)`、`(在道德层面上)`），一行英文能有十来个汉字；
+    按数量判会把英文行当成译文开头，那一行**之后的所有行**都被并进译文，
+    正文就此断在半句上 —— 真机看到的就是「这篇文章少了一截」。
+
+    改用「汉字占字母+汉字的比例」：带括注的英文行通常不到两成，真正的译文行基本都是汉字。
+    """
+    han = len(re.findall(r'[\u4e00-\u9fa5]', line))
+    if han == 0:
+        return False
+    letters = len(re.findall(r'[A-Za-z]', line))
+    # 纯汉字的短行（「作用。」这种硬换行残片）也算中文：按 3 字起步会把译文的最后一行
+    # 判成英文，整段的译文边界就崩了。混着字母的短行不判（比如「务体系).」）。
+    if han < 3 and letters > 0:
+        return False
+    # 译文里经常夹着英文术语（「Jesse Jackson宣布"African American"是…」），汉字占比会被压到
+    # 三成左右；但这类行一定带中文标点，英文正文里不会有。
+    if han >= 6 and len(re.findall(r'[\uff0c\u3002\u3001\uff1b\uff1a\uff1f\uff01\u201c\u201d]', line)) >= 2:
+        return True
+    return han / (han + letters) >= 0.3
+
+
+def _find_zh_run(text):
+    """正文里第一处「成段中文」的起点（括号里的中文括注不算）。
+
+    兜底用：即便分界判错，正文里也不该出现整段中文——真出现了就从那里切断，并到译文开头。
+    """
+    # 原文英文正文里除了括号括注，一个汉字都没有（全库核对过），所以括号外出现两个连续汉字
+    # 就一定是译文漏进来了。
+    for mk in re.finditer(r'[\u4e00-\u9fa5]{2,}', text):
+        before = text[:mk.start()].rstrip()[-1:]
+        after = text[mk.end():].lstrip()[:1]
+        if before in '(\uff08' or after in ')\uff09':
+            continue
+        return mk.start()
+    return None
+
+
+# 一行的结尾是不是「句子结束」。用来判断英文那侧有没被硬换行切断。
+_ENDS_SENTENCE = re.compile(r'[.!?\u3002\uff1f\uff01]["\u201d\u2019)\uff09]$|["\u201d\u2019)\uff09]$')
+
+
+# 解析页夹在段落之间的排版杂质：题号说明、部件标题、「Passage One」小标题。
+# 它们常常落在某段译文**后面**，会把「译文在块尾」这个前提破坏掉（译文会被当成英文），
+# 所以要在切分之前先逐行剔掉。
+_NOISE_LINE = re.compile(
+    r'^(?:Questions?\s+\d+\s+to\s+\d+\s+are\s+based\s+on\s+the\s+following\s+passage\.?'
+    r'|Part\s+[IVX]+(?:\s+Section\s+[A-C])?(?:\s*\(\d+\))?'
+    r'|Passage\s+(?:One|Two|Three|Four))$',
+    re.I,
+)
+
+
 def parse_passage_translation(text):
     """解析页里的「P1..Pn 段号、逐段附中文翻译」块 → [(英文, 中文)]。
 
@@ -194,8 +250,19 @@ def parse_passage_translation(text):
 
     marks = list(re.finditer(r'(?m)^\s*P(\d+)\s*$', text))
     if not marks:
-        # 有的排版 P1 与正文同一行
-        marks = list(re.finditer(r'(?m)^\s*P(\d+)\s*', text))
+        # 有的排版 P1 与正文同一行。数字后面不能紧跟破折号/字母：前言里的 "P1–P9 段号…"
+        # 那种写法不是段号，匹配进来会让整段前言变成一个段落
+        marks = list(re.finditer(r'(?m)^\s*P(\d+)(?![0-9A-Za-z\u2013\u2014-])\s*', text))
+    if len(marks) < 2:
+        return []
+
+    # 正文前面常有一段「P1–P9 段号、逐段附中文翻译…」+ Part/Directions + Passage One 的前言，
+    # 里面也散落着 "P9" 这种像段号的字样。真正的段落从 P1 开始，把它之前的标记全丢掉，
+    # 否则那段前言会变成一个「中文正文」段落塞进文章里。
+    for idx, mk in enumerate(marks):
+        if int(mk.group(1)) == 1:
+            marks = marks[idx:]
+            break
     if len(marks) < 2:
         return []
 
@@ -204,22 +271,58 @@ def parse_passage_translation(text):
         end = marks[i + 1].start() if i + 1 < len(marks) else len(text)
         body = text[m.end():end]
 
-        # 英文在前、中文在后：以第一个连续中文行作为分界
+        # 英文在前、中文在后。**从块尾往前找连续的中文行**，而不是从块头找第一个「像中文」的行：
+        # 译文本来就是块尾的一段，从后往前扫时，中途那句带中文括注的英文行拉不动边界。
         lines = [ln.strip() for ln in body.split('\n') if ln.strip()]
-        first_zh = None
-        for li, ln in enumerate(lines):
-            if len(re.findall(r'[\u4e00-\u9fa5]', ln)) >= 6:
-                first_zh = li
-                break
+        lines = [ln for ln in lines if not _NOISE_LINE.match(ln)]
+        first_zh = len(lines)
+        while first_zh > 0 and _is_zh_line(lines[first_zh - 1]):
+            first_zh -= 1
+        if first_zh == len(lines):
+            first_zh = None
+        # 只有一行、又只有两三个汉字的「译文」多半是正文尾巴被误判，不认它
+        if first_zh is not None:
+            tail_zh = sum(len(re.findall(r'[\u4e00-\u9fa5]', l)) for l in lines[first_zh:])
+            if len(lines) - first_zh < 2 and tail_zh < 6:
+                first_zh = None
+
         en_lines = lines[:first_zh] if first_zh is not None else lines
         zh_lines = lines[first_zh:] if first_zh is not None else []
+
+        # 中文括注被硬换行切开时（`…Service(英国国家医疗服` / `务体系).`），续行是几个纯汉字
+        # 加一个右括号，会被判成译文，英文就断在半句上。只把这种「没有中文标点、以右括号收尾」
+        # 的残片搬回英文——真正的译文行都带中文标点，不会被误搬。
+        while (
+            zh_lines
+            and re.search(r'\)\.?$', zh_lines[0])
+            and not re.search(r'[\uff0c\u3002\u3001\uff1b\uff1a\uff1f\uff01]', zh_lines[0])
+        ):
+            en_lines.append(zh_lines.pop(0))
 
         en = ' '.join(en_lines)
         # 解析页会混进一句题号说明，去掉
         en = re.sub(r'Questions?\s+\d+\s+to\s+\d+\s+are\s+based\s+on\s+the\s+following\s+passage\.?',
                     '', en, flags=re.I)
-        en = re.sub(r'\s+', ' ', en).strip()
-        zh = re.sub(r'\s+', '', ' '.join(zh_lines)).strip()
+        en = re.sub(r'\s+', ' ', en)
+        # 硬换行落在中文括注中间时会插进一个空格（「医疗服 务体系」），抹掉
+        en = re.sub(r'(?<=[\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])', '', en).strip()
+
+        # 译文同理：硬换行会把英文术语拆开，但直接把空白全删又会变成 NationalHealthService；
+        # 只粘掉中文之间的空格，拉丁词之间保留
+        zh = ' '.join(zh_lines)
+        zh = re.sub(r'(?<=[^\x00-\x7f])\s+(?=[\u4e00-\u9fa5])', '', zh)
+        zh = re.sub(r'(?<=[\u4e00-\u9fa5])\s+(?=[^\x00-\x7f])', '', zh)
+        zh = re.sub(r'(?<=[\u4e00-\u9fa5])\s+(?=[\u4e00-\u9fa5])', '', zh)
+        zh = re.sub(r'\s+', ' ', zh).strip()
+
+        # 兜底：正文里不该出现成段中文。出现了说明那块其实是译文，从那里切断并到译文开头，
+        # 免得「中英混排的一段话」出现在正文里。
+        cut = _find_zh_run(en)
+        if cut is not None:
+            tail = en[cut:].strip()
+            en = en[:cut].strip()
+            zh = (tail + zh).strip()
+
         # P1– 这种标号残片会被当成一段，扔掉：少于 3 个词或没有成词的基本都是噪声
         if len(re.findall(r"[A-Za-z]{2,}", en)) < 3:
             continue
