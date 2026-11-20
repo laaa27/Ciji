@@ -156,6 +156,12 @@
   background: var(--tint-ok);
 }
 
+/* 「这句要译」：与阅读页目标词同一条极细虚线（同一套令牌，白天/深夜自动换色）。
+   逐词画而不是整句画一条：句子会折行，逐词才断得自然，和阅读页看到的标记是同一个观感 */
+.word[data-target='true'] {
+  border-bottom-color: var(--rule-strong);
+}
+
 /* 手动高亮：与阅读页同一套荧光笔效果 */
 .word[data-mark='true'] {
   background: var(--mark);

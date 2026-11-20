@@ -285,6 +285,8 @@ export default function TrainingDoc({ paper, section, passage, ordinal, onScore 
         wordOf={wordOf}
         blankDisplay={blankDisplay}
         blankIsHeading={kind === 'headings'}
+        // 考研英语一：5 个句子要译，把这几句整句标出来；英语二是整段译，不标
+        markSentences={isTranslation && questions.length > 1}
         onBlank={(no) => {
           if (submitted) return
           if (cloze) {
