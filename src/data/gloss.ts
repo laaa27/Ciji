@@ -42,8 +42,13 @@ const ALT_PREFIX = 'gloss_alt:'
 const K_GLOSS_MIGRATED = 'gloss_migrated'
 const K_ALT_MIGRATED = 'gloss_alt_migrated'
 
-/** 搬迁前的原件副本，出问题能照着还原 */
-const SAFETY_PATH = 'migration/legacy-gloss.json'
+/**
+ * 搬迁前的原件副本路径。主释义与备选释义各一份——共用同一个文件名会让后跑的那次
+ * 把前一次的副本盖掉，等于其中一族没有留底。
+ */
+function safetyPathFor(name: 'gloss' | 'gloss-alt'): string {
+  return `migration/legacy-${name}.json`
+}
 
 /**
  * 磁盘上限：主释义超过这个数就按落盘时刻淘汰最旧的。
@@ -53,6 +58,21 @@ const GLOSS_MAX = 3000
 
 let glossLoading: Promise<Map<string, GlossEntry>> | null = null
 let altLoading: Promise<Map<string, GlossAlt>> | null = null
+
+/**
+ * 启动时把两族缓存都搬进文件（`App.tsx` 的启动 effect 调用）。
+ *
+ * 为什么不能等「第一次用到再搬」：`gloss_alt:` 只有打开词卡才会被读，而里面是用户
+ * 手填的释义——不点词就一直留在旧存储里，等于这次改造对它没生效（真机上就这样留了
+ * 26 条、22 条是手填的）。跟每日记录一样，启动就搬，失败下一个会话重试。
+ */
+export async function ensureGlossFiles(): Promise<void> {
+  try {
+    await Promise.all([loadGlossMap(), loadAltMap()])
+  } catch {
+    // 搬不动不影响任何功能（旧键还在，读的时候照样兜底），下个会话再来
+  }
+}
 
 /* ── 主释义 ─────────────────────────────── */
 
@@ -133,7 +153,7 @@ async function mergeLegacyGloss(map: Map<string, GlossEntry>): Promise<void> {
   }
 
   const raw = await readLegacyValues(legacy, GLOSS_PREFIX)
-  if (Object.keys(raw).length > 0) await writeSafetyDump(raw)
+  if (Object.keys(raw).length > 0) await writeSafetyDump('gloss', raw)
 
   let changed = false
   for (const [word, value] of Object.entries(raw)) {
@@ -245,7 +265,7 @@ async function mergeLegacyAlt(map: Map<string, GlossAlt>): Promise<void> {
   }
 
   const raw = await readLegacyValues(legacy, ALT_PREFIX)
-  if (Object.keys(raw).length > 0) await writeSafetyDump(raw)
+  if (Object.keys(raw).length > 0) await writeSafetyDump('gloss-alt', raw)
 
   let changed = false
   for (const [word, value] of Object.entries(raw)) {
@@ -298,10 +318,11 @@ async function readLegacyValues(
  * 把旧键原样写成一份副本，读回校验后才返回。
  * 校验不过就抛错——宁可这批缓存留在慢的存储里，也不冒丢数据的风险。
  */
-async function writeSafetyDump(raw: Record<string, string>): Promise<void> {
+async function writeSafetyDump(name: 'gloss' | 'gloss-alt', raw: Record<string, string>): Promise<void> {
+  const path = safetyPathFor(name)
   const payload = { at: new Date().toISOString(), raw }
-  await writeJson(SAFETY_PATH, payload)
-  const back = await readJson<{ raw?: Record<string, string> }>(SAFETY_PATH)
+  await writeJson(path, payload)
+  const back = await readJson<{ raw?: Record<string, string> }>(path)
   const words = Object.keys(raw)
   const ok =
     back?.raw !== undefined &&
