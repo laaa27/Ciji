@@ -179,32 +179,54 @@ async function removeArticleFile(id: string): Promise<void> {
 }
 
 /**
- * 一次性迁移：把还留在 Preferences 里的旧文章搬到独立文件，搬成功才删旧键。
- * 每个会话只跑一次；失败时把标记退回去，下次启动重试。部分迁移是安全的：
- * 读取时文件优先、旧键兜底，两边哪个有数据都能读出来。
+ * 一次性迁移：把还留在 Preferences 里的旧文章正文搬到 `articles/<id>.json`。
+ *
+ * **必须在启动时跑，不能等文章库被打开**（0.24.28 改）：从 0.24.22 之前升上来的用户，
+ * 全文（约 5.5 KB/篇）都还在共用 XML 里；只要不点文章库，这些数据就永远留在那儿，
+ * 每次改设置都要跟着整份重写一遍。
+ *
+ * 每篇写完读回来核对一次（id 对得上），确认进文件了才删旧键；写不进去就留着，
+ * 下个会话重试。全部清完才打标记，有残留就下次继续——部分迁移是安全状态：
+ * 读取一律文件优先、旧键兜底。
  */
-let legacySwept = false
+const K_ARTICLES_MIGRATED = 'articles_migrated'
 
-async function sweepLegacyArticles(): Promise<void> {
-  if (legacySwept) return
-  legacySwept = true
+let articlesEnsured = false
+
+export async function ensureArticleFiles(): Promise<void> {
+  if (articlesEnsured) return
+  articlesEnsured = true
   try {
+    const { value } = await Preferences.get({ key: K_ARTICLES_MIGRATED })
+    if (value === '1') return
+
     const { keys } = await Preferences.keys()
-    const legacyKeys = keys.filter((k) => k.startsWith(PREFIX))
-    for (const key of legacyKeys) {
+    let leftover = false
+
+    for (const key of keys.filter((k) => k.startsWith(PREFIX))) {
       const id = key.slice(PREFIX.length)
-      if (await readArticleFile(id)) {
-        // 文件里已经有了（上次迁移中断的残留），旧键直接清
-        await Preferences.remove({ key }).catch(() => {})
-        continue
+      if (!(await readArticleFile(id))) {
+        const legacy = await readLegacyArticle(id)
+        if (legacy) {
+          await writeArticleFile(id, legacy)
+          if (!(await readArticleFile(id))) {
+            // 没写进去：旧键留着，下次启动再试
+            leftover = true
+            continue
+          }
+        }
       }
-      const legacy = await readLegacyArticle(id)
-      if (!legacy) continue
-      await writeArticleFile(id, legacy)
-      await Preferences.remove({ key }).catch(() => {})
+      // 走到这里说明文件里已经有这篇了（本次搬的，或上次中断留下的），旧键可以清
+      await Preferences.remove({ key }).catch(() => {
+        leftover = true
+      })
+    }
+
+    if (!leftover) {
+      await Preferences.set({ key: K_ARTICLES_MIGRATED, value: '1' }).catch(() => {})
     }
   } catch {
-    legacySwept = false
+    articlesEnsured = false
   }
 }
 
@@ -255,9 +277,9 @@ export async function deleteArticle(id: string): Promise<void> {
   await mutateIndex((list) => list.filter((a) => a.id !== id))
 }
 
-/** 文章库列表，按日期与时间倒序。顺手把还在 Preferences 里的旧文章与索引搬进文件 */
+/** 文章库列表，按日期与时间倒序。顺手推一把旧文章与索引的迁移（启动时已跑过一次） */
 export async function listArticles(): Promise<ArticleMeta[]> {
-  void sweepLegacyArticles()
+  void ensureArticleFiles()
   void ensureArticleIndex()
   return readIndex()
 }

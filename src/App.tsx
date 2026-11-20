@@ -10,7 +10,7 @@ import ReadingPage from './ui/pages/ReadingPage'
 import TrainingPage from './ui/pages/TrainingPage'
 import SettingsPage from './ui/pages/SettingsPage'
 import { restoreScroll } from '@/lib/scroll'
-import { ensureArticleIndex } from '@/data/article'
+import { ensureArticleFiles, ensureArticleIndex } from '@/data/article'
 import { ensureDayFiles } from '@/data/dayFile'
 import { ensureGlossFiles } from '@/data/gloss'
 import { sweepDeadKeys } from '@/data/store'
@@ -75,11 +75,12 @@ export default function App() {
     void loadPrefs()
     // 先把本地那份铺上，网络请求交给今日页自己触发 —— 请求失败也还有东西可看
     void hydrateToday()
-    // 存储治理：清掉源码里已零引用的死键，再把旧版按天/按词的记录搬进独立文件
+    // 存储治理：清掉源码里已零引用的死键，再把旧版的日记录 / 释义 / 文章搬进独立文件
     // （都是每会话一次、失败自动重试；与界面无关，放在最后不挡首屏）
     void sweepDeadKeys()
     void ensureDayFiles()
     void ensureGlossFiles()
+    void ensureArticleFiles()
     void ensureArticleIndex()
   }, [load, loadLlm, loadTheme, loadGlass, loadPrefs, hydrateToday])
 
