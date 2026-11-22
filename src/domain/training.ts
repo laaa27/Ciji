@@ -204,3 +204,65 @@ export function scoreOf(
 export function sectionQuestionCount(s: TrainingSection): number {
   return s.passages.reduce((n, p) => n + p.questions.length, 0)
 }
+
+/**
+ * 阅读题的题型族。
+ *
+ * 四六级的「阅读理解」在卷面上是 Section C 的 Passage One / Two，
+ * 题库却拆成 `reading1` / `reading2` 两个题型、各一篇。凡是要「把这两节当成一件事」
+ * 的地方（连续编号、篇目总数、标题是否标「第 N 篇」）都必须走这里，
+ * 别在 JSX 里重复写 `id === 'reading1' || id === 'reading2'`——换题型就会漏改。
+ */
+export function isReadingSection(s: Pick<TrainingSection, 'id'>): boolean {
+  return s.id === 'reading1' || s.id === 'reading2'
+}
+
+/**
+ * 篇目序号。
+ *
+ * 卷面上同一道阅读题的两篇要连续编号（四六级得到 1、2；考研的 reading1 自带四篇则 1~4），
+ * 其余题型按各自节内顺序编号。列表里两行都叫「阅读理解 · 5 题」时，靠这个区分谁是谁。
+ */
+export function readingOrdinals(sections: TrainingSection[]): Map<string, number> {
+  const map = new Map<string, number>()
+  let reading = 0
+  for (const sec of sections) {
+    const isReading = isReadingSection(sec)
+    sec.passages.forEach((p, i) => {
+      if (isReading) {
+        reading += 1
+        map.set(p.id, reading)
+      } else {
+        map.set(p.id, i + 1)
+      }
+    })
+  }
+  return map
+}
+
+/**
+ * 阅读题型一共有几篇（四六级 2 篇、考研 4 篇）。
+ * 只有一篇的题型不标「第 1 篇」——那是噪音。
+ */
+export function readingCount(sections: TrainingSection[]): number {
+  return sections
+    .filter(isReadingSection)
+    .reduce((n, s) => n + s.passages.length, 0)
+}
+
+/**
+ * 按年份分组：一百多套平铺下来，光靠「2026 年 6 月 · 第 3 套」这行字分不清年与年的界线。
+ * 分组之后每一年的第一行就是分界，眼睛有落点。年份倒序（新的在上）。
+ */
+export function groupByYear<T extends { year: number }>(items: T[]): {
+  years: number[]
+  byYear: Map<number, T[]>
+} {
+  const byYear = new Map<number, T[]>()
+  for (const item of items) {
+    const arr = byYear.get(item.year)
+    if (arr) arr.push(item)
+    else byYear.set(item.year, [item])
+  }
+  return { years: [...byYear.keys()].sort((a, b) => b - a), byYear }
+}

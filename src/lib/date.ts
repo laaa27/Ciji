@@ -86,3 +86,19 @@ export function clockTime(iso: string): string {
   if (Number.isNaN(d.getTime())) return ''
   return timeFmt.format(d)
 }
+
+/**
+ * 11月15日 21:07（北京时间）；不是今年会补上年份。
+ *
+ * 为什么要带日期：做到一半隔天再进来，只有「21:07」会让人以为是今天做的。
+ * 与 `monthDay` + `clockTime` 同源，别再在页面里自己 `padStart` 拼一遍。
+ */
+export function monthDayTime(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const key = dateKey(d)
+  const md = monthDay(key)
+  const year = key.slice(0, 4)
+  const label = year === dateKey().slice(0, 4) ? md : `${year}年${md}`
+  return `${label} ${clockTime(iso)}`
+}

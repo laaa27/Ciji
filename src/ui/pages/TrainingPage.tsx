@@ -9,9 +9,13 @@ import {
   sweepLegacyScores,
   type TrainScore,
 } from '@/data/training'
-import { fmtDuration } from '@/lib/date'
+import { fmtDuration, monthDayTime } from '@/lib/date'
 import {
+  groupByYear,
+  isReadingSection,
   LEVELS,
+  readingCount,
+  readingOrdinals,
   type TrainingIndexItem,
   type TrainingLevel,
   type TrainingPaper,
@@ -63,26 +67,10 @@ function PassageScore({ score }: { score?: TrainScore }) {
       </span>
       <span className={styles.rowTime}>
         {score.secs !== undefined ? `用时 ${fmtDuration(score.secs)} · ` : ''}
-        {clockLabel(score.at)}
+        {monthDayTime(score.at)}
       </span>
     </span>
   )
-}
-
-/**
- * ISO → 11月15日 21:07。
- *
- * 日期一律带上：做到一半隔天再进来，只有「21:07」会让人以为是今天做的。
- * 跨年了才补年份。
- */
-function clockLabel(iso: string): string {
-  const d = new Date(iso)
-  if (Number.isNaN(d.getTime())) return ''
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  const md = `${d.getMonth() + 1}月${d.getDate()}日`
-  const sameYear = d.getFullYear() === new Date().getFullYear()
-  return `${sameYear ? md : `${d.getFullYear()}年${md}`} ${hh}:${mm}`
 }
 
 export default function TrainingPage() {
@@ -197,53 +185,13 @@ export default function TrainingPage() {
   const list = index.filter((p) => p.level === level)
 
   /**
-   * 篇目序号。
-   *
-   * 四六级的「阅读理解」在卷面上是 Section C 的 Passage One / Passage Two，
-   * 题库却拆成 reading1 / reading2 两个题型、各一篇 —— 列表里就成了两行都叫
-   * 「阅读理解 · 5 题」，看不出谁是谁。所以阅读按「题型族」连续编号，
-   * 四六级得到 1、2，考研的 reading1 自带四篇则得到 1~4。
+   * 篇目序号 / 阅读篇数 / 年份分组都是**纯规则**，住在 `domain/training.ts`。
+   * 以前写在页面里，三处在 JSX 里手写 `id === 'reading1' || id === 'reading2'`，
+   * 换题型就得改四处。
    */
-  const ordinals = useMemo(() => {
-    const map = new Map<string, number>()
-    let reading = 0
-    for (const sec of paper?.sections ?? []) {
-      const isReading = sec.id === 'reading1' || sec.id === 'reading2'
-      sec.passages.forEach((p, i) => {
-        if (isReading) {
-          reading += 1
-          map.set(p.id, reading)
-        } else {
-          map.set(p.id, i + 1)
-        }
-      })
-    }
-    return map
-  }, [paper])
-
-  /**
-   * 阅读题型的篇目总数（四六级 2 篇、考研 4 篇）。
-   * 只有一篇的题型（完形 / 长篇阅读）不标「第 1 篇」—— 那是噪音。
-   */
-  const readingCount = useMemo(
-    () =>
-      (paper?.sections ?? [])
-        .filter((s) => s.id === 'reading1' || s.id === 'reading2')
-        .reduce((n, s) => n + s.passages.length, 0),
-    [paper],
-  )
-
-  /**
-   * 按年份分组：一百多套平铺下来，光靠「2026 年 6 月 · 第 3 套」这行字分不清年与年
-   * 的界线。分组之后每一年的第一行就是分界，眼睛有落点。
-   */
-  const byYear = new Map<number, TrainingIndexItem[]>()
-  for (const p of list) {
-    const arr = byYear.get(p.year)
-    if (arr) arr.push(p)
-    else byYear.set(p.year, [p])
-  }
-  const years = [...byYear.keys()].sort((a, b) => b - a)
+  const ordinals = useMemo(() => readingOrdinals(paper?.sections ?? []), [paper])
+  const readCount = useMemo(() => readingCount(paper?.sections ?? []), [paper])
+  const { years, byYear } = groupByYear(list)
 
   // ---- 做题 ----
   if (docNav.view && paper) {
@@ -261,7 +209,7 @@ export default function TrainingPage() {
             section={section}
             passage={section.passages[pi]}
             ordinal={
-              section.id === 'reading1' || section.id === 'reading2'
+              isReadingSection(section)
                 ? (ordinals.get(section.passages[pi].id) ?? pi + 1)
                 : section.passages.length > 1
                   ? pi + 1
@@ -309,8 +257,8 @@ export default function TrainingPage() {
                     <span className={styles.passageText}>
                       <span className={styles.passageName}>
                         {sec.label}
-                        {sec.id === 'reading1' || sec.id === 'reading2'
-                          ? readingCount > 1
+                        {isReadingSection(sec)
+                          ? readCount > 1
                             ? ` · 第 ${ordinals.get(p.id)} 篇`
                             : ''
                           : sec.passages.length > 1
