@@ -6,8 +6,9 @@ import { groupCounts, lineState, responseNote, type TodaySnapshot, type WordStat
 import { monthDay, weekday } from '@/lib/date'
 
 import { useGlossToggle } from '../hooks/useGlossToggle'
+import { useReturnScroll } from '../hooks/useReturnScroll'
 import { useSubView } from '../hooks/useSubView'
-import { findScrollParent, useScrollStuck } from '../hooks/useScrollStuck'
+import { useScrollStuck } from '../hooks/useScrollStuck'
 import WordRow from '../components/WordRow'
 import EmptyState from '../components/EmptyState'
 import StatsPage from './StatsPage'
@@ -130,17 +131,12 @@ export default function HistoryPage({ active }: { active: boolean }) {
 
   const pageRef = useRef<HTMLDivElement>(null)
   /** 进统计之前列表停在哪 —— 返回时要回到原处 */
-  const listScroll = useRef(0)
+  const scroll = useReturnScroll(pageRef)
   /** 标题行吸顶：贴住了才画分隔线 */
   const titleRef = useRef<HTMLElement>(null)
   const titleStuck = useScrollStuck(titleRef)
 
-  const sub = useSubView<Sub>({
-    onEnter: () => {
-      const scroller = findScrollParent(pageRef.current)
-      if (scroller) listScroll.current = scroller.scrollTop
-    },
-  })
+  const sub = useSubView<Sub>({ onEnter: scroll.onEnter, onExit: scroll.onExit })
 
   useEffect(() => {
     let alive = true
@@ -153,24 +149,6 @@ export default function HistoryPage({ active }: { active: boolean }) {
       alive = false
     }
   }, [])
-
-  // 进出统计时重置/恢复滚动：看板从顶部看，返回时接着刚才的日期往下翻。
-  // 位置为 0 就不恢复 —— 首帧那次 effect 不能去动 App 记下来的栏目位置。
-  useEffect(() => {
-    const scroller = findScrollParent(pageRef.current)
-    if (!scroller) return
-
-    if (sub.isOpen) {
-      scroller.scrollTop = 0
-      return
-    }
-    if (listScroll.current <= 0) return
-
-    const raf = requestAnimationFrame(() => {
-      scroller.scrollTop = listScroll.current
-    })
-    return () => cancelAnimationFrame(raf)
-  }, [sub.isOpen])
 
   if (sub.view === 'stats') {
     return (

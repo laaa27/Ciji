@@ -19,7 +19,7 @@ import type { TodaySnapshot } from '@/domain/collect'
 import { monthDay } from '@/lib/date'
 import { readGenDraft, saveGenDraft } from '@/store/ui'
 
-import { findScrollParent } from '../hooks/useScrollStuck'
+import { useReturnScroll } from '../hooks/useReturnScroll'
 import { useSubView } from '../hooks/useSubView'
 import styles from './GenerateArticle.module.css'
 import BackButton from './BackButton'
@@ -117,28 +117,8 @@ export default function GenerateArticle({
   /** 选日期是这一页自己的二级视图：安卓返回键按栈先关它 */
   const pageRef = useRef<HTMLDivElement>(null)
   /** 进日历前排到哪儿了 —— 回来要接着看，别被弹回顶部 */
-  const listScroll = useRef(0)
-  const cal = useSubView<'calendar'>({
-    onEnter: () => {
-      const scroller = findScrollParent(pageRef.current)
-      if (scroller) listScroll.current = scroller.scrollTop
-    },
-  })
-
-  // 日历从顶部看；返回时恢复原来的位置（位置为 0 就不动，别抢 App 记的栏目位置）
-  useEffect(() => {
-    const scroller = findScrollParent(pageRef.current)
-    if (!scroller) return
-    if (cal.isOpen) {
-      scroller.scrollTop = 0
-      return
-    }
-    if (listScroll.current <= 0) return
-    const raf = requestAnimationFrame(() => {
-      scroller.scrollTop = listScroll.current
-    })
-    return () => cancelAnimationFrame(raf)
-  }, [cal.isOpen])
+  const scroll = useReturnScroll(pageRef)
+  const cal = useSubView<'calendar'>({ onEnter: scroll.onEnter, onExit: scroll.onExit })
 
   const [date, setDate] = useState(draft?.date ?? today)
   const [snapshot, setSnapshot] = useState<TodaySnapshot | null>(null)

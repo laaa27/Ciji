@@ -33,6 +33,7 @@ import { usePrefs, type FontSize } from '@/store/prefs'
 
 import { findScrollParent, useScrollStuck } from '../hooks/useScrollStuck'
 import { useReadingClock } from '../hooks/useReadingClock'
+import { useReturnScroll } from '../hooks/useReturnScroll'
 import { useSubView } from '../hooks/useSubView'
 import { useWordSelection } from '../hooks/useWordSelection'
 import ArticleLibrary from '../components/ArticleLibrary'
@@ -102,15 +103,16 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
 
   const fontSize = usePrefs((s) => s.readingFont)
   const [sizePanel, setSizePanel] = useState(false)
-  /** 二级视图：文章库 / 生成页。同时只能开一个，返回动画与返回键由 hook 接管 */
-  const sub = useSubView<'lib' | 'gen'>()
-  /** 有学习记录的日期（倒序），给生成页的日期选择用 */
-  const [days, setDays] = useState<string[]>([])
 
   const headerRef = useRef<HTMLElement>(null)
   const pageRef = useRef<HTMLDivElement>(null)
   /** 打开文章库之前的阅读位置，返回时原地恢复 */
-  const articleScroll = useRef(0)
+  const scroll = useReturnScroll(pageRef)
+
+  /** 二级视图：文章库 / 生成页。同时只能开一个，返回动画与返回键由 hook 接管 */
+  const sub = useSubView<'lib' | 'gen'>({ onEnter: scroll.onEnter, onExit: scroll.onExit })
+  /** 有学习记录的日期（倒序），给生成页的日期选择用 */
+  const [days, setDays] = useState<string[]>([])
   /**
    * 最后一次「页面可见时」观察到的滚动位置。
    *
@@ -239,18 +241,11 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     sub.close()
   }
 
-  function rememberScroll() {
-    const scroller = findScrollParent(pageRef.current)
-    if (scroller) articleScroll.current = scroller.scrollTop
-  }
-
   function openLibrary() {
-    rememberScroll()
     sub.open('lib')
   }
 
   async function openGenerate() {
-    rememberScroll()
     // 日期可能变了（比如过了零点又学了新词），每次进来重读一次
     setDays(await listDays())
     setError(null)
@@ -273,20 +268,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     setMissing(next ? missingWords(next) : [])
   }
 
-  // 进出子视图时重置/恢复滚动：库页从顶部看，返回时回到刚才读到的地方
-  useEffect(() => {
-    const scroller = findScrollParent(pageRef.current)
-    if (!scroller) return
-
-    if (sub.isOpen) {
-      scroller.scrollTop = 0
-      return
-    }
-    const raf = requestAnimationFrame(() => {
-      scroller.scrollTop = articleScroll.current
-    })
-    return () => cancelAnimationFrame(raf)
-  }, [sub.isOpen])
+  // 进出子视图的滚动位置由 useReturnScroll 接管（库页从顶部看，返回时回到刚才读到的地方）
 
   /**
    * 阅读位置落盘。
@@ -314,7 +296,7 @@ export default function ReadingPage({ onGoSettings, active }: Props) {
     let cancelRestore = () => {}
     if (saved > 0) {
       lastTopRef.current = saved
-      articleScroll.current = saved
+      scroll.seek(saved)
       cancelRestore = restoreScroll(scroller, saved)
     }
 

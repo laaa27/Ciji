@@ -17,7 +17,8 @@ import {
   type TrainingPaper,
 } from '@/domain/training'
 
-import { findScrollParent, useScrollStuck } from '../hooks/useScrollStuck'
+import { useReturnScroll } from '../hooks/useReturnScroll'
+import { useScrollStuck } from '../hooks/useScrollStuck'
 import { useSubView } from '../hooks/useSubView'
 import { useToast } from '@/store/toast'
 import BackButton from '../components/BackButton'
@@ -103,9 +104,9 @@ export default function TrainingPage() {
   /** 档位选择器吸顶：一百多套平铺下来，滚到深处还得能换档 */
   const levelRef = useRef<HTMLDivElement>(null)
   const levelStuck = useScrollStuck(levelRef)
-  /** 进下一层之前列表停在哪 */
-  const rootScroll = useRef(0)
-  const paperScroll = useRef(0)
+  /** 两层二级视图各记一份位置：套卷列表 → 套卷详情 → 做题，逐层返回 */
+  const listScroll = useReturnScroll(pageRef)
+  const detailScroll = useReturnScroll(pageRef)
 
   const lastDocBackRef = useRef(0)
 
@@ -122,11 +123,8 @@ export default function TrainingPage() {
   }
 
   const paperNav = useSubView<string>({
-    onEnter: () => {
-      const s = scroller()
-      if (s) rootScroll.current = s.scrollTop
-    },
-    onExit: () => restore(rootScroll),
+    onEnter: listScroll.onEnter,
+    onExit: listScroll.onExit,
   })
   /**
    * 做题是可能丢进度的一层（答题记录不落盘，见训练进度持久化的历史），
@@ -134,11 +132,8 @@ export default function TrainingPage() {
    * 与箭头按钮行为完全一致（以前返回键路径是不恢复滚动的）。
    */
   const docNav = useSubView<string>({
-    onEnter: () => {
-      const s = scroller()
-      if (s) paperScroll.current = s.scrollTop
-    },
-    onExit: () => restore(paperScroll),
+    onEnter: detailScroll.onEnter,
+    onExit: detailScroll.onExit,
     shouldClose: docBackConfirm,
   })
 
@@ -162,29 +157,11 @@ export default function TrainingPage() {
     }
   }, [])
 
-  /** 切层时滚到顶；返回时用 rAF 等 DOM 换完再恢复 */
-  function scroller(): HTMLElement | null {
-    return findScrollParent(pageRef.current)
-  }
-
-  function toTop() {
-    const s = scroller()
-    if (s) s.scrollTop = 0
-  }
-
-  function restore(pos: { current: number }) {
-    const s = scroller()
-    if (!s || pos.current <= 0) return
-    requestAnimationFrame(() => {
-      s.scrollTop = pos.current
-    })
-  }
-
+  /** 切层时滚到顶；返回时由 useReturnScroll 等 DOM 换完再恢复 */
   function openPaper(key: string) {
     setPaper(null)
     setPaperError(null)
     paperNav.open(key)
-    toTop()
     void loadTrainingPaper(key)
       .then((p) => {
         // 这套卷的历史成绩铺进来（上次会话提交过的那些；键带套卷 key，见 scoreKey）
@@ -209,7 +186,6 @@ export default function TrainingPage() {
 
   function openDoc(passageId: string) {
     docNav.open(passageId)
-    toTop()
   }
 
   /** 左上角箭头：与系统返回键走同一道确认 */

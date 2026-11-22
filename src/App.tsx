@@ -56,7 +56,13 @@ export default function App() {
   const lastBackRef = useRef(0)
   const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
 
-  /** 每个栏目各自的滚动位置。所有页面共用一个滚动容器，不记就会串。 */
+  /**
+   * 每个栏目各自的滚动位置。所有页面共用一个滚动容器，不记就会串。
+   *
+   * 这里与 `useReturnScroll` 是两套不同的东西，别合并：二级页面往返只要内存里的
+   * 一份位置（hook 管），栏目位置还要跨冷启动落盘（`store/ui` 的 readScroll/saveScroll），
+   * 并且切栏目时的捕获点是「滚动停下」而不是「离开视图」。
+   */
   const scrollMemory = useRef<Partial<Record<TabKey, number>>>({})
   const bodyRef = useRef<HTMLDivElement>(null)
   /**
