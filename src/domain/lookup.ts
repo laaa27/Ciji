@@ -170,14 +170,6 @@ export interface LookupOptions {
    * 界面拿到就能立刻渲染，不必等在线请求 —— 否则几个短语会把整页释义拖住好几秒。
    */
   onLocal?: (found: Map<string, string>) => void
-  /**
-   * 是否允许联网兜底，默认允许。
-   *
-   * 这不是用户开关（设置里已经没有那一项了），是**调用方按任务形态**决定的：
-   * 导出几千个词的场景关掉它——MyMemory 实测单次 0.6~13 秒，几千词能拖到几十分钟，
-   * 而导出本身只是要一份带释义的清单，本地词库 + 缓存已经够用。
-   */
-  allowOnline?: boolean
 }
 
 export interface BatchLookupResult {
@@ -248,10 +240,6 @@ export async function lookupWords(
   }
 
   const afterAi = toQuery.filter((word) => !glosses.has(word))
-  if (opts.allowOnline === false) {
-    // 调用方明确不要联网（导出）：剩下的词就是没释义，也不算"没轮上"
-    return { glosses, skipped: [] }
-  }
 
   // ④ MyMemory 兜底（并发 3，单请求有超时）
   const onlineWords = afterAi.slice(0, ONLINE_MAX_WORDS)

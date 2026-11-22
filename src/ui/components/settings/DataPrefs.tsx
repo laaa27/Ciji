@@ -8,11 +8,10 @@ import {
   planImport,
   summarize,
   type ImportMode,
-  type ImportSource,
 } from '@/domain/backup'
 import type { Article } from '@/domain/article'
 import type { TodaySnapshot } from '@/domain/collect'
-import { exportAll, exportBackup } from '@/domain/export'
+import { exportBackup } from '@/domain/export'
 import { useToday } from '@/store/today'
 
 import styles from '../../pages/SettingsPage.module.css'
@@ -26,14 +25,11 @@ type FeedbackScope = 'export' | 'import' | 'articles' | 'gloss' | 'all'
  */
 type Feedback = { kind: 'ok' | 'warn' | 'err'; text: string; scope: FeedbackScope } | null
 
-type ExportFormat = 'csv' | 'md' | 'json'
-
 /** 选完文件后、写盘之前的状态：先让用户看清要做什么 */
 type PickedFile = {
   name: string
-  source: ImportSource
   days: TodaySnapshot[]
-  /** v2 备份携带的生成文章（CSV 没有）；导入时跳过本地已有 id */
+  /** v2 起备份携带的生成文章；导入时跳过本地已有 id */
   articles: Article[]
   /** 其中本地没有的篇数（导入时会写入的） */
   newArticles: number
@@ -51,7 +47,7 @@ type PickedFile = {
 export default function DataPrefs() {
   const resetToday = useToday((s) => s.reset)
 
-  const [exporting, setExporting] = useState<ExportFormat | null>(null)
+  const [exporting, setExporting] = useState(false)
   const [picked, setPicked] = useState<PickedFile | null>(null)
   const [importing, setImporting] = useState<ImportMode | null>(null)
   const [dataFeedback, setDataFeedback] = useState<Feedback>(null)
@@ -61,11 +57,11 @@ export default function DataPrefs() {
   const [articleConfirming, setArticleConfirming] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
-  async function handleExport(format: ExportFormat) {
-    setExporting(format)
+  async function handleExport() {
+    setExporting(true)
     setDataFeedback(null)
     try {
-      const msg = format === 'json' ? await exportBackup() : await exportAll(format)
+      const msg = await exportBackup()
       setDataFeedback({ kind: 'ok', text: msg, scope: 'export' })
     } catch (e) {
       setDataFeedback({
@@ -74,7 +70,7 @@ export default function DataPrefs() {
         scope: 'export',
       })
     } finally {
-      setExporting(null)
+      setExporting(false)
     }
   }
 
@@ -89,12 +85,11 @@ export default function DataPrefs() {
 
     try {
       const text = await file.text()
-      const parsed = parseImportText(file.name, text)
+      const parsed = parseImportText(text)
       const existing = new Set(await listDays())
       const existingArticles = new Set((await listArticles()).map((a) => a.id))
       setPicked({
         name: file.name,
-        source: parsed.source,
         days: parsed.days,
         articles: parsed.articles,
         newArticles: parsed.articles.filter((a) => a.id && !existingArticles.has(a.id)).length,
@@ -226,53 +221,40 @@ export default function DataPrefs() {
     <>
       <section className={styles.section}>
         <h2 className={styles.label}>备份与导出</h2>
-        <p className={styles.about}>记录只存在这台设备上。换手机或重装前，先导出一份备份。</p>
+        <p className={styles.about}>
+          记录只存在这台设备上。换手机或重装前，先导出一份备份：学习记录、生成文章、
+          阅读时长、自定义释义、训练成绩都在里面。
+        </p>
 
         <div className={styles.actions}>
           <button
             type="button"
             className={styles.secondary}
-            onClick={() => void handleExport('json')}
-            disabled={exporting !== null}
+            onClick={() => void handleExport()}
+            disabled={exporting}
           >
-            {exporting === 'json' ? '导出中…' : '导出备份'}
-          </button>
-          <button
-            type="button"
-            className={styles.secondary}
-            onClick={() => void handleExport('csv')}
-            disabled={exporting !== null}
-          >
-            {exporting === 'csv' ? '导出中…' : '导出 CSV'}
-          </button>
-          <button
-            type="button"
-            className={styles.secondary}
-            onClick={() => void handleExport('md')}
-            disabled={exporting !== null}
-          >
-            {exporting === 'md' ? '导出中…' : '导出 Markdown'}
+            {exporting ? '导出中…' : '导出备份'}
           </button>
         </div>
 
         <p className={styles.help}>
-          「导出备份」是 JSON，能原样导回；CSV 和 Markdown 用来给别人看，
-          只有日期和单词，导回来会丢学习时长与逐词反馈。
+          「导出备份」是 JSON，能原样导回。它是唯一的导出格式 —— 之前的 CSV / Markdown
+          只有日期和单词，导回来会丢学习时长与逐词反馈，已经去掉。
         </p>
 
         {feedbackOf('export')}
 
         <p className={styles.warnNote}>
-          提示：备份与导出功能目前仍在调整中，<strong>不保证可用</strong>。导出的文件可能缺字段或格式变动，
-          导入也可能失败；在功能稳定之前，请不要把它当作唯一的数据保障。
+          提示：备份与导出功能仍建议留两份（例如同时存在网盘与本机）。导出的文件包含
+          全部个人数据，分享前请确认收件人。
         </p>
       </section>
 
       <section className={styles.section}>
         <h2 className={styles.label}>导入</h2>
         <p className={styles.about}>
-          从「导出备份」的 JSON 或导出过的 CSV 恢复记录。CSV 只有日期、单词与分组，
-          学习时长和逐词反馈补不回来。
+          从「导出备份」的 JSON 恢复。学习记录可选「只补缺失」或「覆盖同一天」；
+          文章、阅读时长、自定义释义、训练成绩按各自的规则合并（见预览里的说明）。
         </p>
 
         <input
@@ -281,7 +263,7 @@ export default function DataPrefs() {
           className={styles.fileInput}
           // 带上 octet-stream：部分 ROM 把 .json 认成未知类型，只按 application/json
           // 过滤会让用户自己的备份文件在选择器里变灰
-          accept=".json,.csv,application/json,text/csv,text/plain,application/octet-stream"
+          accept=".json,application/json,application/octet-stream"
           onChange={(e) => void handlePickFile(e)}
         />
 
@@ -300,8 +282,7 @@ export default function DataPrefs() {
           <div className={styles.preview}>
             <p className={styles.previewName}>{picked.name}</p>
             <p className={styles.previewMeta}>
-              {picked.source === 'csv' ? 'CSV' : '备份'} · {pickedSummary.count} 天 ·{' '}
-              {pickedSummary.words} 个词
+              备份 · {pickedSummary.count} 天 · {pickedSummary.words} 个词
             </p>
             <p className={styles.previewMeta}>
               {pickedSummary.first} — {pickedSummary.last}

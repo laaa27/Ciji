@@ -5,12 +5,11 @@ import type { CollectedWord, TodaySnapshot, WordState } from '@/domain/collect'
 /**
  * 学习数据的「导入 / 备份」业务层。
  *
- * 两种可导入的格式：
- * - **备份 JSON**（本文件定义，全保真）：包含每天完整的快照，恢复后与导出前一致
- * - **CSV**（与「导出 CSV」同构，有损）：只有 日期 / 单词 / 类型 / 释义，
- *   缺学习时长与逐词反馈，导入时给出提示而不是假装完整
+ * 只认一种格式：**备份 JSON**（本文件定义）。0.24.30 起移除了 CSV ——
+ * 那条路只有日期 / 单词 / 类型，缺学习时长与逐词反馈，导入时还得给用户一堆
+ * 「补不回来」的提示；与其维护一条半残通道，不如把无损备份做扎实。
  *
- * 这一层全是纯函数：解析、校验、合并计划。写盘由 data/store.ts 负责。
+ * 这一层全是纯函数：解析、校验、合并计划。写盘由各 `data/` 模块负责。
  */
 
 export const BACKUP_FORMAT = 'ciji-backup'
@@ -167,155 +166,15 @@ function normalizeSnapshot(raw: unknown): TodaySnapshot | null {
   }
 }
 
-/* ------------------------------------------------------------------ */
-/* CSV 解析                                                            */
-/* ------------------------------------------------------------------ */
-
-/** 标准 CSV 状态机：支持引号、字段内的逗号与换行、"" 转义 */
-function splitCsv(text: string): string[][] {
-  const rows: string[][] = []
-  let row: string[] = []
-  let cell = ''
-  let quoted = false
-
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i]
-
-    if (quoted) {
-      if (ch === '"') {
-        if (text[i + 1] === '"') {
-          cell += '"'
-          i += 1
-        } else {
-          quoted = false
-        }
-      } else {
-        cell += ch
-      }
-      continue
-    }
-
-    if (ch === '"') {
-      quoted = true
-    } else if (ch === ',') {
-      row.push(cell)
-      cell = ''
-    } else if (ch === '\n') {
-      row.push(cell)
-      rows.push(row)
-      row = []
-      cell = ''
-    } else if (ch !== '\r') {
-      cell += ch
-    }
-  }
-
-  if (cell.length > 0 || row.length > 0) {
-    row.push(cell)
-    rows.push(row)
-  }
-
-  return rows.filter((r) => r.some((c) => c.trim() !== ''))
-}
-
-const DATE_HEADERS = ['日期', 'date', 'day']
-const WORD_HEADERS = ['单词', 'word', 'spelling']
-const KIND_HEADERS = ['类型', '分组', 'kind', 'group', 'state', 'groups']
-
-function findColumn(header: string[], candidates: string[]): number {
-  return header.findIndex((h) => candidates.includes(h.trim().toLowerCase()))
-}
-
-/** 从 CSV 文本还原成天快照；导出时的表头顺序与列名都能认 */
-function importCsv(text: string): { days: TodaySnapshot[]; skipped: number } {
-  const rows = splitCsv(text.replace(/^\uFEFF/, ''))
-  if (rows.length === 0) return { days: [], skipped: 0 }
-
-  const header = rows[0].map((h) => h.trim().toLowerCase())
-  let dateCol = findColumn(header, DATE_HEADERS)
-  let wordCol = findColumn(header, WORD_HEADERS)
-  let kindCol = findColumn(header, KIND_HEADERS)
-
-  // 没表头就按导出顺序（日期,单词,类型,释义）硬解析，并当成全量数据
-  const hasHeader = dateCol >= 0 || wordCol >= 0
-  const body = hasHeader ? rows.slice(1) : rows
-  if (!hasHeader) {
-    dateCol = 0
-    wordCol = 1
-    kindCol = 2
-  }
-  if (dateCol < 0 || wordCol < 0) {
-    throw new Error('CSV 缺少「日期」或「单词」列，无法识别')
-  }
-
-  const byDate = new Map<string, Map<string, CollectedWord>>()
-  let skipped = 0
-
-  for (const row of body) {
-    const date = normalizeDate(row[dateCol])
-    const spelling = (row[wordCol] ?? '').trim()
-    if (!date || !spelling) {
-      skipped += 1
-      continue
-    }
-
-    const kind = kindCol >= 0 ? (row[kindCol] ?? '') : ''
-    const groups = kind ? groupsFromKind(kind) : (['new'] as WordState[])
-
-    const bucket = byDate.get(date) ?? new Map<string, CollectedWord>()
-    const key = spelling.toLowerCase()
-    const exist = bucket.get(key)
-
-    if (exist) {
-      // 同一单词在同一天出现多次：合并分组
-      for (const g of groups) if (!exist.groups.includes(g)) exist.groups.push(g)
-      exist.isNew = exist.isNew || exist.groups.includes('new')
-      exist.firstResponse = responseFromGroups(exist.groups)
-    } else {
-      bucket.set(key, {
-        vocId: `imp:${key}`,
-        spelling,
-        groups: [...groups],
-        isNew: groups.includes('new'),
-        firstResponse: responseFromGroups(groups),
-        isFinished: true,
-        order: bucket.size,
-      })
-    }
-    byDate.set(date, bucket)
-  }
-
-  const days: TodaySnapshot[] = []
-  for (const [date, bucket] of byDate) {
-    const words = [...bucket.values()]
-    days.push({
-      date,
-      // CSV 里没有进度总量，把已知学过的词数当分母，避免界面出现 12/—
-      finished: words.length,
-      total: words.length,
-      studyTimeMs: 0,
-      words,
-      collectedAt: new Date().toISOString(),
-      warning: '这天由 CSV 导入：只有单词与分组，学习时长和逐词反馈无法还原',
-      rawCount: words.length,
-      studiedCount: words.length,
-    })
-  }
-
-  return { days, skipped }
-}
 
 /* ------------------------------------------------------------------ */
 /* 对外：解析文件                                                      */
 /* ------------------------------------------------------------------ */
 
-export type ImportSource = 'json' | 'csv'
-
 export interface ImportPreview {
-  source: ImportSource
   /** 按日期升序，重复日期已合并 */
   days: TodaySnapshot[]
-  /** v2 备份携带的生成文章（CSV 没有这部分） */
+  /** v2 起携带的生成文章 */
   articles: Article[]
   /** 被丢弃的行数 / 条目数 */
   skipped: number
@@ -351,7 +210,7 @@ function importJson(text: string): {
   try {
     data = JSON.parse(text.replace(/^\uFEFF/, ''))
   } catch {
-    throw new Error('文件不是合法 JSON，也不是能识别的 CSV')
+    throw new Error('文件不是合法的备份 JSON')
   }
 
   const notes: string[] = []
@@ -422,31 +281,19 @@ function importJson(text: string): {
   }
 }
 
-/** 按内容嗅探格式，扩展名只作参考（用户可能把 .csv 存成 .txt） */
-export function parseImportText(filename: string, text: string): ImportPreview {
+/**
+ * 解析备份内容。扩展名不作数（用户可能把 .json 存成 .txt），只看内容：
+ * 对象或数组都当 JSON，其余一律拒绝。
+ */
+export function parseImportText(text: string): ImportPreview {
   const body = text.replace(/^\uFEFF/, '').trimStart()
   if (body === '') throw new Error('文件是空的')
-
-  const looksJson = body.startsWith('{') || body.startsWith('[')
-  const looksCsv = /\.csv$/i.test(filename) || body.startsWith('日期') || body.includes(',\n')
-
-  if (looksJson) {
-    const res = importJson(body)
-    return { source: 'json', ...res, articles: res.articles }
-  }
-  if (looksCsv) {
-    const res = importCsv(body)
-    if (res.days.length === 0) throw new Error('CSV 里没有可导入的行')
-    return {
-      source: 'csv',
-      days: res.days,
-      articles: [],
-      skipped: res.skipped,
-      notes: res.skipped > 0 ? [`${res.skipped} 行格式不对，已跳过`] : [],
-    }
+  if (!body.startsWith('{') && !body.startsWith('[')) {
+    throw new Error('无法识别的文件，请选择「导出备份」生成的 JSON')
   }
 
-  throw new Error('无法识别的文件格式，请选择词迹导出的 CSV 或备份 JSON')
+  const res = importJson(body)
+  return { days: res.days, articles: res.articles, skipped: res.skipped, notes: res.notes }
 }
 
 /* ------------------------------------------------------------------ */
