@@ -48,6 +48,20 @@ function cssVar(name: string, fallback: string): string {
   return v || fallback
 }
 
+/**
+ * 「最近 30 天」三段柱子的固定配色。
+ *
+ * 取的是**深色主题**那一组 token（`tokens.css` 的 `[data-theme='dark']`）。
+ * 这张图不跟主题走：浅色主题下原来的 `--state-*` 更淡，叠在一起分不清档位；
+ * 固定成深色这组之后两种主题下都能看清，也省掉一次「换主题要重建图表」的理由。
+ * 要调色只改这里，别改回 `cssVar('--state-*')`。
+ */
+const TREND_COLOR = {
+  new: '#7ea6cc',
+  vague: '#c99a52',
+  forget: '#d07066',
+} as const
+
 /** 秒数 → 「3 分 20 秒」这种给人看的说法 */
 function fmtMinutes(sec: number): string {
   const m = Math.floor(sec / 60)
@@ -184,7 +198,7 @@ function TrendChart({ rows }: { rows: Row[] }) {
           type: 'bar',
           stack: 'total',
           data: rows.map((r) => r.new),
-          itemStyle: { color: cssVar('--state-new', '#2a5580') },
+          itemStyle: { color: TREND_COLOR.new },
           barMaxWidth: 14,
         },
         {
@@ -192,7 +206,7 @@ function TrendChart({ rows }: { rows: Row[] }) {
           type: 'bar',
           stack: 'total',
           data: rows.map((r) => r.vague),
-          itemStyle: { color: cssVar('--state-vague', '#8f5f1c') },
+          itemStyle: { color: TREND_COLOR.vague },
           barMaxWidth: 14,
         },
         {
@@ -200,7 +214,7 @@ function TrendChart({ rows }: { rows: Row[] }) {
           type: 'bar',
           stack: 'total',
           data: rows.map((r) => r.forget),
-          itemStyle: { color: cssVar('--state-forget', '#9c332a') },
+          itemStyle: { color: TREND_COLOR.forget },
           barMaxWidth: 14,
         },
       ],

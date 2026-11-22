@@ -94,7 +94,22 @@
   display: flex;
   align-items: center;
   gap: var(--sp-4);
-  margin-bottom: var(--sp-6);
+  /* 吸顶：统计页有好几屏，滚到「反复忘记」还得能一眼看到自己在哪、能直接返回。
+     配方与 .titleRow 完全一致（DEVELOPMENT 9.9 第 6 条）：
+     负 margin 抵消上内边距，sticky 的 top 作用在 margin box 上所以要减掉那 8px，
+     背景必须有，否则内容从字底下穿过去。 */
+  position: sticky;
+  top: calc(var(--safe-top) - var(--sp-2));
+  z-index: 3;
+  padding: var(--sp-2) 0;
+  margin-top: calc(-1 * var(--sp-2));
+  margin-bottom: calc(var(--sp-6) - var(--sp-2));
+  background: var(--paper);
+}
+
+/* 只有真贴住才画分隔线，静止时与下面内容是连续的 */
+.subHead[data-stuck='true'] {
+  box-shadow: 0 1px 0 var(--rule);
 }
 
 .back {

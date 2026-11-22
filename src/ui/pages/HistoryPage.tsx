@@ -135,6 +135,9 @@ export default function HistoryPage({ active }: { active: boolean }) {
   /** 标题行吸顶：贴住了才画分隔线 */
   const titleRef = useRef<HTMLElement>(null)
   const titleStuck = useScrollStuck(titleRef)
+  /** 统计二级页的头部（返回 + 大字）同样吸顶 */
+  const subHeadRef = useRef<HTMLElement>(null)
+  const subHeadStuck = useScrollStuck(subHeadRef)
 
   const sub = useSubView<Sub>({ onEnter: scroll.onEnter, onExit: scroll.onExit })
 
@@ -153,7 +156,11 @@ export default function HistoryPage({ active }: { active: boolean }) {
   if (sub.view === 'stats') {
     return (
       <div className={styles.page} data-view="stats" ref={pageRef}>
-        <header className={styles.subHead}>
+        <header
+          className={styles.subHead}
+          ref={subHeadRef}
+          data-stuck={subHeadStuck ? 'true' : 'false'}
+        >
           <BackButton onClick={sub.close} />
           <h1 className={styles.subTitle}>统计</h1>
         </header>
