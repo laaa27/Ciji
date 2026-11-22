@@ -1,6 +1,6 @@
 import { Preferences } from '@capacitor/preferences'
 
-import type { Article } from '@/domain/article'
+import type { Article } from '@/domain/article/model'
 import { listFileNames, queueByKey, readJson, removeFile, writeJson } from '@/data/files'
 import {
   createOnceTask,
@@ -305,41 +305,19 @@ export async function clearArticles(): Promise<number> {
 }
 
 /**
- * 今天已经生成过的文章覆盖了哪些词。
- * 生成新文章时排除这些词，避免同一天反复用同一批；
- * 到了第二天会重新可用 —— 又忘了的词还能再复习一遍。
+ * 某天的所有文章（按索引顺序）。只读，不含迁移副作用。
+ *
+ * 「哪些词算当天已用」是业务口径，住在 `domain/article/usage.ts`；
+ * 这里只负责把这一天的正文取出来。
  */
-export async function getCoveredWordsToday(date: string): Promise<Set<string>> {
+export async function articlesOfDay(date: string): Promise<Article[]> {
   const index = await readIndex()
-  const ids = index.filter((a) => a.date === date).map((a) => a.id)
-
-  const covered = new Set<string>()
-  for (const id of ids) {
-    const a = await getArticleById(id)
-    if (!a) continue
-    // 用户在生成页点了「清除当天已用记录」的文章不算覆盖，那些词恢复默认可选
-    if (a.skipCoverage) continue
-    for (const w of a.targetWords) covered.add(w.toLowerCase())
+  const out: Article[] = []
+  for (const meta of index.filter((a) => a.date === date)) {
+    const a = await getArticleById(meta.id)
+    if (a) out.push(a)
   }
-  return covered
-}
-
-/**
- * 把某天所有文章标记为「不计入已用」（生成页「清除当天已用记录」按钮）。
- * 文章本身保留，可继续阅读；返回实际标记了几篇。
- */
-export async function markDayCoverageSkipped(date: string): Promise<number> {
-  const index = await readIndex()
-  const ids = index.filter((a) => a.date === date).map((a) => a.id)
-
-  let marked = 0
-  for (const id of ids) {
-    const a = await getArticleById(id)
-    if (!a || a.skipCoverage) continue
-    await saveArticle({ ...a, skipCoverage: true })
-    marked += 1
-  }
-  return marked
+  return out
 }
 
 /** 某天最后一篇，用于打开阅读页时默认展示 */

@@ -1,7 +1,5 @@
 import { chatCompletion, type CallUsage } from '@/api/llm'
 import { useLlm } from '@/store/llm'
-import { countWordsIn } from '@/lib/text'
-import type { TodaySnapshot } from '@/domain/collect'
 import { distance, locateDefects, measure, type LocatedDefect } from '@/domain/generate/metrics'
 import { auditArticle } from '@/domain/generate/audit'
 import {
@@ -19,171 +17,65 @@ import {
   type Outline,
 } from '@/domain/prompts'
 
-export type ArticleMode = 'weak' | 'new' | 'all'
+import type { Article, ArticleMode, ArticleSentence, ArticleUsage, WordKind } from './model'
 
 /**
- * 难度类型、标签、提示词全部住在 `domain/prompts.ts` —— 那边零依赖，
- * `scripts/gen-article.mjs` 能在 node 里用同一份文本做对比实验。
+ * 生成编排：提纲 → 并行成文 → 规则择优 →（仍有硬伤）回喂问题重写一次。
+ *
+ * 这是 `domain/article.ts` 里唯一碰模型的部分，也是**唯一一条已知的层间偏离**
+ * （domain → store/llm，见开发手册 2.2）。单独一个文件之后，这条偏离被关在
+ * 70 行的边界内：选词、文本导出、类型定义都能在 node 里直接跑。
  */
-export type { ArticleLevel, Genre, Outline } from '@/domain/prompts'
-export { LEVEL_LABEL, GENRE_LABEL, pickGenre } from '@/domain/prompts'
 
-/** 新生成时可选的难度（雅思用不上，从选项里去掉） */
-export const LEVELS: ArticleLevel[] = ['cet4', 'cet6', 'kaoyan']
-
-/** 单词类型：与今天页的三组一一对应 */
-export type WordKind = 'forget' | 'vague' | 'new'
-
-export const KIND_LABEL: Record<WordKind, string> = {
-  forget: '忘记',
-  vague: '模糊',
-  new: '新学',
-}
-
-export interface WordCandidate {
-  spelling: string
-  /** 一个词可能同时属于多个类型（新学又答错的词） */
+export interface GenerateOptions {
+  /** 用户在选词界面里确认过的词（顺序即优先级） */
+  words: string[]
+  /** 勾选过的类型，只用于记录 */
   kinds: WordKind[]
-  /** 已被这一天的某篇文章用过 */
-  used: boolean
-}
-
-export interface ArticleSentence {
-  en: string
-  zh: string
-}
-
-/**
- * 这一篇实际花了多少 token。
- *
- * 为什么要存下来而不是只打日志：提示词结构一旦把静态部分前置，缓存命中会从 0 变成大头，
- * 而这个变化**只体现在 `cached` 上**——生成结果看不出来，速度也只快一点点。
- * 不落库就只能靠翻服务商后台对账，等于没法验证。
- *
- * `requests` 比 `calls` 大是可诊断的信号：说明中间撞过 400 协商或截断加码，
- * 那一刻整轮请求是重发的，钱也重付了一次。
- */
-export interface ArticleUsage {
-  prompt: number
-  completion: number
-  /** 输入里命中提示词缓存的前缀 token */
-  cached: number
-  /** 逻辑调用次数（提纲 1 + 成文 1~2） */
-  calls: number
-  /** 实际 HTTP 请求数 */
-  requests: number
-}
-
-export interface Article {
-  /** 存库后才有，形如 2026-11-07#2 */
-  id?: string
-  date: string
-  title: string
-  /** 标题的中文翻译，早期版本的文章没有这个字段 */
-  titleZh?: string
-  sentences: ArticleSentence[]
-  /** 本篇要求覆盖的词 */
-  targetWords: string[]
-  /** 生成时勾选了几类词（老文章没有这个字段，回退到 mode） */
-  kinds?: WordKind[]
-  mode: ArticleMode
   level: ArticleLevel
-  /** 文体（老文章没有这个字段，界面按没有处理） */
+  date: string
+  /** 指定文体；不传就按该档的配额抽签（界面上没有文体开关） */
   genre?: Genre
-  model: string
-  createdAt: string
-  /** 本篇的 token 用量（老文章没有这个字段，界面按没有处理） */
-  usage?: ArticleUsage
-  /**
-   * 生成后校验没通过时记下来（篇幅偏短 / 缺词 / 超长句）。
-   * 有值不代表文章不能用，只代表它没完全达到该档位的规格，界面据此轻提示。
-   */
-  shortfall?: string
-  /**
-   * 用户在生成页点了「清除当天已用记录」：本篇的 targetWords 不再计入当天已用，
-   * 那些词恢复默认可选。文章本身保留，可继续阅读。老文章没有此字段 = 计入。
-   */
-  skipCoverage?: boolean
 }
 
-/** 选词上限与档位定义在 prompts.ts（零依赖），这里转出去保持既有 import 路径不变 */
-export { MAX_TARGET_WORDS, WORD_LIMITS } from '@/domain/prompts'
+/** kinds → 旧的 mode 字段，保证老代码/老数据一条线 */
+function modeOf(kinds: WordKind[]): ArticleMode {
+  const hasNew = kinds.includes('new')
+  const hasWeak = kinds.includes('forget') || kinds.includes('vague')
+  if (hasNew && !hasWeak) return 'new'
+  if (!hasNew && hasWeak) return 'weak'
+  return 'all'
+}
 
 /**
- * 缺词判定住在 generate/audit.ts（审计的「缺词」一条用它，阅读页的缺失提示也用它）。
- * 这里转出去保持既有 import 路径不变。
+ * 生成过程中对外汇报的「大致进度」。
+ * 只用来给用户一个"模型在忙什么"的交代，不追求精确——
+ * 每阶段真实耗时不稳（思考量随提示词波动），所以界面拿它做步骤指示而不是进度条。
  */
-export { missingWords } from '@/domain/generate/audit'
+export type GenStage = 'outline' | 'draft' | 'revise' | 'save'
+
+export interface GenProgress {
+  stage: GenStage
+  /** 第几次成文（1 = 并行初稿，2 = 仍有硬伤时的定向重写） */
+  attempt: number
+  /** 并行的完成进度：已完成几篇 / 一共几篇。只有成文阶段会填 */
+  done?: number
+  total?: number
+}
+
+export type GenProgressHandler = (p: GenProgress) => void
 
 /**
- * 取某一天的候选词。
+ * 思考模式：一律显式关闭（2026-11-14 从设置里移除）。
  *
- * 以前是从最近 7 天合起来挑，会把历史词混进来 —— 这里只认传进来的那一天。
- * 排序：忘记 > 模糊 > 新学，同优先级按字母 —— 越容易忘的越值得在文章里再遇见一次。
+ * 必须显式发 `thinking.disabled` —— 不传参数不等于关闭，推理模型默认就开着思考。
+ * 之所以可以一律关：关思考的代价是塌篇（~25%），而塌掉的候选在并行 4 路择优里会被直接淘汰，
+ * 不再值得为它多等 40~50 秒。服务端不认这个字段时，llm.ts 会按 400 自动去掉。
  */
-export function wordCandidates(
-  day: TodaySnapshot | null,
-  usedToday: Set<string>,
-): WordCandidate[] {
-  if (!day) return []
-
-  const map = new Map<string, WordCandidate>()
-
-  for (const w of day.words) {
-    const spelling = w.spelling.trim()
-    if (!spelling) continue
-
-    // 三类互斥（与 collect.classify 同规则）：新学词只算「新学」，
-    // 忘记 / 模糊只收复习词。旧快照里可能残留多归属分组，这里统一掰正。
-    const kinds: WordKind[] = []
-    if (w.isNew) {
-      kinds.push('new')
-    } else {
-      if (w.groups.includes('forget')) kinds.push('forget')
-      if (w.groups.includes('vague')) kinds.push('vague')
-      if (w.groups.includes('new')) kinds.push('new')
-    }
-    if (kinds.length === 0) continue
-
-    const key = spelling.toLowerCase()
-    const prev = map.get(key)
-    if (prev) {
-      // 同一天里同一个词出现多次：合并类型
-      for (const k of kinds) if (!prev.kinds.includes(k)) prev.kinds.push(k)
-      continue
-    }
-    map.set(key, { spelling, kinds, used: usedToday.has(key) })
-  }
-
-  const rank = (c: WordCandidate) =>
-    c.kinds.includes('forget') ? 0 : c.kinds.includes('vague') ? 1 : 2
-
-  return [...map.values()].sort(
-    (a, b) => rank(a) - rank(b) || a.spelling.localeCompare(b.spelling),
-  )
-}
-
-/**
- * 按勾选的类型算出「默认该选哪些词」。
- * 当天已用过的词默认排除 —— 想再用一次得自己手动勾。
- */
-export function defaultSelection(cands: WordCandidate[], kinds: WordKind[]): string[] {
-  return cands
-    .filter((c) => !c.used && c.kinds.some((k) => kinds.includes(k)))
-    .map((c) => c.spelling.toLowerCase())
-}
-
-/** 勾选过多时按「忘记 > 模糊 > 新学」保留前 limit 个 */
-export function trimSelection(
-  cands: WordCandidate[],
-  selected: Set<string>,
-  limit: number,
-): string[] {
-  return cands
-    .filter((c) => selected.has(c.spelling.toLowerCase()))
-    .slice(0, limit)
-    .map((c) => c.spelling)
-}
+const THINKING_OFF = { thinkingDisabled: true } as const
+/** 成文预算：推理模型会把额度分给思考。16000 是实测能写完 400 词正文并留出思考余量的起点；
+ *  还不够时 llm.ts 会逐级加到 32000。 */
+const ARTICLE_MAX_TOKENS = 16000
 
 /* ── 第一步：先列提纲 ─────────────────────── */
 
@@ -262,56 +154,6 @@ function validate(parsed: unknown): {
 
   return { title, titleZh: titleZh || undefined, sentences }
 }
-
-export interface GenerateOptions {
-  /** 用户在选词界面里确认过的词（顺序即优先级） */
-  words: string[]
-  /** 勾选过的类型，只用于记录 */
-  kinds: WordKind[]
-  level: ArticleLevel
-  date: string
-  /** 指定文体；不传就按该档的配额抽签（界面上没有文体开关） */
-  genre?: Genre
-}
-
-/** kinds → 旧的 mode 字段，保证老代码/老数据一条线 */
-function modeOf(kinds: WordKind[]): ArticleMode {
-  const hasNew = kinds.includes('new')
-  const hasWeak = kinds.includes('forget') || kinds.includes('vague')
-  if (hasNew && !hasWeak) return 'new'
-  if (!hasNew && hasWeak) return 'weak'
-  return 'all'
-}
-
-/**
- * 生成过程中对外汇报的「大致进度」。
- * 只用来给用户一个"模型在忙什么"的交代，不追求精确——
- * 每阶段真实耗时不稳（思考量随提示词波动），所以界面拿它做步骤指示而不是进度条。
- */
-export type GenStage = 'outline' | 'draft' | 'revise' | 'save'
-
-export interface GenProgress {
-  stage: GenStage
-  /** 第几次成文（1 = 并行初稿，2 = 仍有硬伤时的定向重写） */
-  attempt: number
-  /** 并行的完成进度：已完成几篇 / 一共几篇。只有成文阶段会填 */
-  done?: number
-  total?: number
-}
-
-export type GenProgressHandler = (p: GenProgress) => void
-
-/**
- * 思考模式：一律显式关闭（2026-11-14 从设置里移除）。
- *
- * 必须显式发 `thinking.disabled` —— 不传参数不等于关闭，推理模型默认就开着思考。
- * 之所以可以一律关：关思考的代价是塌篇（~25%），而塌掉的候选在并行 4 路择优里会被直接淘汰，
- * 不再值得为它多等 40~50 秒。服务端不认这个字段时，llm.ts 会按 400 自动去掉。
- */
-const THINKING_OFF = { thinkingDisabled: true } as const
-/** 成文预算：推理模型会把额度分给思考。16000 是实测能写完 400 词正文并留出思考余量的起点；
- *  还不够时 llm.ts 会逐级加到 32000。 */
-const ARTICLE_MAX_TOKENS = 16000
 
 /**
  * 重写指令：把审计发现的问题原样回喂给模型，能指到句子的就指到句子。
@@ -464,38 +306,4 @@ export async function generateArticle(
     // 重写失败不影响交付：手上这篇有硬伤但能用，如实标注
     return finish(best.item, best.problems)
   }
-}
-
-export function wordCount(article: Pick<Article, 'sentences'>): number {
-  return countWordsIn(article.sentences)
-}
-
-/**
- * 把文章拼成可复制的纯文本。
- *
- * - 始终带标题；打开译文时连中文标题一起带
- * - 未打开译文：正文按段落连排，段间空行
- * - 打开译文：逐句「一句原文、一句译文」，句间换行而不是连排——
- *   连排会把中英混成一大坨，粘贴到笔记里没法看
- *
- * perPara 由界面传进来（阅读页按固定句数切段），这里不掺显示逻辑。
- */
-export function articleToText(
-  article: Pick<Article, 'title' | 'titleZh' | 'sentences'>,
-  opts: { withZh: boolean; perPara: number },
-): string {
-  const head = [article.title]
-  if (opts.withZh && article.titleZh) head.push(article.titleZh)
-
-  const perPara = Math.max(1, opts.perPara)
-  const paras: string[] = []
-  for (let i = 0; i < article.sentences.length; i += perPara) {
-    const chunk = article.sentences.slice(i, i + perPara)
-    const lines = chunk.map((s) =>
-      opts.withZh && s.zh ? `${s.en}\n${s.zh}` : s.en,
-    )
-    paras.push(lines.join(opts.withZh ? '\n' : ' '))
-  }
-
-  return [head.join('\n'), ...paras].join('\n\n')
 }

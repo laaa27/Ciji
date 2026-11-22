@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect } from 'react'
 
-import { getCoveredWordsToday } from '@/data/article'
+import { getCoveredWordsToday } from '@/domain/article'
 import { getDay } from '@/data/store'
 import {
   defaultSelection,

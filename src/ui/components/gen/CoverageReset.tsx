@@ -1,6 +1,6 @@
 import { useState } from 'react'
 
-import { markDayCoverageSkipped } from '@/data/article'
+import { markDayCoverageSkipped } from '@/domain/article'
 
 import styles from '../GenerateArticle.module.css'
 
