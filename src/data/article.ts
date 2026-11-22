@@ -2,6 +2,13 @@ import { Preferences } from '@capacitor/preferences'
 
 import type { Article } from '@/domain/article'
 import { listFileNames, queueByKey, readJson, removeFile, writeJson } from '@/data/files'
+import {
+  createOnceTask,
+  isMigrated,
+  legacyKeys,
+  markMigrated,
+  removeLegacyKeys,
+} from '@/data/migrate'
 import { countWordsIn } from '@/lib/text'
 
 /**
@@ -118,32 +125,28 @@ function mutateIndex(fn: (list: ArticleMeta[]) => ArticleMeta[]): Promise<void> 
   })
 }
 
-let indexEnsured = false
-
 /**
  * 一次性迁移：`article_index` → `articles/index.json`。
  *
  * 写文件并读回校验（条数不少于旧键）才删旧键；失败就留着，下次启动重试。
  * 索引是派生数据：真出问题也能从 `articles/` 目录重建，所以不需要额外留原件副本。
  */
-export async function ensureArticleIndex(): Promise<void> {
-  if (indexEnsured) return
-  indexEnsured = true
-  try {
-    const legacy = await readLegacyIndex()
-    if (!legacy) return
+const runEnsureArticleIndex = createOnceTask(async () => {
+  const legacy = await readLegacyIndex()
+  if (!legacy) return
 
-    const fromFile = await readIndexFile()
-    if (!fromFile) await writeIndexFile(legacy)
+  const fromFile = await readIndexFile()
+  if (!fromFile) await writeIndexFile(legacy)
 
-    const back = await readIndexFile()
-    const expect = fromFile?.length ?? legacy.length
-    if (!back || back.length < expect) return
+  const back = await readIndexFile()
+  const expect = fromFile?.length ?? legacy.length
+  if (!back || back.length < expect) throw new Error('文章索引迁移校验失败')
 
-    await Preferences.remove({ key: LEGACY_INDEX_KEY }).catch(() => {})
-  } catch {
-    indexEnsured = false
-  }
+  await removeLegacyKeys([LEGACY_INDEX_KEY])
+})
+
+export function ensureArticleIndex(): Promise<void> {
+  return runEnsureArticleIndex()
 }
 
 /* ── 文章正文的独立文件存储（0.24.22）──────────────────
@@ -191,43 +194,35 @@ async function removeArticleFile(id: string): Promise<void> {
  */
 const K_ARTICLES_MIGRATED = 'articles_migrated'
 
-let articlesEnsured = false
+const runEnsureArticleFiles = createOnceTask(async () => {
+  if (await isMigrated(K_ARTICLES_MIGRATED)) return
 
-export async function ensureArticleFiles(): Promise<void> {
-  if (articlesEnsured) return
-  articlesEnsured = true
-  try {
-    const { value } = await Preferences.get({ key: K_ARTICLES_MIGRATED })
-    if (value === '1') return
+  let leftover = false
 
-    const { keys } = await Preferences.keys()
-    let leftover = false
-
-    for (const key of keys.filter((k) => k.startsWith(PREFIX))) {
-      const id = key.slice(PREFIX.length)
-      if (!(await readArticleFile(id))) {
-        const legacy = await readLegacyArticle(id)
-        if (legacy) {
-          await writeArticleFile(id, legacy)
-          if (!(await readArticleFile(id))) {
-            // 没写进去：旧键留着，下次启动再试
-            leftover = true
-            continue
-          }
+  for (const key of await legacyKeys([PREFIX])) {
+    const id = key.slice(PREFIX.length)
+    if (!(await readArticleFile(id))) {
+      const legacy = await readLegacyArticle(id)
+      if (legacy) {
+        await writeArticleFile(id, legacy)
+        if (!(await readArticleFile(id))) {
+          // 没写进去：旧键留着，下次启动再试
+          leftover = true
+          continue
         }
       }
-      // 走到这里说明文件里已经有这篇了（本次搬的，或上次中断留下的），旧键可以清
-      await Preferences.remove({ key }).catch(() => {
-        leftover = true
-      })
     }
-
-    if (!leftover) {
-      await Preferences.set({ key: K_ARTICLES_MIGRATED, value: '1' }).catch(() => {})
-    }
-  } catch {
-    articlesEnsured = false
+    // 走到这里说明文件里已经有这篇了（本次搬的，或上次中断留下的），旧键可以清
+    await removeLegacyKeys([key], () => {
+      leftover = true
+    })
   }
+
+  if (!leftover) await markMigrated(K_ARTICLES_MIGRATED)
+})
+
+export function ensureArticleFiles(): Promise<void> {
+  return runEnsureArticleFiles()
 }
 
 /** 旧路径：从 Preferences 读单篇（迁移前的存储） */
@@ -303,11 +298,9 @@ export async function clearArticles(): Promise<number> {
   const index = await readIndex()
   await Promise.all(index.map((a) => removeArticleFile(a.id)))
   // 迁移残留的旧键一并清
-  const { keys } = await Preferences.keys()
-  const legacyKeys = keys.filter((k) => k.startsWith(PREFIX))
-  await Promise.all(legacyKeys.map((k) => Preferences.remove({ key: k }).catch(() => {})))
+  await removeLegacyKeys(await legacyKeys([PREFIX]))
   await writeIndexFile([])
-  await Preferences.remove({ key: LEGACY_INDEX_KEY }).catch(() => {})
+  await removeLegacyKeys([LEGACY_INDEX_KEY])
   return index.length
 }
 

@@ -2,6 +2,15 @@ import { Preferences } from '@capacitor/preferences'
 
 import type { TodaySnapshot } from '@/domain/collect'
 import { listFileNames, queueByKey, readJson, removeFile, writeJson } from '@/data/files'
+import {
+  createOnceTask,
+  isMigrated,
+  legacyKeys,
+  markMigrated,
+  removeLegacyKeys,
+  writeVerifiedDump,
+} from '@/data/migrate'
+import { sameRecord } from '@/data/migrate/dump'
 
 /**
  * 每日记录的文件存储（0.24.26）。
@@ -169,11 +178,7 @@ export async function legacyDayDates(): Promise<string[]> {
 
 /** 清空全部旧键（「清空全部记录」用） */
 export async function removeLegacyDayKeys(): Promise<void> {
-  const { keys } = await Preferences.keys()
-  const victims = keys.filter(
-    (k) => k.startsWith(LEGACY_DAY) || k.startsWith(LEGACY_READING),
-  )
-  for (const key of victims) await Preferences.remove({ key }).catch(() => {})
+  await removeLegacyKeys(await legacyKeys([LEGACY_DAY, LEGACY_READING]))
 }
 
 function parseJsonObject(value: string | null): Record<string, unknown> | null {
@@ -190,39 +195,27 @@ function parseJsonObject(value: string | null): Record<string, unknown> | null {
 
 /* ── 一次性迁移 ──────────────────────────────── */
 
-let attempted = false
-
 /**
  * 把旧键搬进文件。每个会话最多试一次；中途失败不写标记，下次启动整体重试。
  * 部分迁移是安全的：读取路径一律文件优先、旧键兜底，两边谁有数据都能读出来。
  */
-export async function ensureDayFiles(): Promise<void> {
-  if (attempted) return
-  attempted = true
-  try {
-    const { value } = await Preferences.get({ key: K_MIGRATED })
-    if (value === '1') return
-    await migrateOnce()
-  } catch {
-    // 保留现场：旧键一个没少，下次启动重来
-    attempted = false
-  }
+const runMigrateOnce = createOnceTask(async () => {
+  if (await isMigrated(K_MIGRATED)) return
+  await migrateOnce()
+})
+
+export function ensureDayFiles(): Promise<void> {
+  return runMigrateOnce()
 }
 
 async function migrateOnce(): Promise<void> {
-  const { keys } = await Preferences.keys()
-  const legacyDays = keys.filter((k) => k.startsWith(LEGACY_DAY))
-  const legacyReadings = keys.filter((k) => k.startsWith(LEGACY_READING))
-  if (legacyDays.length === 0 && legacyReadings.length === 0) {
-    await markMigrated()
+  const keys = await legacyKeys([LEGACY_DAY, LEGACY_READING])
+  if (keys.length === 0) {
+    await markMigrated(K_MIGRATED)
     return
   }
 
-  const dates = [
-    ...new Set(
-      [...legacyDays, ...legacyReadings].map((k) => k.slice(k.indexOf(':') + 1)),
-    ),
-  ].sort()
+  const dates = [...new Set(keys.map((k) => k.slice(k.indexOf(':') + 1)))].sort()
   const batch = dates.slice(0, BATCH)
 
   // 先落原件：这批旧键原样存一份，搬坏了还有东西可查
@@ -230,7 +223,7 @@ async function migrateOnce(): Promise<void> {
 
   for (const date of batch) await migrateDay(date)
 
-  if (dates.length <= BATCH) await markMigrated()
+  if (dates.length <= BATCH) await markMigrated(K_MIGRATED)
 }
 
 /**
@@ -250,15 +243,12 @@ async function writeSafetyDump(dates: string[]): Promise<void> {
 
   const path = `${SAFETY_DIR}/legacy-${dates[0]}_${dates[dates.length - 1]}.json`
   const payload = { at: new Date().toISOString(), legacy }
-  await writeJson(path, payload)
-
-  const back = await readJson<{ legacy?: Record<string, string> }>(path)
-  const keys = Object.keys(legacy)
-  const ok =
-    back?.legacy !== undefined &&
-    keys.every((k) => back.legacy?.[k] === legacy[k]) &&
-    Object.keys(back.legacy).length === keys.length
-  if (!ok) throw new Error('迁移副本校验失败')
+  await writeVerifiedDump(
+    path,
+    payload,
+    (back) => sameRecord(back?.legacy, legacy),
+    '迁移副本校验失败',
+  )
 }
 
 async function migrateDay(date: string): Promise<void> {
@@ -293,12 +283,8 @@ async function migrateDay(date: string): Promise<void> {
   const secondsOk = seconds === null || (check?.readingSeconds ?? 0) >= seconds
   if (!snapshotOk || !secondsOk) throw new Error(`每日记录迁移校验失败：${date}`)
 
-  if (dayValue !== null) await Preferences.remove({ key: LEGACY_DAY + date }).catch(() => {})
-  if (readingValue !== null) {
-    await Preferences.remove({ key: LEGACY_READING + date }).catch(() => {})
-  }
-}
-
-async function markMigrated(): Promise<void> {
-  await Preferences.set({ key: K_MIGRATED, value: '1' }).catch(() => {})
+  const done: string[] = []
+  if (dayValue !== null) done.push(LEGACY_DAY + date)
+  if (readingValue !== null) done.push(LEGACY_READING + date)
+  await removeLegacyKeys(done)
 }

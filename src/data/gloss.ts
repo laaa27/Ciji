@@ -1,6 +1,8 @@
 import { Preferences } from '@capacitor/preferences'
 
 import { queueByKey, readJson, removeFile, writeJson } from '@/data/files'
+import { createOnceTask, isMigrated, legacyKeys, markMigrated, removeLegacyKeys, writeVerifiedDump } from '@/data/migrate'
+import { sameRecord } from '@/data/migrate/dump'
 
 /**
  * 释义缓存：主释义（`cache/gloss.json`）与备选释义（`cache/gloss_alt.json`）。
@@ -66,13 +68,10 @@ let altLoading: Promise<Map<string, GlossAlt>> | null = null
  * 手填的释义——不点词就一直留在旧存储里，等于这次改造对它没生效（真机上就这样留了
  * 26 条、22 条是手填的）。跟每日记录一样，启动就搬，失败下一个会话重试。
  */
-export async function ensureGlossFiles(): Promise<void> {
-  try {
-    await Promise.all([loadGlossMap(), loadAltMap()])
-  } catch {
-    // 搬不动不影响任何功能（旧键还在，读的时候照样兜底），下个会话再来
-  }
-}
+export const ensureGlossFiles = createOnceTask(async () => {
+  // 搬不动不影响任何功能（旧键还在，读的时候照样兜底），下个会话再来
+  await Promise.all([loadGlossMap(), loadAltMap()])
+})
 
 /* ── 主释义 ─────────────────────────────── */
 
@@ -143,12 +142,11 @@ function loadGlossMap(): Promise<Map<string, GlossEntry>> {
  * 占着 XML（慢一点），不存在「缓存没了」这种结果。
  */
 async function mergeLegacyGloss(map: Map<string, GlossEntry>): Promise<void> {
-  if (await isMarked(K_GLOSS_MIGRATED)) return
+  if (await isMigrated(K_GLOSS_MIGRATED)) return
 
-  const { keys } = await Preferences.keys()
-  const legacy = keys.filter((k) => k.startsWith(GLOSS_PREFIX))
+  const legacy = await legacyKeys([GLOSS_PREFIX])
   if (legacy.length === 0) {
-    await mark(K_GLOSS_MIGRATED)
+    await markMigrated(K_GLOSS_MIGRATED)
     return
   }
 
@@ -166,8 +164,8 @@ async function mergeLegacyGloss(map: Map<string, GlossEntry>): Promise<void> {
     await persistGloss(map)
   }
 
-  for (const key of legacy) await Preferences.remove({ key }).catch(() => {})
-  await mark(K_GLOSS_MIGRATED)
+  await removeLegacyKeys(legacy)
+  await markMigrated(K_GLOSS_MIGRATED)
 }
 
 /**
@@ -255,12 +253,11 @@ function altOf(value: unknown): GlossAlt | null {
 
 /** 备选释义里有手填内容（不可再生），迁移同样先落原件、写成功才删旧键 */
 async function mergeLegacyAlt(map: Map<string, GlossAlt>): Promise<void> {
-  if (await isMarked(K_ALT_MIGRATED)) return
+  if (await isMigrated(K_ALT_MIGRATED)) return
 
-  const { keys } = await Preferences.keys()
-  const legacy = keys.filter((k) => k.startsWith(ALT_PREFIX))
+  const legacy = await legacyKeys([ALT_PREFIX])
   if (legacy.length === 0) {
-    await mark(K_ALT_MIGRATED)
+    await markMigrated(K_ALT_MIGRATED)
     return
   }
 
@@ -282,8 +279,8 @@ async function mergeLegacyAlt(map: Map<string, GlossAlt>): Promise<void> {
   }
   if (changed) await persistAlt(map)
 
-  for (const key of legacy) await Preferences.remove({ key }).catch(() => {})
-  await mark(K_ALT_MIGRATED)
+  await removeLegacyKeys(legacy)
+  await markMigrated(K_ALT_MIGRATED)
 }
 
 function persistAlt(map: Map<string, GlossAlt>): Promise<void> {
@@ -291,15 +288,6 @@ function persistAlt(map: Map<string, GlossAlt>): Promise<void> {
 }
 
 /* ── 迁移辅助 ────────────────────────────── */
-
-async function isMarked(key: string): Promise<boolean> {
-  const { value } = await Preferences.get({ key })
-  return value === '1'
-}
-
-async function mark(key: string): Promise<void> {
-  await Preferences.set({ key, value: '1' }).catch(() => {})
-}
 
 /** 把一批旧键的原始值读出来（键 → 原文字符串），迁移与副本共用 */
 async function readLegacyValues(
@@ -321,14 +309,7 @@ async function readLegacyValues(
 async function writeSafetyDump(name: 'gloss' | 'gloss-alt', raw: Record<string, string>): Promise<void> {
   const path = safetyPathFor(name)
   const payload = { at: new Date().toISOString(), raw }
-  await writeJson(path, payload)
-  const back = await readJson<{ raw?: Record<string, string> }>(path)
-  const words = Object.keys(raw)
-  const ok =
-    back?.raw !== undefined &&
-    words.every((w) => back.raw?.[w] === raw[w]) &&
-    Object.keys(back.raw).length === words.length
-  if (!ok) throw new Error('释义缓存副本校验失败')
+  await writeVerifiedDump(path, payload, (back) => sameRecord(back?.raw, raw), '释义缓存副本校验失败')
 }
 
 /**
@@ -345,9 +326,7 @@ export async function clearGlossCache(): Promise<number> {
   await queueByKey(GLOSS_PATH, () => removeFile(GLOSS_PATH))
 
   // 迁移没跑完时旧键还在，一并清掉（不然下次启动又搬回来）
-  const { keys } = await Preferences.keys()
-  const legacy = keys.filter((k) => k.startsWith(GLOSS_PREFIX))
-  for (const key of legacy) await Preferences.remove({ key }).catch(() => {})
+  await removeLegacyKeys(await legacyKeys([GLOSS_PREFIX]))
 
   return count
 }
