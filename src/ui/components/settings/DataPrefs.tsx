@@ -279,17 +279,7 @@ export default function DataPrefs() {
           </button>
         </div>
 
-        <p className={styles.help}>
-          「导出备份」是 JSON，能原样导回。它是唯一的导出格式 —— 之前的 CSV / Markdown
-          只有日期和单词，导回来会丢学习时长与逐词反馈，已经去掉。
-        </p>
-
         {feedbackOf('export')}
-
-        <p className={styles.warnNote}>
-          提示：备份与导出功能仍建议留两份（例如同时存在网盘与本机）。导出的文件包含
-          全部个人数据，分享前请确认收件人。
-        </p>
       </section>
 
       <section className={styles.section}>
