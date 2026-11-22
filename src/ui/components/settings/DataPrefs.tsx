@@ -1,12 +1,19 @@
 import { useRef, useState, type ChangeEvent } from 'react'
 
-import { clearGlossCache } from '@/data/gloss'
+import { clearGlossCache, listGlossAlt, mergeGlossAltCustom } from '@/data/gloss'
 import { clearArticles, listArticles, saveArticle } from '@/data/article'
+import { getAllReadingDays, setReadingSeconds } from '@/data/reading'
 import { clearAll, listDays, writeDays } from '@/data/store'
+import { listScores, writeScoreEntry } from '@/data/training'
 import {
   parseImportText,
+  planGlossAlt,
   planImport,
+  planReading,
+  planScores,
   summarize,
+  type BackupGloss,
+  type BackupScore,
   type ImportMode,
 } from '@/domain/backup'
 import type { Article } from '@/domain/article'
@@ -33,6 +40,12 @@ type PickedFile = {
   articles: Article[]
   /** 其中本地没有的篇数（导入时会写入的） */
   newArticles: number
+  /** v3：日期 → 阅读秒数 */
+  reading: Record<string, number>
+  /** v3：词 → 手填释义 */
+  glossAlt: Record<string, BackupGloss>
+  /** v3：成绩键 → 最近一次成绩 */
+  scores: Record<string, BackupScore>
   notes: string[]
   existing: Set<string>
 }
@@ -88,11 +101,15 @@ export default function DataPrefs() {
       const parsed = parseImportText(text)
       const existing = new Set(await listDays())
       const existingArticles = new Set((await listArticles()).map((a) => a.id))
+
       setPicked({
         name: file.name,
         days: parsed.days,
         articles: parsed.articles,
         newArticles: parsed.articles.filter((a) => a.id && !existingArticles.has(a.id)).length,
+        reading: parsed.reading,
+        glossAlt: parsed.glossAlt,
+        scores: parsed.scores,
         notes: parsed.notes,
         existing,
       })
@@ -113,16 +130,38 @@ export default function DataPrefs() {
 
     try {
       const plan = planImport(picked.days, picked.existing, mode)
-      if (plan.write.length === 0) {
+
+      const localReading: Record<string, number> = {}
+      for (const r of await getAllReadingDays()) localReading[r.date] = r.seconds
+      const readingPlan = planReading(picked.reading, localReading, mode)
+
+      const localAlt = await listGlossAlt()
+      const glossPlan = planGlossAlt(picked.glossAlt, localAlt, mode)
+
+      // 成绩不看 fill/overwrite，一律按提交时间取新（见 planScores 注释）
+      const scorePlan = planScores(picked.scores, listScores())
+
+      const totalWrites =
+        plan.write.length +
+        readingPlan.write.length +
+        glossPlan.write.length +
+        scorePlan.write.length
+      if (totalWrites === 0) {
         setDataFeedback({
           kind: 'warn',
-          text: `文件里 ${picked.days.length} 天的记录本地都已存在，没有写入任何数据`,
+          text: '文件里的数据本地都已存在或更新，没有写入任何内容',
           scope: 'import',
         })
         return
       }
 
       await writeDays(plan.write)
+      // 阅读时长是绝对值覆盖，不是累加（同一份备份导两次不会翻倍）
+      for (const r of readingPlan.write) await setReadingSeconds(r.date, r.seconds)
+      // 手填释义一次落盘，本地的 AI 备选保留
+      await mergeGlossAltCustom(glossPlan.write)
+      for (const s of scorePlan.write) writeScoreEntry(s.key, s.score)
+
       // 文章按 id 去重后逐篇恢复（fill 语义：本地已有的不动）
       let importedArticles = 0
       for (const art of picked.articles) {
@@ -139,6 +178,9 @@ export default function DataPrefs() {
       if (plan.replaced > 0) parts.push(`覆盖 ${plan.replaced} 天`)
       if (plan.kept > 0) parts.push(`保留本地 ${plan.kept} 天`)
       if (picked.articles.length > 0) parts.push(`文章 ${importedArticles} 篇`)
+      if (readingPlan.write.length > 0) parts.push(`阅读时长 ${readingPlan.write.length} 天`)
+      if (glossPlan.write.length > 0) parts.push(`自定义释义 ${glossPlan.write.length} 条`)
+      if (scorePlan.write.length > 0) parts.push(`成绩 ${scorePlan.write.length} 条`)
 
       setDataFeedback({ kind: 'ok', text: `导入完成：${parts.join('，')}`, scope: 'import' })
       setPicked(null)
@@ -296,6 +338,32 @@ export default function DataPrefs() {
                   : '（全部为新增）'}
               </p>
             )}
+
+            {/*
+              三块附属数据：只显示条数与「本地已有几条」，
+              具体怎么合并在下面那条规则说明里讲清楚。
+            */}
+            {(Object.keys(picked.reading).length > 0 ||
+              Object.keys(picked.glossAlt).length > 0 ||
+              Object.keys(picked.scores).length > 0) && (
+              <p className={styles.previewMeta}>
+                另含
+                {Object.keys(picked.reading).length > 0
+                  ? ` 阅读时长 ${Object.keys(picked.reading).length} 天`
+                  : ''}
+                {Object.keys(picked.glossAlt).length > 0
+                  ? ` · 自定义释义 ${Object.keys(picked.glossAlt).length} 条`
+                  : ''}
+                {Object.keys(picked.scores).length > 0
+                  ? ` · 成绩 ${Object.keys(picked.scores).length} 条`
+                  : ''}
+              </p>
+            )}
+
+            <p className={styles.previewNote}>
+              合并规则：学习记录与阅读时长按上面的选择（只补缺失 / 覆盖同一天，不会叠加）；
+              自定义释义只补本地没有的，选「覆盖」时以备份为准；成绩按提交时间取新，旧备份不会盖掉新成绩。
+            </p>
 
             {conflicts > 0 && (
               <p className={styles.previewMeta} data-warn="true">

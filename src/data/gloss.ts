@@ -208,6 +208,35 @@ export async function readGlossAlt(word: string): Promise<GlossAlt> {
   return map.get(key) ?? {}
 }
 
+/**
+ * 全量备选释义（备份用）。返回 map 的一份浅拷贝：
+ * 导出方只读，不能让它拿到内部缓存去改。
+ */
+export async function listGlossAlt(): Promise<Record<string, GlossAlt>> {
+  const map = await loadAltMap()
+  return Object.fromEntries(map.entries())
+}
+
+/**
+ * 批量写手填释义（导入用），一次落盘。
+ *
+ * 为什么不循环调 `saveGlossAlt`：它每写一个词就把整份 map 序列化一遍，
+ * 几百条导入会变成几百次全量重写。这里合并完只写一次。
+ * 只动 `custom`，本地已有的 AI 备选原样保留。
+ */
+export async function mergeGlossAltCustom(
+  entries: { word: string; custom: string }[],
+): Promise<void> {
+  if (entries.length === 0) return
+  const map = await loadAltMap()
+  for (const { word, custom } of entries) {
+    const key = word.trim().toLowerCase()
+    if (!key) continue
+    map.set(key, { ...(map.get(key) ?? {}), custom })
+  }
+  await persistAlt(map)
+}
+
 /** 写备选释义；两个字段都空就把那条删掉，不留空壳 */
 export async function saveGlossAlt(word: string, alt: GlossAlt): Promise<void> {
   const key = word.trim().toLowerCase()

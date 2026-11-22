@@ -78,18 +78,23 @@ export function sweepLegacyScores(): void {
   }
 }
 
-export function readScore(paperKey: string, passageId: string): TrainScore | null {
-  let raw: string | null = null
-  try {
-    raw = window.localStorage.getItem(SCORE_PREFIX + scoreKey(paperKey, passageId))
-  } catch {
-    return null
-  }
+/** 把一段 JSON 解析成成绩；结构不对当没有。读路径与备份导出共用这一处判定 */
+function parseScore(raw: string | null): TrainScore | null {
   if (!raw) return null
   try {
     const s = JSON.parse(raw) as TrainScore
     if (typeof s.right !== 'number' || typeof s.total !== 'number' || !s.at) return null
     return s
+  } catch {
+    return null
+  }
+}
+
+export function readScore(paperKey: string, passageId: string): TrainScore | null {
+  try {
+    return parseScore(
+      window.localStorage.getItem(SCORE_PREFIX + scoreKey(paperKey, passageId)),
+    )
   } catch {
     return null
   }
@@ -103,5 +108,40 @@ export function saveScore(paperKey: string, passageId: string, score: TrainScore
     )
   } catch {
     // 配额满 / 隐私模式：成绩丢了不影响做题，不打扰用户
+  }
+}
+
+/**
+ * 全部成绩（备份用）：键是去掉前缀的 `套卷key#篇目id`。
+ * localStorage 不可用（隐私模式 / 配额异常）时返回空表 —— 导出侧要据此提示
+ * 「本设备没有可导出的成绩」，而不是假装成功导出了 0 条。
+ */
+export function listScores(): Record<string, TrainScore> {
+  const out: Record<string, TrainScore> = {}
+  try {
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const k = window.localStorage.key(i)
+      if (!k || !k.startsWith(SCORE_PREFIX)) continue
+      const key = k.slice(SCORE_PREFIX.length)
+      const score = parseScore(window.localStorage.getItem(k))
+      if (score) out[key] = score
+    }
+  } catch {
+    return {}
+  }
+  return out
+}
+
+/**
+ * 导入用：按完整键直接写入。
+ * 只接受带 `#` 的键（与 `sweepLegacyScores` 同一条判据），否则会把串号脏键又写回去。
+ */
+export function writeScoreEntry(key: string, score: TrainScore): void {
+  const k = key.trim()
+  if (!k.includes('#')) return
+  try {
+    window.localStorage.setItem(SCORE_PREFIX + k, JSON.stringify(score))
+  } catch {
+    // 同 saveScore：写不进去不影响做题
   }
 }

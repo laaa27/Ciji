@@ -114,6 +114,27 @@ export async function addDayReading(date: string, sec: number): Promise<void> {
 }
 
 /**
+ * 直接把某天的阅读秒数设成某个值（导入用，**绝对写**）。
+ *
+ * 为什么不能复用 `addDayReading`：那是「累加」，同一份备份导两次就会翻倍。
+ * 导入恢复的是「那天一共读了多少」，语义上是覆盖。
+ *
+ * 顺带把旧键的底数记进 `legacyReading`：否则迁移还没跑完时，下一次累加会把
+ * `reading:` 里的旧值再加一遍。
+ */
+export async function writeDayReading(date: string, seconds: number): Promise<void> {
+  const value = Math.floor(seconds)
+  if (value <= 0) return
+
+  const legacy = await readLegacyReading(date)
+  await updateDayFile(date, (cur) => {
+    const next: DayFile = { ...(cur ?? { date }), readingSeconds: value }
+    if (legacy !== null) next.legacyReading = legacy
+    return next
+  })
+}
+
+/**
  * 只删学习快照，保留阅读秒数（「删除某天记录」的语义）。
  * 那天只有快照没有秒数时，整个文件删掉。
  */

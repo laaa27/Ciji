@@ -13,8 +13,28 @@ import type { CollectedWord, TodaySnapshot, WordState } from '@/domain/collect'
  */
 
 export const BACKUP_FORMAT = 'ciji-backup'
-/** v2：加入 `articles`（生成的文章全文）。v1 备份没有该字段，导入时当空处理 */
-export const BACKUP_VERSION = 2
+/**
+ * v2：加入 `articles`（生成的文章全文）。v1 备份没有该字段，导入时当空处理。
+ * v3：加入 `reading`（每日阅读秒数）、`glossAlt`（用户手填的释义）、`scores`（训练成绩）。
+ *     三者都可选：v2 文件读进来时按「不含这些数据」处理并提示。
+ */
+export const BACKUP_VERSION = 3
+
+/**
+ * 备份里的成绩条目。字段与 `data/training.TrainScore` 一致，
+ * 但这里单独定义一份：本文件要保持**零运行时依赖**，才能在 node 里直接跑单测。
+ */
+export type BackupScore = {
+  right: number
+  total: number
+  /** 提交时刻（ISO） */
+  at: string
+  /** 用时（秒），早期数据没有 */
+  secs?: number
+}
+
+/** 备份里的自定义释义：只带用户手填的内容（AI 备选可再生，不进备份） */
+export type BackupGloss = { custom: string }
 
 export interface BackupFile {
   format: string
@@ -25,9 +45,24 @@ export interface BackupFile {
   days: TodaySnapshot[]
   /** v2 起携带：生成的文章全文。文章不可再生，备份必须带走 */
   articles?: Article[]
+  /** v3：日期 → 当天累计阅读秒数（只写 >0 的） */
+  reading?: Record<string, number>
+  /** v3：词 → 用户手填的释义 */
+  glossAlt?: Record<string, BackupGloss>
+  /** v3：成绩键（`套卷key#篇目id`）→ 最近一次成绩 */
+  scores?: Record<string, BackupScore>
 }
 
-export function buildBackup(days: TodaySnapshot[], articles: Article[] = []): BackupFile {
+export function buildBackup(
+  days: TodaySnapshot[],
+  articles: Article[] = [],
+  extra: {
+    reading?: Record<string, number>
+    glossAlt?: Record<string, BackupGloss>
+    scores?: Record<string, BackupScore>
+  } = {},
+): BackupFile {
+  const { reading, glossAlt, scores } = extra
   return {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
@@ -35,7 +70,11 @@ export function buildBackup(days: TodaySnapshot[], articles: Article[] = []): Ba
     exportedAt: new Date().toISOString(),
     count: days.length,
     days,
+    // 空节不写：备份文件里塞一堆 `{}` 只会让人以为有数据
     ...(articles.length > 0 ? { articles } : {}),
+    ...(reading && Object.keys(reading).length > 0 ? { reading } : {}),
+    ...(glossAlt && Object.keys(glossAlt).length > 0 ? { glossAlt } : {}),
+    ...(scores && Object.keys(scores).length > 0 ? { scores } : {}),
   }
 }
 
@@ -171,11 +210,86 @@ function normalizeSnapshot(raw: unknown): TodaySnapshot | null {
 /* 对外：解析文件                                                      */
 /* ------------------------------------------------------------------ */
 
+/** 用户手填释义的长度上限（与词卡编辑框的 maxLength 一致） */
+const CUSTOM_MAX = 200
+
+/**
+ * 阅读秒数：日期必须是合法键，秒数是正的有限数。
+ * 非法条目直接丢（少一天时长，总比把脏值写进统计页好）。
+ */
+function normalizeReading(raw: unknown): Record<string, number> {
+  const out: Record<string, number> = {}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out
+  for (const [date, value] of Object.entries(raw as Record<string, unknown>)) {
+    const d = normalizeDate(date)
+    const n = Number(value)
+    if (!d || !Number.isFinite(n) || n <= 0) continue
+    out[d] = Math.floor(n)
+  }
+  return out
+}
+
+/**
+ * 自定义释义：只收 `custom`，词键按存储层规则小写 + trim，长度截到 200。
+ * 允许 `{ custom }` 或裸字符串两种写法——备份是给用户看的，手改过也能读。
+ */
+function normalizeGlossAlt(raw: unknown): Record<string, BackupGloss> {
+  const out: Record<string, BackupGloss> = {}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out
+  for (const [word, value] of Object.entries(raw as Record<string, unknown>)) {
+    const key = word.trim().toLowerCase()
+    const custom =
+      typeof value === 'string'
+        ? value
+        : value && typeof value === 'object'
+          ? (value as { custom?: unknown }).custom
+          : ''
+    if (!key || typeof custom !== 'string') continue
+    const text = custom.trim().slice(0, CUSTOM_MAX)
+    if (!text) continue
+    out[key] = { custom: text }
+  }
+  return out
+}
+
+/**
+ * 训练成绩：键必须带 `#`（`套卷key#篇目id`）——不带的是 0.24.13 及以前的串号脏键，
+ * 当年就是靠「有没有 #」把它们扫掉的，这里沿用同一条判据。
+ */
+function normalizeScores(raw: unknown): Record<string, BackupScore> {
+  const out: Record<string, BackupScore> = {}
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const k = key.trim()
+    if (!k.includes('#') || !value || typeof value !== 'object') continue
+    const s = value as Record<string, unknown>
+    const right = Number(s.right)
+    const total = Number(s.total)
+    const at = typeof s.at === 'string' && !Number.isNaN(Date.parse(s.at)) ? s.at : ''
+    if (!at || !Number.isFinite(right) || !Number.isFinite(total)) continue
+    if (right < 0 || total < 0) continue
+    const secs = Number(s.secs)
+    out[k] = {
+      right: Math.round(right),
+      total: Math.round(total),
+      at,
+      ...(Number.isFinite(secs) && secs >= 0 ? { secs: Math.round(secs) } : {}),
+    }
+  }
+  return out
+}
+
 export interface ImportPreview {
   /** 按日期升序，重复日期已合并 */
   days: TodaySnapshot[]
   /** v2 起携带的生成文章 */
   articles: Article[]
+  /** v3：日期 → 阅读秒数（只含 >0） */
+  reading: Record<string, number>
+  /** v3：词 → 手填释义 */
+  glossAlt: Record<string, BackupGloss>
+  /** v3：成绩键 → 最近一次成绩 */
+  scores: Record<string, BackupScore>
   /** 被丢弃的行数 / 条目数 */
   skipped: number
   /** 需要让用户知道的情况，不阻断导入 */
@@ -200,12 +314,7 @@ function normalizeArticle(raw: unknown): Article | null {
   return a as unknown as Article
 }
 
-function importJson(text: string): {
-  days: TodaySnapshot[]
-  articles: Article[]
-  skipped: number
-  notes: string[]
-} {
+function importJson(text: string): ImportPreview {
   let data: unknown
   try {
     data = JSON.parse(text.replace(/^\uFEFF/, ''))
@@ -216,6 +325,10 @@ function importJson(text: string): {
   const notes: string[] = []
   let rawDays: unknown[] = []
   let rawArticles: unknown[] = []
+  /** v3 的三段；v1/v2 里没有，保持空表 */
+  let rawReading: unknown
+  let rawGlossAlt: unknown
+  let rawScores: unknown
 
   if (Array.isArray(data)) {
     rawDays = data
@@ -232,9 +345,16 @@ function importJson(text: string): {
       }
       if (Array.isArray(obj.articles)) {
         rawArticles = obj.articles
-      } else if (Number.isFinite(Number(obj.version)) && Number(obj.version) < 2) {
+      } else if (Number.isFinite(version) && version < 2) {
         notes.push('这份备份早于文章纳入备份（v2），不含生成文章')
       }
+      // v3 起才有这四类数据；旧备份明确告诉用户少了什么，别以为仍然无损
+      if (Number.isFinite(version) && version < 3) {
+        notes.push('这份备份早于 v3：不含阅读时长、自定义释义与训练成绩')
+      }
+      rawReading = obj.reading
+      rawGlossAlt = obj.glossAlt
+      rawScores = obj.scores
     } else if ('date' in obj || 'words' in obj) {
       // 单日快照，或者用户手工拼的单天对象
       rawDays = [obj]
@@ -250,8 +370,18 @@ function importJson(text: string): {
   }
   if (artSkipped > 0) notes.push(`${artSkipped} 篇文章数据不完整，已跳过`)
 
-  if (rawDays.length === 0 && articles.length === 0) {
-    throw new Error('文件里没有可导入的学习记录')
+  const reading = normalizeReading(rawReading)
+  const glossAlt = normalizeGlossAlt(rawGlossAlt)
+  const scores = normalizeScores(rawScores)
+
+  const isEmpty =
+    rawDays.length === 0 &&
+    articles.length === 0 &&
+    Object.keys(reading).length === 0 &&
+    Object.keys(glossAlt).length === 0 &&
+    Object.keys(scores).length === 0
+  if (isEmpty) {
+    throw new Error('文件里没有可导入的数据')
   }
 
   const byDate = new Map<string, TodaySnapshot>()
@@ -276,6 +406,9 @@ function importJson(text: string): {
   return {
     days: [...byDate.values()].sort((a, b) => a.date.localeCompare(b.date)),
     articles,
+    reading,
+    glossAlt,
+    scores,
     skipped,
     notes,
   }
@@ -292,8 +425,7 @@ export function parseImportText(text: string): ImportPreview {
     throw new Error('无法识别的文件，请选择「导出备份」生成的 JSON')
   }
 
-  const res = importJson(body)
-  return { days: res.days, articles: res.articles, skipped: res.skipped, notes: res.notes }
+  return importJson(body)
 }
 
 /* ------------------------------------------------------------------ */
@@ -357,4 +489,136 @@ export function summarize(days: TodaySnapshot[]): ImportSummary {
     first: dates[0] ?? '',
     last: dates[dates.length - 1] ?? '',
   }
+}
+
+/* ------------------------------------------------------------------ */
+/* v3：三块附属数据的合并计划                                          */
+/* ------------------------------------------------------------------ */
+
+export interface ReadingPlan {
+  /** 真正要写的日期与秒数（绝对值，绝不累加） */
+  write: { date: string; seconds: number }[]
+  added: number
+  /** 覆盖了本地已有秒数的天数 */
+  replaced: number
+  kept: number
+}
+
+/**
+ * 阅读秒数。
+ *
+ * - `fill`：本地那天没有秒数才写
+ * - `overwrite`：以备份为准（相同则跳过，不做无谓写盘）
+ *
+ * 一律**绝对写**。这份数据是「当天累计秒数」，用 `addReadingSeconds` 导入会在
+ * 重复导入、或与本地已有记录叠加时翻倍 —— 这是这一块最容易写错的地方。
+ */
+export function planReading(
+  reading: Record<string, number>,
+  existing: Record<string, number>,
+  mode: ImportMode,
+): ReadingPlan {
+  const write: ReadingPlan['write'] = []
+  let added = 0
+  let replaced = 0
+  let kept = 0
+
+  for (const [date, seconds] of Object.entries(reading)) {
+    const local = existing[date] ?? 0
+    if (local > 0 && mode === 'fill') {
+      kept += 1
+      continue
+    }
+    if (local === seconds) {
+      kept += 1
+      continue
+    }
+    write.push({ date, seconds })
+    if (local === 0) added += 1
+    else replaced += 1
+  }
+
+  return { write, added, replaced, kept }
+}
+
+export interface GlossAltPlan {
+  /** 要写的词与手填释义（已按存储层规则小写、截断） */
+  write: { word: string; custom: string }[]
+  added: number
+  kept: number
+}
+
+/**
+ * 自定义释义。
+ *
+ * - `fill`：本地这个词还没有手填释义才写（不覆盖用户后来改过的版本）
+ * - `overwrite`：以备份为准
+ *
+ * 只写 `custom`：本地的 AI 备选由调用方保留（备份里本来就不带 AI 释义）。
+ */
+export function planGlossAlt(
+  glossAlt: Record<string, BackupGloss>,
+  existing: Record<string, { ai?: string; custom?: string }>,
+  mode: ImportMode,
+): GlossAltPlan {
+  const write: GlossAltPlan['write'] = []
+  let added = 0
+  let kept = 0
+
+  for (const [word, { custom }] of Object.entries(glossAlt)) {
+    const local = existing[word]?.custom?.trim() ?? ''
+    if (local && mode === 'fill') {
+      kept += 1
+      continue
+    }
+    if (local === custom) {
+      kept += 1
+      continue
+    }
+    write.push({ word, custom })
+    if (!local) added += 1
+  }
+
+  return { write, added, kept }
+}
+
+export interface ScorePlan {
+  write: { key: string; score: BackupScore }[]
+  added: number
+  replaced: number
+  kept: number
+}
+
+/**
+ * 训练成绩：**不看 fill / overwrite**，一律按 `at` 取新。
+ *
+ * 成绩是「最近一次作答」的快照，语义上没有「覆盖成旧成绩」这种场景 ——
+ * 如果跟随天的 fill/overwrite，用户选「覆盖」时就会被一份旧备份抹掉新成绩，
+ * 而且几乎不可能察觉。
+ */
+export function planScores(
+  scores: Record<string, BackupScore>,
+  existing: Record<string, BackupScore>,
+): ScorePlan {
+  const write: ScorePlan['write'] = []
+  let added = 0
+  let replaced = 0
+  let kept = 0
+
+  for (const [key, score] of Object.entries(scores)) {
+    const local = existing[key]
+    if (!local) {
+      write.push({ key, score })
+      added += 1
+      continue
+    }
+    if (Date.parse(score.at) > Date.parse(local.at)) {
+      write.push({ key, score })
+      replaced += 1
+    } else {
+      kept += 1
+    }
+  }
+
+  return { write, added, replaced, kept }
 }

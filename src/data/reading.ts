@@ -1,4 +1,4 @@
-import { addDayReading, legacyDayDates, listDayDates, readDayReading } from '@/data/dayFile'
+import { addDayReading, legacyDayDates, listDayDates, readDayReading, writeDayReading } from '@/data/dayFile'
 
 /**
  * 阅读时长的数据层：一天一个数字，存在当天的日文件里（`days/YYYY-MM-DD.json`
@@ -17,6 +17,11 @@ export async function getReadingSeconds(date: string): Promise<number> {
 /** 给某天累加阅读秒数。调用方按批次写入（一分钟一次），不用担心并发踩踏 */
 export async function addReadingSeconds(date: string, sec: number): Promise<void> {
   await addDayReading(date, sec)
+}
+
+/** 导入用：把某天的累计秒数设成绝对值（不是累加） */
+export async function setReadingSeconds(date: string, sec: number): Promise<void> {
+  await writeDayReading(date, sec)
 }
 
 export type ReadingDay = { date: string; seconds: number }
