@@ -47,7 +47,7 @@
 
 生成文章需要一个可调用的大模型。三步接入，以 **DeepSeek** 为例：
 
-1. 到 [DeepSeek 开放平台](https://platform.deepseek.com/) 注册并创建 API Key（需充值，价格便宜，生成质量好）
+1. 到 [DeepSeek 开放平台](https://platform.deepseek.com/) 注册并创建 API Key（需充值，价格便宜，生成质量尚可）
 2. App 内 **设置 → 大模型 → 添加配置**，预填项选「DeepSeek」，只需粘贴 API Key（名称、地址、模型名已自动填好）
 3. 保存并选中这份配置，回阅读页点「生成」即可
 
