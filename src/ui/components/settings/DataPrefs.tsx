@@ -418,8 +418,8 @@ export default function DataPrefs() {
       <section className={styles.section}>
         <h2 className={styles.label}>生成文章</h2>
         <p className={styles.about}>
-          生成的文章存在本机，且<strong>不在自动备份的内容里</strong>——换手机前请务必先点「导出备份」
-          （备份已包含文章全文），再清空或卸载。
+          生成的文章存在本机，<strong>备份里已包含文章全文</strong>——换手机或重装前先点「导出备份」，
+          再清空或卸载。
         </p>
 
         <div className={styles.actions}>
