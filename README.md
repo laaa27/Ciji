@@ -8,12 +8,12 @@
 基于墨墨背单词开放 API 的 Android 应用，数据只存在本机。
 
 <p align="center">
-  <img src="screenshots/today.jpg?v=02411" width="16%" alt="今日" />
-  <img src="screenshots/history.jpg?v=02411" width="16%" alt="历史" />
-  <img src="screenshots/stats.jpg?v=02411" width="16%" alt="统计" />
-  <img src="screenshots/reading.jpg?v=02411" width="16%" alt="阅读" />
-  <img src="screenshots/training.jpg?v=02411" width="16%" alt="训练" />
-  <img src="screenshots/settings.jpg?v=02411" width="16%" alt="设置" />
+  <img src="screenshots/today.jpg?v=02412" width="16%" alt="今日" />
+  <img src="screenshots/history.jpg?v=02412" width="16%" alt="历史" />
+  <img src="screenshots/stats.jpg?v=02412" width="16%" alt="统计" />
+  <img src="screenshots/reading.jpg?v=02412" width="16%" alt="阅读" />
+  <img src="screenshots/training.jpg?v=02412" width="16%" alt="训练" />
+  <img src="screenshots/settings.jpg?v=02412" width="16%" alt="设置" />
 </p>
 
 ---
@@ -28,7 +28,8 @@
   正文与阅读页同一套排版（每词可点、可开译文、可高亮），选项条浮在底栏上方随时可答，
   **答完点「提交答卷」才判分**，之后逐题展开解析。
   选词填空是卷面形态：空位嵌在文章里，点空位再点词库填入，空位显示单词而不是字母。
-  信息匹配 / 小标题 / 判断 / 排序这几类新题型各有自己的作答方式（段号 A–O 排他、选项池抢占、链图排序）
+  信息匹配 / 小标题 / 判断 / 排序这几类新题型各有自己的作答方式（段号 A–O 排他、选项池抢占、链图排序）。
+  考研另带**翻译**题型（英语一 5 个划线句 / 英语二整段），只读原文与参考译文，不判分
 
   **解析是完整的，不是只给答案**：144 套共 4820 道题，全部带逐题解析——
   判定（对错 + 题型：细节题 / 推断题 / 主旨题…）、判型理由、题干拆句、原文定位（多半带中英对照），
@@ -115,7 +116,7 @@ cd android && ./gradlew assembleRelease
 | 状态 | Zustand | 每个 store 一个文件，没有样板代码 |
 | 样式 | 原生 CSS Modules | 无 UI 库，改样式就是改 CSS |
 | 图表 | ECharts 6 | 按需引入，只打包柱状图 |
-| 存储 | Capacitor Preferences + Filesystem | 每日快照 / 索引 / 偏好 / 释义缓存走 Preferences（释义缓存上限 3000 条，超出按最旧淘汰）；文章正文走 Filesystem，每篇一个 JSON |
+| 存储 | Capacitor Preferences + Filesystem | 偏好、凭证与少量标记留在 Preferences；每日快照与阅读时长（`days/`）、释义缓存（`cache/`）、文章索引与正文（`articles/`）都走 Filesystem，释义上限 3000 条按最旧淘汰 |
 | 词典 | ECDICT 裁剪版 | 分片 JSON，按首字母懒加载。数据来自 [skywind3000/ECDICT](https://github.com/skywind3000/ECDICT)（MIT） |
 
 ## 目录结构
@@ -123,16 +124,16 @@ cd android && ./gradlew assembleRelease
 ```
 src/
 ├── api/          请求层：发请求、解信封、把失败翻译成人话
-├── data/         存储层：只读写本地（Preferences / 词典分片）
-├── domain/       业务层：采集、生成（`generate/` 下是并行成文用到的指标 / 择优 / 审计）、查词、备份、更新等纯逻辑
+├── data/         存储层：files（文件读写与写锁）/ dayFile（每日快照与阅读秒数）/ gloss（释义）/ article（文章与索引）/ training（成绩）/ dict（词典分片）/ migrate（迁移校验）
+├── domain/       业务层：收集、查词、备份、更新；文章生成在 `article/`（模型、选词、成文、用量），并行择优与审计在 `generate/`
 ├── store/        状态层（Zustand）：session / today / llm / prefs / theme / glass / ui / backstack / toast
-├── lib/          零依赖工具：date / text / scroll / async
+├── lib/          零依赖工具：date / text / lemma / scroll / async / clipboard
 └── ui/
     ├── pages/      今日 / 历史（含统计）/ 阅读 / 训练 / 设置
-    ├── components/ TabBar / WordSheet / ArticleLibrary / GenerateArticle / TrainingDoc（做题页四件套 TrainingReader / ChoiceBar / ClozeBar / Analysis）/ BackButton / settings
-    ├── hooks/      useSubView / useReadingClock / useGlossToggle / useScrollStuck / useScrollLock / useStopwatch / useWordSelection
+    ├── components/ TabBar / WordSheet / ArticleLibrary / GenerateArticle / TrainingDoc（做题页四件套 TrainingReader / ChoiceBar / ClozeBar / Analysis）/ DateCalendar / ThemeToggle / ModelProfiles / BackButton / settings
+    ├── hooks/      useSubView / useReadingClock / useReturnScroll / useScrollStuck / useScrollLock / useSheetHeight / useStopwatch / useGlossToggle / useGlossSource / useMemoState / useWordSelection / useWordPicking
     └── styles/     tokens.css（设计令牌）+ global.css
-scripts/          长期工具：生成文章与真题对比 / 造数据 / 截图 / 训练题库导入
+scripts/          长期工具：生成文章与真题对比 / 造数据 / 截图 / 训练题库导入 / 存储体积统计
 public/training/  训练题库 JSON（index.json + 每套一个文件），**不入库**，见下
 android/          Capacitor Android 工程（含 AppearancePlugin 自研原生插件）
 ```
@@ -179,35 +180,32 @@ android/          Capacitor Android 工程（含 AppearancePlugin 自研原生�
 （同一个词在别处的出现不跟着亮；再按一次取消）。换文章 / 换篇目自动清空。
 
 **阅读计时。** 停留在阅读页且打开着文章时自动计时（文章库/生成页/词卡不算），
-切后台不计入。计时数字常驻顶栏（不走按钮逻辑），攒 15 秒批量落盘一次，
-切后台/切栏目的瞬间也会强制落盘。数据按天存 `reading:YYYY-MM-DD`（秒），
-统计页有独立的「阅读时长」柱状图（近 30 天，按分钟）。
+切后台不计入。计时数字常驻顶栏（不走按钮逻辑），攒 60 秒批量落盘一次，
+切后台/切栏目的瞬间也会强制落盘。秒数写在当天文件 `days/YYYY-MM-DD.json` 的
+`readingSeconds` 里，统计页有独立的「阅读时长」柱状图（近 30 天，按分钟）。
 
-## 导出与导入
+## 备份与恢复
 
 设置 → **数据**，页面分五块：备份与导出 / 导入 / 生成文章 / 释义缓存 / 全部记录。
 
-三种导出、两种导入：
+只有一种导出：`词迹备份-YYYY-MM-DD.json`，**无损备份**，换手机 / 重装用它。
+v3 起一份文件里包含学习记录、生成文章全文、每日阅读时长、自定义释义与训练成绩
+（v1 / v2 的老备份仍能导入，缺哪部分会在预览里单独提示）。CSV 与 Markdown 导出已移除。
 
-| 文件 | 用途 | 导回来会丢什么 |
-|---|---|---|
-| `词迹备份-YYYY-MM-DD.json` | **无损备份**，换手机/重装用它 | 什么都不丢。v2 起**包含生成文章全文**（v1 老备份没有，导入时会提示） |
-| `词迹-YYYY-MM-DD.csv` | 给 Excel / 别的工具看 | 学习时长、逐词首末反馈、进度总量、生成文章 |
-| `词迹-YYYY-MM-DD.md` | 给人读 | 同上，且不支持导入 |
-
-导入流程：选文件 → 解析并预览（几天 / 几个词 / 哪几天本地已有）→ 选策略写入。
+导入流程：选文件（只接受 `.json`）→ 解析并预览（几天 / 几个词 / 哪几天本地已有 / 另含哪些数据）→ 选策略写入。
 
 - **仅补空缺**：只写本地没有的日期，已有记录一律不动
 - **覆盖同日期**：文件里的日期覆盖本地同一天的记录；文件里没有的日期**不会删**（导入永远不做删除）
+- 阅读时长跟着学习记录走同一套策略（覆盖是绝对值，不累加）；自定义释义只补本地没有的，
+  选「覆盖」时以备份为准；训练成绩按提交时间取新，旧备份不会盖掉新成绩
 
 同一天在文件里出现多次时保留词数最多的一条；同一天同一单词出现多次则合并分组。
-CSV 支持带表头 / 不带表头（按导出列序）、BOM、CRLF、引号内逗号与换行。
 
 三个清空入口，都在同页、都要点两次确认：
 
 - **清空生成文章** —— 文章不可再生，清空前先导出一份备份
-- **清空释义缓存** —— 只删能重新生成的释义；你自己写的自定义释义、文章、学习记录都不动
-- **清空全部记录** —— 删本机的每日学习记录；生成文章与释义缓存**不在其中**，要单独清
+- **清空释义缓存** —— 只删能重新生成的主释义；自定义释义、AI 备选释义、文章、学习记录都不动
+- **清空全部记录** —— 删本机的每日学习记录与阅读时长；生成文章与释义缓存**不在其中**，要单独清
 
 ## 声明
 
@@ -228,7 +226,8 @@ CSV 支持带表头 / 不带表头（按导出列序）、BOM、CRLF、引号内
   克隆下来直接构建，训练页会显示「这档还没有套卷」；需要自备题库包后跑 `scripts/import-training.py` 重新生成。
 - **训练做题进度不保存**：中途退出再进是空白（试过两版持久化都没扛住「从最近任务划掉」，见开发手册第 10 章）。
 - **没有听力**：题库的音频包另发（787MB），本项目未引入，卷子里的听力节已移除。
-- **备份与导出仍在调整**：导出的文件可能缺字段、导入可能失败，暂不保证可用，别当作唯一的数据保障。
+- **备份只保证向后兼容**：本版能读 v1/v2/v3 备份，但更早的版本读 v3 会忽略新增的阅读时长、
+  自定义释义与训练成绩字段。跨版本换机请用同版本导出、同版本导入。
 
 ## 许可
 
